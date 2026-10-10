@@ -1,0 +1,220 @@
+name: Newman
+options:
+  preGenCommand: Config/sync-version.sh
+  bundleIdPrefix: ca.nimaste
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+# ONNX Runtime for the wall's on-device wake word (NewmanWall only). Same version as the
+# Android wall's onnxruntime-android.
+packages:
+  onnxruntime:
+    url: https://github.com/microsoft/onnxruntime-swift-package-manager
+    exactVersion: 1.20.0
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: T342YL2VCE
+    CODE_SIGN_STYLE: Automatic
+
+schemes:
+  Newman:
+    build:
+      targets:
+        Newman: all
+        NotificationServiceExtension: all
+        LocationPushExtension: all
+        NewmanWidgets: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  NewmanWall:
+    build:
+      targets:
+        NewmanWall: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+targets:
+  # The phone app. Shared/ (API client, mTLS, models, live connection, theme, fonts) is compiled in.
+  Newman:
+    type: application
+    platform: iOS
+    sources:
+      - Newman
+      - Shared
+      # The live camera player page, shared with Android (not copied into ios/).
+      - path: ../mobile-shared/live-player.html
+        buildPhase: resources
+    configFiles:
+      Debug: Config/Version.xcconfig
+      Release: Config/Version.xcconfig
+    settings:
+      base:
+        INFOPLIST_FILE: Newman/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: ca.nimaste.newman
+        PRODUCT_NAME: Newman
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # Empty locally (automatic signing); CI passes NEWMAN_PROFILE_PHONE=<profile UUID>.
+        PROVISIONING_PROFILE_SPECIFIER: "$(NEWMAN_PROFILE_PHONE)"
+      # Debug runs from Xcode talk to the APNs sandbox; Release (Ad Hoc) builds to production,
+      # matching their provisioning profiles. PushManager tells the hub which (apnsEnvironment).
+      configs:
+        Debug:
+          NEWMAN_APS_ENVIRONMENT: development
+        Release:
+          NEWMAN_APS_ENVIRONMENT: production
+    entitlements:
+      path: Newman/Resources/Newman.entitlements
+      properties:
+        aps-environment: $(NEWMAN_APS_ENVIRONMENT)
+        # Location Push Service Extension (granted by Apple, enabled on the App ID). It belongs to the
+        # app: the app calls startMonitoringLocationPushes and owns the token; the extension needs none.
+        com.apple.developer.location.push: true
+        com.apple.security.application-groups:
+          - group.ca.nimaste.newman
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)group.ca.nimaste.newman
+    dependencies:
+      - target: NotificationServiceExtension
+      - target: LocationPushExtension
+      - target: NewmanWidgets
+
+  # Attaches camera snapshots, with the shared-Keychain client certificate. Never registers
+  # notification categories (only the app does - see Shared/Platform/PushCategories.swift).
+  NotificationServiceExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - NotificationServiceExtension
+      - Shared/Core
+      - Shared/Platform/KeychainService.swift
+      - Shared/Platform/CertificateStore.swift
+      - Shared/Platform/ConnectionStore.swift
+      - Shared/Platform/NewmanSession.swift
+    configFiles:
+      Debug: Config/Version.xcconfig
+      Release: Config/Version.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.nimaste.newman.NotificationServiceExtension
+        DEVELOPMENT_TEAM: T342YL2VCE
+        INFOPLIST_FILE: NotificationServiceExtension/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        PROVISIONING_PROFILE_SPECIFIER: "$(NEWMAN_PROFILE_EXTENSION)"
+    entitlements:
+      path: NotificationServiceExtension/NotificationServiceExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ca.nimaste.newman
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)group.ca.nimaste.newman
+
+  # Answers the hub's APNs location pushes (someone following this person on a map) with one fix,
+  # even when the app was swiped away. Same shared Keychain / App Group as the notification extension.
+  LocationPushExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - LocationPushExtension
+      - Shared/Core
+      - Shared/Platform/KeychainService.swift
+      - Shared/Platform/CertificateStore.swift
+      - Shared/Platform/ConnectionStore.swift
+      - Shared/Platform/NewmanSession.swift
+    configFiles:
+      Debug: Config/Version.xcconfig
+      Release: Config/Version.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.nimaste.newman.LocationPushExtension
+        DEVELOPMENT_TEAM: T342YL2VCE
+        INFOPLIST_FILE: LocationPushExtension/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        PROVISIONING_PROFILE_SPECIFIER: "$(NEWMAN_PROFILE_LOCATION)"
+    entitlements:
+      path: LocationPushExtension/LocationPushExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.ca.nimaste.newman
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)group.ca.nimaste.newman
+
+  # Home-screen and Lock Screen device widgets and Control Center controls, updated by WidgetKit
+  # push (the hub pushes when devices change). iOS 26 only (the app and the other extensions stay
+  # on 17). Same shared Keychain / App Group as the other extensions, so it reaches the hub away
+  # from home too (mTLS certificate, Cloudflare token). Shared/Widgets (App Intents, the device
+  # picker) is also compiled into the app, for Siri / Shortcuts.
+  NewmanWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - NewmanWidgets
+      - Shared/Core
+      - Shared/Widgets
+      - Shared/UI/Symbols.swift
+      - Shared/UI/Theme.swift
+      - Shared/Platform/KeychainService.swift
+      - Shared/Platform/CertificateStore.swift
+      - Shared/Platform/ConnectionStore.swift
+      - Shared/Platform/NewmanSession.swift
+      - Shared/Platform/APIClient.swift
+    configFiles:
+      Debug: Config/Version.xcconfig
+      Release: Config/Version.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ca.nimaste.newman.NewmanWidgets
+        DEVELOPMENT_TEAM: T342YL2VCE
+        INFOPLIST_FILE: NewmanWidgets/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        PROVISIONING_PROFILE_SPECIFIER: "$(NEWMAN_PROFILE_WIDGETS)"
+      configs:
+        Debug:
+          NEWMAN_APS_ENVIRONMENT: development
+        Release:
+          NEWMAN_APS_ENVIRONMENT: production
+    entitlements:
+      path: NewmanWidgets/NewmanWidgets.entitlements
+      properties:
+        # WidgetKit push updates (iOS 26): the widget extension has its own push token.
+        aps-environment: $(NEWMAN_APS_ENVIRONMENT)
+        com.apple.security.application-groups:
+          - group.ca.nimaste.newman
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)group.ca.nimaste.newman
+
+  # The wall tablet: a kiosk shell around <server>/wall. Its own Keychain (no App Group).
+  NewmanWall:
+    type: application
+    platform: iOS
+    sources:
+      - NewmanWall
+      - Shared/Core
+      - Shared/Platform
+      - Shared/UI
+      - Shared/Resources
+    configFiles:
+      Debug: Config/Version.xcconfig
+      Release: Config/Version.xcconfig
+    settings:
+      base:
+        INFOPLIST_FILE: NewmanWall/Resources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: ca.nimaste.newman.wall
+        PRODUCT_NAME: NewmanWall
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        PROVISIONING_PROFILE_SPECIFIER: "$(NEWMAN_PROFILE_WALL)"
+    dependencies:
+      - package: onnxruntime
+        product: onnxruntime

@@ -1,0 +1,452 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.0.0)'
+        required: true
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A brand-new GHCR package's very first push isn't reliably accepted
+      # with the auto-generated GITHUB_TOKEN, even with packages: write set
+      # above -- a real PAT (write:packages scope) stored as a repo secret
+      # is the actual fix. GHCR_PAT must exist as a repo secret.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ env.TAG }}
+
+      - name: Build release notes
+        run: |
+          git fetch origin "refs/tags/${{ env.TAG }}:refs/tags/${{ env.TAG }}" --force || true
+          {
+            git tag -l --format='%(contents)' "${{ env.TAG }}"
+            echo ""
+            echo "## Docker"
+            echo ""
+            echo '```bash'
+            echo "docker pull ghcr.io/nimaste/newman:latest"
+            echo '```'
+          } > /tmp/release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          body_path: /tmp/release-notes.md
+
+  android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/release.jks
+
+      - name: Decode google-services.json (phone push notifications)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 -d > android/phone/google-services.json
+          else
+            echo "::warning::No GOOGLE_SERVICES_JSON secret - the phone APK is built without push notifications"
+          fi
+
+      - name: Build release APKs (phone + wall)
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: newman
+        run: ./gradlew :phone:assembleRelease :wall:assembleRelease
+
+      - name: Rename APKs with tag
+        run: |
+          phone_apk=$(find android/phone/build/outputs/apk/release -iname "*.apk" | head -1)
+          cp "$phone_apk" "Newman_${{ env.TAG }}.apk"
+          wall_apk=$(find android/wall/build/outputs/apk/release -iname "*.apk" | head -1)
+          cp "$wall_apk" "NewmanWall_${{ env.TAG }}.apk"
+
+      # No body/body_path here -- build-and-push already wrote the release
+      # body, and two jobs both writing it races (confirmed on Commandarr,
+      # 2026-09-22: whichever finished last silently won, often empty).
+      - name: Attach APKs to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: |
+            Newman_*.apk
+            NewmanWall_*.apk
+
+  ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      # One Apple Distribution certificate, and one Ad Hoc provisioning profile per target:
+      # the phone app, its notification extension, its location push extension, its widget
+      # extension and the wall app.
+      - name: Import signing certificate and provisioning profiles
+        env:
+          IOS_DISTRIBUTION_CERT_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERT_BASE64 }}
+          IOS_CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_PROVISIONING_PROFILE_NOTIFICATION_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_NOTIFICATION_BASE64 }}
+          IOS_PROVISIONING_PROFILE_WALL_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_WALL_BASE64 }}
+          IOS_PROVISIONING_PROFILE_LOCATION_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_LOCATION_BASE64 }}
+          IOS_PROVISIONING_PROFILE_WIDGETS_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_WIDGETS_BASE64 }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+
+          echo "$IOS_DISTRIBUTION_CERT_BASE64" | base64 -d -o "$CERT_PATH"
+
+          security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$IOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$IOS_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          install_profile() {  # $1 = base64 profile, $2 = env var to receive its UUID
+            local path="$RUNNER_TEMP/$2.mobileprovision" plist="$RUNNER_TEMP/$2.plist"
+            echo "$1" | base64 -d -o "$path"
+            security cms -D -i "$path" > "$plist"
+            local uuid
+            uuid=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$plist")
+            cp "$path" ~/Library/MobileDevice/Provisioning\ Profiles/"$uuid".mobileprovision
+            echo "$2=$uuid" >> "$GITHUB_ENV"
+            echo "TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$plist")" >> "$GITHUB_ENV"
+            echo "$2: $(/usr/libexec/PlistBuddy -c 'Print :Name' "$plist") ($uuid)"
+          }
+          install_profile "$IOS_PROVISIONING_PROFILE_BASE64" PROFILE_PHONE
+          install_profile "$IOS_PROVISIONING_PROFILE_NOTIFICATION_BASE64" PROFILE_EXTENSION
+          install_profile "$IOS_PROVISIONING_PROFILE_WALL_BASE64" PROFILE_WALL
+          if [ -z "$IOS_PROVISIONING_PROFILE_LOCATION_BASE64" ]; then
+            echo "::error::Missing secret IOS_PROVISIONING_PROFILE_LOCATION_BASE64 (Ad Hoc profile for ca.nimaste.newman.LocationPushExtension - see ios/README.md)"
+            exit 1
+          fi
+          install_profile "$IOS_PROVISIONING_PROFILE_LOCATION_BASE64" PROFILE_LOCATION
+          if [ -z "$IOS_PROVISIONING_PROFILE_WIDGETS_BASE64" ]; then
+            echo "::error::Missing secret IOS_PROVISIONING_PROFILE_WIDGETS_BASE64 (Ad Hoc profile for ca.nimaste.newman.NewmanWidgets - see ios/README.md)"
+            exit 1
+          fi
+          install_profile "$IOS_PROVISIONING_PROFILE_WIDGETS_BASE64" PROFILE_WIDGETS
+
+      - name: Write export options
+        working-directory: ios
+        run: |
+          cat > ExportOptions-Phone.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>ca.nimaste.newman</key>
+              <string>${PROFILE_PHONE}</string>
+              <key>ca.nimaste.newman.NotificationServiceExtension</key>
+              <string>${PROFILE_EXTENSION}</string>
+              <key>ca.nimaste.newman.LocationPushExtension</key>
+              <string>${PROFILE_LOCATION}</string>
+              <key>ca.nimaste.newman.NewmanWidgets</key>
+              <string>${PROFILE_WIDGETS}</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+          cat > ExportOptions-Wall.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>ca.nimaste.newman.wall</key>
+              <string>${PROFILE_WALL}</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+
+      # Each target picks its own profile: project.yml sets PROVISIONING_PROFILE_SPECIFIER to
+      # $(NEWMAN_PROFILE_PHONE) / $(NEWMAN_PROFILE_EXTENSION) / $(NEWMAN_PROFILE_LOCATION) /
+      # $(NEWMAN_PROFILE_WIDGETS) / $(NEWMAN_PROFILE_WALL).
+      - name: Archive phone app (with its notification, location push and widget extensions)
+        working-directory: ios
+        run: |
+          xcodebuild archive \
+            -project Newman.xcodeproj \
+            -scheme Newman \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/Newman.xcarchive" \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            NEWMAN_PROFILE_PHONE="$PROFILE_PHONE" \
+            NEWMAN_PROFILE_EXTENSION="$PROFILE_EXTENSION" \
+            NEWMAN_PROFILE_LOCATION="$PROFILE_LOCATION" \
+            NEWMAN_PROFILE_WIDGETS="$PROFILE_WIDGETS" \
+            MARKETING_VERSION="${TAG#v}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Archive wall app
+        working-directory: ios
+        run: |
+          xcodebuild archive \
+            -project Newman.xcodeproj \
+            -scheme NewmanWall \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/NewmanWall.xcarchive" \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            NEWMAN_PROFILE_WALL="$PROFILE_WALL" \
+            MARKETING_VERSION="${TAG#v}" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Export IPAs
+        working-directory: ios
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Newman.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export-phone" \
+            -exportOptionsPlist ExportOptions-Phone.plist
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/NewmanWall.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export-wall" \
+            -exportOptionsPlist ExportOptions-Wall.plist
+
+      - name: Rename IPAs with tag
+        run: |
+          cp "$(find "$RUNNER_TEMP/export-phone" -name '*.ipa' | head -1)" "Newman_${{ env.TAG }}.ipa"
+          cp "$(find "$RUNNER_TEMP/export-wall" -name '*.ipa' | head -1)" "NewmanWall_${{ env.TAG }}.ipa"
+
+      # No body/body_path here -- build-and-push already wrote the release
+      # body; two jobs both writing it races (see the android job's note).
+      - name: Attach IPAs to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: |
+            Newman_*.ipa
+            NewmanWall_*.ipa
+
+      - name: Clean up the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+  sync-to-gcloud:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, android, ios]
+    # Copies this release's built artifacts from this GitHub Release onto
+    # the NAS via GCloud's real WebDAV endpoint (share.{$MY_DOMAIN}/dav,
+    # proxied through Caddy's already-public share block, no mTLS needed),
+    # landing in the same real folder the Forgejo pipeline already uses:
+    # /mnt/user/software/Mobile/Nimaste/Releases/Newman/<tag>/ -- reached
+    # through GCloud's "Software" mount, not the uploading account's own
+    # private storage. Proven working end-to-end on Optiq, 2026-09-26.
+    #
+    # Requires (pushed from Hotwire's Settings -> Release Notify, GitHub
+    # target): GCLOUD_WEBDAV_USERNAME, GCLOUD_WEBDAV_PASSWORD.
+    env:
+      GCLOUD_WEBDAV_URL: https://share.garito.ca/dav
+    steps:
+      - name: Check whether WebDAV credentials are configured
+        id: check
+        run: |
+          if [ -z "${{ secrets.GCLOUD_WEBDAV_USERNAME }}" ] || [ -z "${{ secrets.GCLOUD_WEBDAV_PASSWORD }}" ]; then
+            echo "No GCLOUD_WEBDAV_USERNAME/PASSWORD secrets set on this repo -- nothing to do. Push them from Hotwire's Settings -> Release Notify (GitHub target) first."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download this release's artifacts
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/artifacts
+          gh release download "${{ env.TAG }}" --repo "${{ github.repository }}" --dir /tmp/artifacts --pattern "Newman*"
+          ls -la /tmp/artifacts
+
+      - name: Fetch and convert release notes
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ env.TAG }}" --repo "${{ github.repository }}" --json body -q .body > /tmp/notes.md
+          sudo apt-get update -qq && sudo apt-get install -y -qq pandoc
+          pandoc -f markdown -t html --standalone -o /tmp/artifacts/release-notes.html /tmp/notes.md
+
+      - name: Create this version's folder on GCloud over WebDAV
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          AUTH="${{ secrets.GCLOUD_WEBDAV_USERNAME }}:${{ secrets.GCLOUD_WEBDAV_PASSWORD }}"
+          # WebDAV requires every parent collection to already exist before a
+          # PUT into it will succeed -- MKCOL creates it, one level at a time.
+          # 201 = created, 405 = already exists from a previous release; any
+          # other status is a real failure.
+          for path in "Software/Mobile/Nimaste/Releases/Newman" "Software/Mobile/Nimaste/Releases/Newman/${{ env.TAG }}"; do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' --user "$AUTH" -X MKCOL "$GCLOUD_WEBDAV_URL/$path")
+            if [ "$STATUS" != "201" ] && [ "$STATUS" != "405" ]; then
+              echo "MKCOL $path failed: HTTP $STATUS"
+              exit 1
+            fi
+          done
+
+      - name: Upload artifacts over WebDAV
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          AUTH="${{ secrets.GCLOUD_WEBDAV_USERNAME }}:${{ secrets.GCLOUD_WEBDAV_PASSWORD }}"
+          for f in /tmp/artifacts/*; do
+            name=$(basename "$f")
+            echo "Uploading $name"
+            curl --retry 5 --retry-delay 3 --retry-all-errors -sS -f --user "$AUTH" -T "$f" "$GCLOUD_WEBDAV_URL/Software/Mobile/Nimaste/Releases/Newman/${{ env.TAG }}/$name"
+          done
+
+      - name: Check whether an email recipient is configured
+        id: check_email
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          if [ -z "${{ secrets.RELEASE_NOTIFY_EMAILS }}" ]; then
+            echo "No RELEASE_NOTIFY_EMAILS secret set on this repo -- email will be skipped, but artifacts and release notes still get copied to GCloud. Push a recipient from this project's Notify tab in Hotwire if you want the email too."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release notification email
+        if: steps.check.outputs.skip == 'false' && steps.check_email.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          LINK="${{ secrets.GCLOUD_BASE_URL }}/s/${{ secrets.GCLOUD_SHARE_TOKEN }}/dl/Newman/${{ env.TAG }}"
+          {
+            cat /tmp/artifacts/release-notes.html
+            echo "<hr><p><a href=\"${LINK}\">Download Newman ${{ env.TAG }}</a></p>"
+          } > /tmp/email-body.html
+
+      - name: Send release notification email
+        if: steps.check.outputs.skip == 'false' && steps.check_email.outputs.skip == 'false'
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          RELEASE_NOTIFY_EMAILS: ${{ secrets.RELEASE_NOTIFY_EMAILS }}
+          EMAIL_SUBJECT: "Newman ${{ env.TAG }} is out"
+        run: |
+          python3 - <<'PYEOF'
+          import os, smtplib, sys
+          from email.mime.multipart import MIMEMultipart
+          from email.mime.text import MIMEText
+          from email.utils import getaddresses
+
+          host = os.environ["SMTP_HOST"]
+          port = int(os.environ["SMTP_PORT"])
+          user = os.environ.get("SMTP_USERNAME", "")
+          password = os.environ.get("SMTP_PASSWORD", "")
+          sender = os.environ["SMTP_FROM"]
+          to_header = os.environ["RELEASE_NOTIFY_EMAILS"]
+          subject = os.environ["EMAIL_SUBJECT"]
+
+          with open("/tmp/email-body.html") as f:
+              html = f.read()
+
+          recipients = [addr for _, addr in getaddresses([to_header]) if addr]
+          if not recipients:
+              print("No valid recipient addresses parsed from RELEASE_NOTIFY_EMAILS -- nothing sent.")
+              sys.exit(1)
+
+          msg = MIMEMultipart("alternative")
+          msg["Subject"] = subject
+          msg["From"] = sender
+          msg["To"] = to_header
+          msg.attach(MIMEText(html, "html"))
+
+          if port == 465:
+              server = smtplib.SMTP_SSL(host, port, timeout=20)
+          else:
+              server = smtplib.SMTP(host, port, timeout=20)
+              server.starttls()
+          if user:
+              server.login(user, password)
+          server.sendmail(sender, recipients, msg.as_string())
+          server.quit()
+          print(f"Sent to: {', '.join(recipients)}")
+          PYEOF

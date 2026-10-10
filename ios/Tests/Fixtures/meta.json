@@ -1,0 +1,2642 @@
+{
+ "version": "dev",
+ "categories": [
+  {
+   "id": "security",
+   "name": "Security"
+  },
+  {
+   "id": "cameras",
+   "name": "Cameras"
+  },
+  {
+   "id": "garage",
+   "name": "Garage"
+  },
+  {
+   "id": "lighting",
+   "name": "Lighting"
+  },
+  {
+   "id": "climate",
+   "name": "Climate"
+  },
+  {
+   "id": "cleaning",
+   "name": "Cleaning"
+  },
+  {
+   "id": "appliances",
+   "name": "Appliances"
+  },
+  {
+   "id": "servers",
+   "name": "Servers & network"
+  },
+  {
+   "id": "other",
+   "name": "Other"
+  }
+ ],
+ "kinds": [
+  {
+   "id": "lock",
+   "name": "Lock",
+   "plural": "Locks",
+   "category": "security",
+   "noun": "lock",
+   "states": [
+    {
+     "id": "LOCKED",
+     "label": "Locked"
+    },
+    {
+     "id": "UNLOCKED",
+     "label": "Unlocked"
+    },
+    {
+     "id": "JAMMED",
+     "label": "Jammed"
+    },
+    {
+     "id": "LOCKING",
+     "label": "Locking"
+    },
+    {
+     "id": "UNLOCKING",
+     "label": "Unlocking"
+    }
+   ],
+   "activeState": "UNLOCKED",
+   "commands": [
+    {
+     "id": "lock",
+     "label": "Lock",
+     "past": "locked",
+     "icon": "lock",
+     "confirmsTo": "LOCKED",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "unlock",
+     "label": "Unlock",
+     "past": "unlocked",
+     "icon": "unlock",
+     "confirmsTo": "UNLOCKED",
+     "sensitive": true,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [
+    "LOCKING",
+    "UNLOCKING"
+   ],
+   "unit": "",
+   "secureState": "LOCKED",
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "batteryLevel",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "alarm",
+   "name": "Alarm",
+   "plural": "Alarms",
+   "category": "security",
+   "noun": "alarm",
+   "states": [
+    {
+     "id": "disarmed",
+     "label": "Disarmed"
+    },
+    {
+     "id": "armed_home",
+     "label": "Armed (home)"
+    },
+    {
+     "id": "armed_away",
+     "label": "Armed (away)"
+    },
+    {
+     "id": "arming",
+     "label": "Arming"
+    },
+    {
+     "id": "pending",
+     "label": "Entry delay"
+    },
+    {
+     "id": "triggered",
+     "label": "Triggered"
+    }
+   ],
+   "activeState": "disarmed",
+   "commands": [
+    {
+     "id": "arm_home",
+     "label": "Arm (home)",
+     "past": "armed",
+     "icon": "shield",
+     "confirmsTo": "armed_home",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "arm_away",
+     "label": "Arm (away)",
+     "past": "armed",
+     "icon": "shield",
+     "confirmsTo": "armed_away",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "disarm",
+     "label": "Disarm",
+     "past": "disarmed",
+     "icon": "unlock",
+     "confirmsTo": "disarmed",
+     "sensitive": true,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [
+    "arming"
+   ],
+   "unit": "",
+   "secureState": null,
+   "isMode": true,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "contact",
+   "name": "Door sensor",
+   "plural": "Doors & windows",
+   "category": "security",
+   "noun": "door",
+   "states": [
+    {
+     "id": "open",
+     "label": "Open"
+    },
+    {
+     "id": "closed",
+     "label": "Closed"
+    }
+   ],
+   "activeState": "open",
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": "closed",
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "batteryLevel",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "motion",
+   "name": "Motion sensor",
+   "plural": "Motion",
+   "category": "security",
+   "noun": "sensor",
+   "states": [
+    {
+     "id": "detected",
+     "label": "Motion"
+    },
+    {
+     "id": "clear",
+     "label": "Clear"
+    }
+   ],
+   "activeState": "detected",
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "batteryLevel",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "doorbell",
+   "name": "Doorbell",
+   "plural": "Doorbells",
+   "category": "security",
+   "noun": "doorbell",
+   "states": [
+    {
+     "id": "idle",
+     "label": "Idle"
+    },
+    {
+     "id": "pressed",
+     "label": "Pressed"
+    }
+   ],
+   "activeState": null,
+   "commands": [],
+   "events": [
+    {
+     "id": "pressed",
+     "label": "Rings (button pressed)",
+     "phrase": "someone rings the {device_noun}",
+     "title": "Doorbell",
+     "body": "Someone is at the {device}",
+     "sound": "doorbell"
+    },
+    {
+     "id": "person",
+     "label": "Person detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "car",
+     "label": "Car detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "dog",
+     "label": "Dog detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "cat",
+     "label": "Cat detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "animal",
+     "label": "Animal detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "bird",
+     "label": "Bird detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "horse",
+     "label": "Horse detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "bicycle",
+     "label": "Bicycle detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "motorcycle",
+     "label": "Motorcycle detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "package",
+     "label": "Package detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "face",
+     "label": "Face detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "license_plate",
+     "label": "License plate detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "motion",
+     "label": "Motion detected",
+     "phrase": "{device} detects motion",
+     "title": "Motion at {device}",
+     "body": "Motion detected",
+     "sound": ""
+    }
+   ],
+   "hasCamera": true,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "light",
+   "name": "Light",
+   "plural": "Lights",
+   "category": "lighting",
+   "noun": "light",
+   "states": [
+    {
+     "id": "on",
+     "label": "On"
+    },
+    {
+     "id": "off",
+     "label": "Off"
+    }
+   ],
+   "activeState": "on",
+   "commands": [
+    {
+     "id": "turn_on",
+     "label": "Turn on",
+     "past": "turned on",
+     "icon": "bulb",
+     "confirmsTo": "on",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "turn_off",
+     "label": "Turn off",
+     "past": "turned off",
+     "icon": "bulb-off",
+     "confirmsTo": "off",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "set_brightness",
+     "label": "Set brightness",
+     "past": "dimmed",
+     "icon": "sun",
+     "confirmsTo": "on",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "percent",
+     "min": 1,
+     "max": 100,
+     "step": 1,
+     "unit": "%",
+     "default": 50,
+     "attr": "brightness"
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "brightness",
+     "label": "Brightness",
+     "unit": "%",
+     "attr": "brightness",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "garage",
+   "name": "Garage door",
+   "plural": "Garage doors",
+   "category": "garage",
+   "noun": "garage door",
+   "states": [
+    {
+     "id": "open",
+     "label": "Open"
+    },
+    {
+     "id": "closed",
+     "label": "Closed"
+    },
+    {
+     "id": "opening",
+     "label": "Opening"
+    },
+    {
+     "id": "closing",
+     "label": "Closing"
+    },
+    {
+     "id": "stopped",
+     "label": "Stopped"
+    }
+   ],
+   "activeState": "open",
+   "commands": [
+    {
+     "id": "close",
+     "label": "Close",
+     "past": "closed",
+     "icon": "garage",
+     "confirmsTo": "closed",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "open",
+     "label": "Open",
+     "past": "opened",
+     "icon": "garage",
+     "confirmsTo": "open",
+     "sensitive": true,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [
+    "opening",
+    "closing"
+   ],
+   "unit": "",
+   "secureState": "closed",
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "thermostat",
+   "name": "Thermostat",
+   "plural": "Thermostats",
+   "category": "climate",
+   "noun": "thermostat",
+   "states": [
+    {
+     "id": "off",
+     "label": "Off"
+    },
+    {
+     "id": "heat",
+     "label": "Heat"
+    },
+    {
+     "id": "cool",
+     "label": "Cool"
+    },
+    {
+     "id": "auto",
+     "label": "Auto"
+    }
+   ],
+   "activeState": null,
+   "commands": [
+    {
+     "id": "set_mode",
+     "label": "Set mode",
+     "past": "switched",
+     "icon": "thermometer",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "state",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": "heat",
+     "attr": ""
+    },
+    {
+     "id": "set_temperature",
+     "label": "Set temperature",
+     "past": "set",
+     "icon": "thermometer",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "number",
+     "min": 5,
+     "max": 35,
+     "step": 0.5,
+     "unit": "°C",
+     "default": 21,
+     "attr": "targetTemp"
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "temperature",
+     "label": "Temperature",
+     "unit": "°C",
+     "attr": "currentTemp",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "humidity",
+     "label": "Humidity",
+     "unit": "%",
+     "attr": "humidity",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "target",
+     "label": "Set temperature",
+     "unit": "°C",
+     "attr": "targetTemp",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "coolTo",
+     "label": "Cool to",
+     "unit": "°C",
+     "attr": "coolTo",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "heatTo",
+     "label": "Heat to",
+     "unit": "°C",
+     "attr": "heatTo",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "action",
+     "label": "Activity",
+     "unit": "",
+     "attr": "action",
+     "type": "text",
+     "options": [
+      {
+       "value": "idle",
+       "label": "Idle"
+      },
+      {
+       "value": "heating",
+       "label": "Heating"
+      },
+      {
+       "value": "cooling",
+       "label": "Cooling"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "temperature",
+   "name": "Temperature sensor",
+   "plural": "Temperature",
+   "category": "climate",
+   "noun": "sensor",
+   "states": [],
+   "activeState": null,
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "°C",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "temperature",
+     "label": "Temperature",
+     "unit": "°C",
+     "attr": "",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "camera",
+   "name": "Camera",
+   "plural": "Cameras",
+   "category": "cameras",
+   "noun": "camera",
+   "states": [
+    {
+     "id": "online",
+     "label": "Online"
+    },
+    {
+     "id": "offline",
+     "label": "Offline"
+    }
+   ],
+   "activeState": null,
+   "commands": [],
+   "events": [
+    {
+     "id": "person",
+     "label": "Person detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "car",
+     "label": "Car detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "dog",
+     "label": "Dog detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "cat",
+     "label": "Cat detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "animal",
+     "label": "Animal detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "bird",
+     "label": "Bird detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "horse",
+     "label": "Horse detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "bicycle",
+     "label": "Bicycle detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "motorcycle",
+     "label": "Motorcycle detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "package",
+     "label": "Package detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "face",
+     "label": "Face detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "license_plate",
+     "label": "License plate detected",
+     "phrase": "{a_what} is detected on {device}",
+     "title": "{what} at {device}",
+     "body": "{what} detected",
+     "sound": ""
+    },
+    {
+     "id": "motion",
+     "label": "Motion detected",
+     "phrase": "{device} detects motion",
+     "title": "Motion at {device}",
+     "body": "Motion detected",
+     "sound": ""
+    }
+   ],
+   "hasCamera": true,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "count",
+     "label": "{sub} count",
+     "unit": "",
+     "attr": "counts.*",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "zone",
+   "name": "Camera zone",
+   "plural": "Camera zones",
+   "category": "cameras",
+   "noun": "zone",
+   "states": [
+    {
+     "id": "occupied",
+     "label": "Occupied"
+    },
+    {
+     "id": "clear",
+     "label": "Clear"
+    }
+   ],
+   "activeState": "occupied",
+   "commands": [],
+   "events": [
+    {
+     "id": "person",
+     "label": "Person comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "car",
+     "label": "Car comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "dog",
+     "label": "Dog comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "cat",
+     "label": "Cat comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "animal",
+     "label": "Animal comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "bird",
+     "label": "Bird comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "horse",
+     "label": "Horse comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "bicycle",
+     "label": "Bicycle comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "motorcycle",
+     "label": "Motorcycle comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "package",
+     "label": "Package comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "face",
+     "label": "Face comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "license_plate",
+     "label": "License plate comes in",
+     "phrase": "{a_what} enters {device}",
+     "title": "{what} in {device}",
+     "body": "{what} entered {device}",
+     "sound": ""
+    },
+    {
+     "id": "motion",
+     "label": "Motion detected",
+     "phrase": "{device} detects motion",
+     "title": "Motion at {device}",
+     "body": "Motion detected",
+     "sound": ""
+    }
+   ],
+   "hasCamera": true,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "count",
+     "label": "{sub} count",
+     "unit": "",
+     "attr": "counts.*",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "remote",
+   "name": "Remote",
+   "plural": "Remotes",
+   "category": "lighting",
+   "noun": "remote",
+   "states": [
+    {
+     "id": "idle",
+     "label": "Idle"
+    }
+   ],
+   "activeState": null,
+   "commands": [],
+   "events": [
+    {
+     "id": "on",
+     "label": "“On” is pressed",
+     "phrase": "the On button on {device} is pressed",
+     "title": "",
+     "body": "On pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "favorite",
+     "label": "“Favorite” is pressed",
+     "phrase": "the Favorite button on {device} is pressed",
+     "title": "",
+     "body": "Favorite pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "off",
+     "label": "“Off” is pressed",
+     "phrase": "the Off button on {device} is pressed",
+     "title": "",
+     "body": "Off pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "raise",
+     "label": "“Raise” is pressed",
+     "phrase": "the Raise button on {device} is pressed",
+     "title": "",
+     "body": "Raise pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "lower",
+     "label": "“Lower” is pressed",
+     "phrase": "the Lower button on {device} is pressed",
+     "title": "",
+     "body": "Lower pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "button_1",
+     "label": "“Button 1” is pressed",
+     "phrase": "the Button 1 button on {device} is pressed",
+     "title": "",
+     "body": "Button 1 pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "button_2",
+     "label": "“Button 2” is pressed",
+     "phrase": "the Button 2 button on {device} is pressed",
+     "title": "",
+     "body": "Button 2 pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "button_3",
+     "label": "“Button 3” is pressed",
+     "phrase": "the Button 3 button on {device} is pressed",
+     "title": "",
+     "body": "Button 3 pressed on {device}",
+     "sound": ""
+    },
+    {
+     "id": "button_4",
+     "label": "“Button 4” is pressed",
+     "phrase": "the Button 4 button on {device} is pressed",
+     "title": "",
+     "body": "Button 4 pressed on {device}",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "weather",
+   "name": "Weather",
+   "plural": "Weather",
+   "category": "climate",
+   "noun": "weather",
+   "states": [
+    {
+     "id": "clear",
+     "label": "Clear"
+    },
+    {
+     "id": "mostly-clear",
+     "label": "Mostly clear"
+    },
+    {
+     "id": "partly-cloudy",
+     "label": "Partly cloudy"
+    },
+    {
+     "id": "cloudy",
+     "label": "Cloudy"
+    },
+    {
+     "id": "fog",
+     "label": "Fog"
+    },
+    {
+     "id": "drizzle",
+     "label": "Drizzle"
+    },
+    {
+     "id": "rain",
+     "label": "Rain"
+    },
+    {
+     "id": "freezing-rain",
+     "label": "Freezing rain"
+    },
+    {
+     "id": "snow",
+     "label": "Snow"
+    },
+    {
+     "id": "showers",
+     "label": "Showers"
+    },
+    {
+     "id": "snow-showers",
+     "label": "Snow showers"
+    },
+    {
+     "id": "thunderstorm",
+     "label": "Thunderstorm"
+    }
+   ],
+   "activeState": null,
+   "commands": [],
+   "events": [
+    {
+     "id": "alert",
+     "label": "A weather alert is issued",
+     "phrase": "a weather alert is issued for {device}",
+     "title": "Weather alert",
+     "body": "New weather alert for {device}",
+     "sound": ""
+    },
+    {
+     "id": "warning",
+     "label": "A weather warning is issued",
+     "phrase": "a weather warning is issued for {device}",
+     "title": "Weather warning",
+     "body": "A weather warning was issued for {device}",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "temperature",
+     "label": "Temperature",
+     "unit": "°C",
+     "attr": "temperature",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "feelsLike",
+     "label": "Feels like",
+     "unit": "°C",
+     "attr": "feelsLike",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "humidity",
+     "label": "Humidity",
+     "unit": "%",
+     "attr": "humidity",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "wind",
+     "label": "Wind",
+     "unit": "km/h",
+     "attr": "wind",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "high",
+     "label": "High today",
+     "unit": "°C",
+     "attr": "high",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "low",
+     "label": "Low today",
+     "unit": "°C",
+     "attr": "low",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "precipChance",
+     "label": "Chance of rain or snow today",
+     "unit": "%",
+     "attr": "precipChance",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "rainToday",
+     "label": "Rain today",
+     "unit": "mm",
+     "attr": "rainToday",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "snowToday",
+     "label": "Snow today",
+     "unit": "cm",
+     "attr": "snowToday",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "gusts",
+     "label": "Wind gusts",
+     "unit": "km/h",
+     "attr": "gusts",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "uv",
+     "label": "UV index today",
+     "unit": "",
+     "attr": "uv",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "switch",
+   "name": "Switch",
+   "plural": "Switches & plugs",
+   "category": "lighting",
+   "noun": "switch",
+   "states": [
+    {
+     "id": "on",
+     "label": "On"
+    },
+    {
+     "id": "off",
+     "label": "Off"
+    }
+   ],
+   "activeState": "on",
+   "commands": [
+    {
+     "id": "turn_on",
+     "label": "Turn on",
+     "past": "turned on",
+     "icon": "power",
+     "confirmsTo": "on",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "turn_off",
+     "label": "Turn off",
+     "past": "turned off",
+     "icon": "power",
+     "confirmsTo": "off",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "power",
+     "label": "Power",
+     "unit": "W",
+     "attr": "power",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "energy",
+     "label": "Energy",
+     "unit": "kWh",
+     "attr": "energy",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "fan",
+   "name": "Fan",
+   "plural": "Fans",
+   "category": "climate",
+   "noun": "fan",
+   "states": [
+    {
+     "id": "on",
+     "label": "On"
+    },
+    {
+     "id": "off",
+     "label": "Off"
+    }
+   ],
+   "activeState": "on",
+   "commands": [
+    {
+     "id": "turn_on",
+     "label": "Turn on",
+     "past": "turned on",
+     "icon": "fan",
+     "confirmsTo": "on",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "turn_off",
+     "label": "Turn off",
+     "past": "turned off",
+     "icon": "fan",
+     "confirmsTo": "off",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "set_speed",
+     "label": "Set speed",
+     "past": "set",
+     "icon": "fan",
+     "confirmsTo": "on",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "percent",
+     "min": 1,
+     "max": 100,
+     "step": 1,
+     "unit": "%",
+     "default": 50,
+     "attr": "percentage"
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "cover",
+   "name": "Blind or shade",
+   "plural": "Blinds & shades",
+   "category": "other",
+   "noun": "cover",
+   "states": [
+    {
+     "id": "open",
+     "label": "Open"
+    },
+    {
+     "id": "closed",
+     "label": "Closed"
+    },
+    {
+     "id": "opening",
+     "label": "Opening"
+    },
+    {
+     "id": "closing",
+     "label": "Closing"
+    },
+    {
+     "id": "stopped",
+     "label": "Stopped"
+    }
+   ],
+   "activeState": "open",
+   "commands": [
+    {
+     "id": "open",
+     "label": "Open",
+     "past": "opened",
+     "icon": "up",
+     "confirmsTo": "open",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "close",
+     "label": "Close",
+     "past": "closed",
+     "icon": "down",
+     "confirmsTo": "closed",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "stop",
+     "label": "Stop",
+     "past": "stopped",
+     "icon": "pause",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "set_position",
+     "label": "Set position",
+     "past": "moved",
+     "icon": "sliders",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "percent",
+     "min": 0,
+     "max": 100,
+     "step": 1,
+     "unit": "%",
+     "default": 50,
+     "attr": "position"
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [
+    "opening",
+    "closing"
+   ],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "sensor",
+   "name": "Sensor",
+   "plural": "Sensors",
+   "category": "other",
+   "noun": "sensor",
+   "states": [],
+   "activeState": null,
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "value",
+     "label": "Reading",
+     "unit": "",
+     "attr": "",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "leak",
+   "name": "Leak sensor",
+   "plural": "Leak sensors",
+   "category": "security",
+   "noun": "leak sensor",
+   "states": [
+    {
+     "id": "dry",
+     "label": "Dry"
+    },
+    {
+     "id": "wet",
+     "label": "Leak!"
+    }
+   ],
+   "activeState": "wet",
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": "dry",
+   "isMode": false,
+   "urgent": true,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "batteryLevel",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "smoke",
+   "name": "Smoke / CO alarm",
+   "plural": "Smoke & CO alarms",
+   "category": "security",
+   "noun": "alarm",
+   "states": [
+    {
+     "id": "clear",
+     "label": "Clear"
+    },
+    {
+     "id": "detected",
+     "label": "Alarm!"
+    }
+   ],
+   "activeState": "detected",
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": "clear",
+   "isMode": false,
+   "urgent": true,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "batteryLevel",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "binary",
+   "name": "On/off sensor",
+   "plural": "On/off sensors",
+   "category": "other",
+   "noun": "sensor",
+   "states": [
+    {
+     "id": "on",
+     "label": "On"
+    },
+    {
+     "id": "off",
+     "label": "Off"
+    }
+   ],
+   "activeState": "on",
+   "commands": [],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "batteryLevel",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "siren",
+   "name": "Siren",
+   "plural": "Sirens",
+   "category": "security",
+   "noun": "siren",
+   "states": [
+    {
+     "id": "on",
+     "label": "Sounding"
+    },
+    {
+     "id": "off",
+     "label": "Off"
+    }
+   ],
+   "activeState": "on",
+   "commands": [
+    {
+     "id": "turn_on",
+     "label": "Sound",
+     "past": "sounded",
+     "icon": "bell",
+     "confirmsTo": "on",
+     "sensitive": true,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "turn_off",
+     "label": "Silence",
+     "past": "silenced",
+     "icon": "bell-off",
+     "confirmsTo": "off",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "button",
+   "name": "Button",
+   "plural": "Buttons",
+   "category": "other",
+   "noun": "button",
+   "states": [],
+   "activeState": null,
+   "commands": [
+    {
+     "id": "press",
+     "label": "Press",
+     "past": "pressed",
+     "icon": "pointer",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "vacuum",
+   "name": "Vacuum",
+   "plural": "Vacuums",
+   "category": "cleaning",
+   "noun": "vacuum",
+   "states": [
+    {
+     "id": "docked",
+     "label": "Docked"
+    },
+    {
+     "id": "charging",
+     "label": "Charging"
+    },
+    {
+     "id": "cleaning",
+     "label": "Cleaning"
+    },
+    {
+     "id": "returning",
+     "label": "Going home"
+    },
+    {
+     "id": "paused",
+     "label": "Paused"
+    },
+    {
+     "id": "idle",
+     "label": "Idle"
+    },
+    {
+     "id": "error",
+     "label": "Needs help"
+    },
+    {
+     "id": "emptying",
+     "label": "Emptying the bin"
+    },
+    {
+     "id": "washing",
+     "label": "Washing the mop"
+    },
+    {
+     "id": "drying",
+     "label": "Drying the mop"
+    },
+    {
+     "id": "mapping",
+     "label": "Mapping"
+    },
+    {
+     "id": "updating",
+     "label": "Updating"
+    }
+   ],
+   "activeState": "cleaning",
+   "commands": [
+    {
+     "id": "start",
+     "label": "Start cleaning",
+     "past": "started",
+     "icon": "play",
+     "confirmsTo": "cleaning",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "pause",
+     "label": "Pause",
+     "past": "paused",
+     "icon": "pause",
+     "confirmsTo": "paused",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "dock",
+     "label": "Send home",
+     "past": "sent home",
+     "icon": "home",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "locate",
+     "label": "Find",
+     "past": "found",
+     "icon": "bell",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "clean_rooms",
+     "label": "Clean rooms",
+     "past": "started",
+     "icon": "play",
+     "confirmsTo": "cleaning",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "choices",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": "rooms"
+    }
+   ],
+   "events": [
+    {
+     "id": "finished",
+     "label": "Finishes cleaning",
+     "phrase": "{device} finishes cleaning",
+     "title": "{device}",
+     "body": "Finished cleaning",
+     "sound": ""
+    },
+    {
+     "id": "error",
+     "label": "Has a problem",
+     "phrase": "{device} has a problem",
+     "title": "{device} needs help",
+     "body": "{device} stopped and needs help",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [
+    "returning"
+   ],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "battery",
+     "label": "Battery",
+     "unit": "%",
+     "attr": "battery",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "cleanArea",
+     "label": "Area cleaned",
+     "unit": "m²",
+     "attr": "cleanArea",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "cleanTime",
+     "label": "Cleaning time",
+     "unit": "min",
+     "attr": "cleanTime",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "problem",
+     "label": "Problem",
+     "unit": "",
+     "attr": "problem",
+     "type": "text",
+     "options": []
+    },
+    {
+     "id": "fanSpeed",
+     "label": "Suction",
+     "unit": "",
+     "attr": "fanSpeed",
+     "type": "text",
+     "options": []
+    },
+    {
+     "id": "filterLeft",
+     "label": "Filter life left",
+     "unit": "%",
+     "attr": "filterLeft",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "mainBrushLeft",
+     "label": "Main brush life left",
+     "unit": "%",
+     "attr": "mainBrushLeft",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "sideBrushLeft",
+     "label": "Side brush life left",
+     "unit": "%",
+     "attr": "sideBrushLeft",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "sensorsLeft",
+     "label": "Sensors until cleaning",
+     "unit": "%",
+     "attr": "sensorsLeft",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "speaker",
+   "name": "Speaker",
+   "plural": "Speakers",
+   "category": "other",
+   "noun": "speaker",
+   "states": [
+    {
+     "id": "playing",
+     "label": "Playing"
+    },
+    {
+     "id": "paused",
+     "label": "Paused"
+    },
+    {
+     "id": "idle",
+     "label": "Stopped"
+    }
+   ],
+   "activeState": "playing",
+   "commands": [
+    {
+     "id": "play",
+     "label": "Play",
+     "past": "played",
+     "icon": "play",
+     "confirmsTo": "playing",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "pause",
+     "label": "Pause",
+     "past": "paused",
+     "icon": "pause",
+     "confirmsTo": "paused",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "set_volume",
+     "label": "Set volume",
+     "past": "set",
+     "icon": "volume",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "percent",
+     "min": 0,
+     "max": 100,
+     "step": 1,
+     "unit": "%",
+     "default": 30,
+     "attr": "volume"
+    }
+   ],
+   "events": [],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "volume",
+     "label": "Volume",
+     "unit": "%",
+     "attr": "volume",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "webhook",
+   "name": "Webhook",
+   "plural": "Webhooks",
+   "category": "other",
+   "noun": "webhook",
+   "states": [
+    {
+     "id": "idle",
+     "label": "Ready"
+    }
+   ],
+   "activeState": null,
+   "commands": [
+    {
+     "id": "send",
+     "label": "Send",
+     "past": "sent",
+     "icon": "send",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": true,
+     "valueType": "text",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": "",
+     "attr": ""
+    }
+   ],
+   "events": [
+    {
+     "id": "received",
+     "label": "Is called",
+     "phrase": "{device} is called",
+     "title": "{device}",
+     "body": "{device} was called",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  },
+  {
+   "id": "appliance",
+   "name": "Appliance",
+   "plural": "Appliances",
+   "category": "appliances",
+   "noun": "appliance",
+   "states": [
+    {
+     "id": "off",
+     "label": "Off"
+    },
+    {
+     "id": "ready",
+     "label": "Ready"
+    },
+    {
+     "id": "on",
+     "label": "On"
+    },
+    {
+     "id": "delayed",
+     "label": "Starts later"
+    },
+    {
+     "id": "running",
+     "label": "Running"
+    },
+    {
+     "id": "paused",
+     "label": "Paused"
+    },
+    {
+     "id": "attention",
+     "label": "Needs you"
+    },
+    {
+     "id": "finished",
+     "label": "Finished"
+    },
+    {
+     "id": "error",
+     "label": "Problem"
+    }
+   ],
+   "activeState": "running",
+   "commands": [
+    {
+     "id": "start",
+     "label": "Start",
+     "past": "started",
+     "icon": "play",
+     "confirmsTo": "running",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "pause",
+     "label": "Pause",
+     "past": "paused",
+     "icon": "pause",
+     "confirmsTo": "paused",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "resume",
+     "label": "Resume",
+     "past": "resumed",
+     "icon": "play",
+     "confirmsTo": "running",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "stop",
+     "label": "Stop",
+     "past": "stopped",
+     "icon": "stop",
+     "confirmsTo": "",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "turn_off",
+     "label": "Turn off",
+     "past": "turned off",
+     "icon": "power",
+     "confirmsTo": "off",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [
+    {
+     "id": "finished",
+     "label": "Finishes",
+     "phrase": "{device} finishes",
+     "title": "{device}",
+     "body": "{device} is done",
+     "sound": ""
+    },
+    {
+     "id": "alert",
+     "label": "Needs something",
+     "phrase": "{device} needs something (rinse aid, salt, a door left open…)",
+     "title": "{device}",
+     "body": "{device}: {detail}",
+     "sound": ""
+    },
+    {
+     "id": "error",
+     "label": "Has a problem",
+     "phrase": "{device} has a problem",
+     "title": "{device} needs attention",
+     "body": "{device}: {detail}",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "remaining",
+     "label": "Time left",
+     "unit": "min",
+     "attr": "remaining",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "progress",
+     "label": "Progress",
+     "unit": "%",
+     "attr": "progress",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "program",
+     "label": "Program",
+     "unit": "",
+     "attr": "program",
+     "type": "text",
+     "options": []
+    },
+    {
+     "id": "door",
+     "label": "Door",
+     "unit": "",
+     "attr": "door",
+     "type": "text",
+     "options": [
+      {
+       "value": "open",
+       "label": "Open"
+      },
+      {
+       "value": "closed",
+       "label": "Closed"
+      },
+      {
+       "value": "locked",
+       "label": "Locked"
+      }
+     ]
+    },
+    {
+     "id": "remoteStart",
+     "label": "Can be started remotely",
+     "unit": "",
+     "attr": "remoteStart",
+     "type": "boolean",
+     "options": []
+    },
+    {
+     "id": "problem",
+     "label": "Problem",
+     "unit": "",
+     "attr": "problem",
+     "type": "text",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "container",
+   "name": "Container",
+   "plural": "Containers",
+   "category": "servers",
+   "noun": "container",
+   "states": [
+    {
+     "id": "running",
+     "label": "Running"
+    },
+    {
+     "id": "stopped",
+     "label": "Stopped"
+    },
+    {
+     "id": "paused",
+     "label": "Paused"
+    },
+    {
+     "id": "restarting",
+     "label": "Restarting"
+    }
+   ],
+   "activeState": "running",
+   "commands": [
+    {
+     "id": "start",
+     "label": "Start",
+     "past": "started",
+     "icon": "play",
+     "confirmsTo": "running",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "stop",
+     "label": "Stop",
+     "past": "stopped",
+     "icon": "stop",
+     "confirmsTo": "stopped",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    },
+    {
+     "id": "restart",
+     "label": "Restart",
+     "past": "restarted",
+     "icon": "refresh",
+     "confirmsTo": "running",
+     "sensitive": false,
+     "takesValue": false,
+     "valueType": "",
+     "min": null,
+     "max": null,
+     "step": null,
+     "unit": "",
+     "default": null,
+     "attr": ""
+    }
+   ],
+   "events": [
+    {
+     "id": "crashed",
+     "label": "Crashes",
+     "phrase": "{device} crashes",
+     "title": "{device} crashed",
+     "body": "{device} stopped unexpectedly ({detail})",
+     "sound": ""
+    },
+    {
+     "id": "unhealthy",
+     "label": "Becomes unhealthy",
+     "phrase": "{device} becomes unhealthy",
+     "title": "{device}",
+     "body": "{device} is failing its health check",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [
+    "restarting"
+   ],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "health",
+     "label": "Health",
+     "unit": "",
+     "attr": "health",
+     "type": "text",
+     "options": [
+      {
+       "value": "healthy",
+       "label": "Healthy"
+      },
+      {
+       "value": "unhealthy",
+       "label": "Unhealthy"
+      },
+      {
+       "value": "starting",
+       "label": "Starting"
+      }
+     ]
+    },
+    {
+     "id": "cpu",
+     "label": "CPU",
+     "unit": "%",
+     "attr": "cpu",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "memory",
+     "label": "Memory",
+     "unit": "MB",
+     "attr": "memory",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "memoryPercent",
+     "label": "Memory use",
+     "unit": "%",
+     "attr": "memoryPercent",
+     "type": "number",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "printer",
+   "name": "Printer",
+   "plural": "Printers",
+   "category": "other",
+   "noun": "printer",
+   "states": [
+    {
+     "id": "idle",
+     "label": "Ready"
+    },
+    {
+     "id": "printing",
+     "label": "Printing"
+    },
+    {
+     "id": "stopped",
+     "label": "Stopped"
+    }
+   ],
+   "activeState": "printing",
+   "commands": [],
+   "events": [
+    {
+     "id": "attention",
+     "label": "Needs attention",
+     "phrase": "{device} needs attention (paper, a jam, toner, a cover…)",
+     "title": "{device}",
+     "body": "{device}: {detail}",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": [
+    {
+     "id": "level",
+     "label": "{sub} level",
+     "unit": "%",
+     "attr": "levels.*",
+     "type": "number",
+     "options": []
+    },
+    {
+     "id": "problem",
+     "label": "Problem",
+     "unit": "",
+     "attr": "problem",
+     "type": "text",
+     "options": []
+    },
+    {
+     "id": "message",
+     "label": "Printer's message",
+     "unit": "",
+     "attr": "message",
+     "type": "text",
+     "options": []
+    }
+   ]
+  },
+  {
+   "id": "calendar",
+   "name": "Calendar",
+   "plural": "Calendars",
+   "category": "other",
+   "noun": "calendar",
+   "states": [
+    {
+     "id": "free",
+     "label": "Nothing on"
+    },
+    {
+     "id": "busy",
+     "label": "Event now"
+    }
+   ],
+   "activeState": "busy",
+   "commands": [],
+   "events": [
+    {
+     "id": "start",
+     "label": "An event starts",
+     "phrase": "an event starts on {device}",
+     "title": "{device}",
+     "body": "An event is starting on {device}",
+     "sound": ""
+    }
+   ],
+   "hasCamera": false,
+   "transitional": [],
+   "unit": "",
+   "secureState": null,
+   "isMode": false,
+   "urgent": false,
+   "properties": []
+  }
+ ]
+}

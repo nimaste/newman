@@ -1,0 +1,383 @@
+{
+ "cols": 12,
+ "rows": 8,
+ "themes": [
+  "night-glass"
+ ],
+ "types": [
+  {
+   "type": "camera",
+   "name": "Camera",
+   "description": "Live video from your favourite cameras; tap for full screen.",
+   "min": [
+    3,
+    3
+   ],
+   "default": [
+    5,
+    4
+   ],
+   "fields": [
+    {
+     "key": "entities",
+     "label": "Cameras",
+     "type": "entities",
+     "filter": "picture",
+     "required": true
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "alerts",
+   "name": "Recent alerts",
+   "description": "The latest camera alerts; tap one to play it.",
+   "min": [
+    3,
+    2
+   ],
+   "default": [
+    5,
+    3
+   ],
+   "fields": [
+    {
+     "key": "entities",
+     "label": "Only these cameras (empty = all)",
+     "type": "entities",
+     "filter": "alerts"
+    },
+    {
+     "key": "limit",
+     "label": "How many",
+     "type": "number",
+     "default": 4,
+     "min": 1,
+     "max": 12
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "dial",
+   "name": "Dial",
+   "description": "A round dial for anything you set to a number - like a thermostat.",
+   "min": [
+    3,
+    3
+   ],
+   "default": [
+    4,
+    4
+   ],
+   "fields": [
+    {
+     "key": "entity",
+     "label": "Device",
+     "type": "entity",
+     "filter": "number-command",
+     "required": true
+    },
+    {
+     "key": "command",
+     "label": "What the dial sets",
+     "type": "command",
+     "filter": "number",
+     "required": true
+    },
+    {
+     "key": "modeCommand",
+     "label": "Mode buttons",
+     "type": "command",
+     "filter": "state"
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "devices",
+   "name": "Devices",
+   "description": "Buttons for devices: tap to switch, lock, open…",
+   "min": [
+    2,
+    2
+   ],
+   "default": [
+    4,
+    3
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text"
+    },
+    {
+     "key": "entities",
+     "label": "Devices",
+     "type": "entities",
+     "filter": "any",
+     "required": true
+    },
+    {
+     "key": "style",
+     "label": "Look",
+     "type": "select",
+     "default": "tiles",
+     "options": [
+      {
+       "value": "tiles",
+       "label": "Big tiles"
+      },
+      {
+       "value": "list",
+       "label": "List"
+      }
+     ]
+    },
+    {
+     "key": "groupBy",
+     "label": "Group by",
+     "type": "select",
+     "default": "none",
+     "options": [
+      {
+       "value": "none",
+       "label": "Nothing"
+      },
+      {
+       "value": "area",
+       "label": "Room / area"
+      }
+     ]
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "mode",
+   "name": "House mode",
+   "description": "An alarm or other house-mode device with its buttons.",
+   "min": [
+    4,
+    1
+   ],
+   "default": [
+    8,
+    1
+   ],
+   "fields": [
+    {
+     "key": "entity",
+     "label": "Device",
+     "type": "entity",
+     "filter": "mode",
+     "required": true
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "values",
+   "name": "Readings",
+   "description": "Numbers and states devices report (temperature, humidity…).",
+   "min": [
+    2,
+    1
+   ],
+   "default": [
+    4,
+    3
+   ],
+   "fields": [
+    {
+     "key": "title",
+     "label": "Title",
+     "type": "text"
+    },
+    {
+     "key": "items",
+     "label": "Readings",
+     "type": "readings",
+     "required": true
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "attention",
+   "name": "Needs attention",
+   "description": "Devices that are offline, low on battery or tampered.",
+   "min": [
+    3,
+    2
+   ],
+   "default": [
+    4,
+    2
+   ],
+   "fields": [
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "weather",
+   "name": "Weather",
+   "description": "Conditions now, the next hours and the week ahead, plus alerts.",
+   "min": [
+    3,
+    2
+   ],
+   "default": [
+    4,
+    3
+   ],
+   "fields": [
+    {
+     "key": "entity",
+     "label": "Place",
+     "type": "entity",
+     "filter": "forecast",
+     "required": true
+    },
+    {
+     "key": "show",
+     "label": "Show",
+     "type": "select",
+     "default": "days",
+     "options": [
+      {
+       "value": "days",
+       "label": "The week ahead"
+      },
+      {
+       "value": "hours",
+       "label": "The next hours"
+      }
+     ]
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  },
+  {
+   "type": "calendar",
+   "name": "Calendar",
+   "description": "Upcoming events from your calendars, in their colours.",
+   "min": [
+    3,
+    2
+   ],
+   "default": [
+    4,
+    4
+   ],
+   "fields": [
+    {
+     "key": "entities",
+     "label": "Calendars (empty = all)",
+     "type": "entities",
+     "filter": "agenda"
+    },
+    {
+     "key": "days",
+     "label": "Days ahead",
+     "type": "number",
+     "default": 7,
+     "min": 1,
+     "max": 14
+    },
+    {
+     "key": "textSize",
+     "label": "Text size",
+     "type": "number",
+     "slider": true,
+     "min": 70,
+     "max": 140,
+     "step": 5,
+     "unit": "%",
+     "default": 100
+    }
+   ]
+  }
+ ]
+}

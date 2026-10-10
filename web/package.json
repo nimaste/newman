@@ -1,0 +1,27 @@
+{
+  "name": "newman-web",
+  "private": true,
+  "version": "2026.10.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource/fraunces": "^5.2.5",
+    "@fontsource/great-vibes": "^5.3.0",
+    "@fontsource/manrope": "^5.2.5",
+    "@fontsource/nunito": "^5.3.0",
+    "@fontsource/sora": "^5.3.0",
+    "maplibre-gl": "^5.24.0",
+    "qrcode-generator": "^1.5.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "vite": "^6.3.5"
+  }
+}

@@ -1,0 +1,410 @@
+/* Cook mode on the wall (CookMode.jsx): one full-screen sheet in the night-glass look, made for reading from
+   across the kitchen - the current step large, everything else calmer. Plus the Recipes tile. */
+
+.ck-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50; /* under the voice card / timers (55-60), wall alerts and the dimmed screen */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  box-sizing: border-box;
+  background: var(--wt-bg, radial-gradient(1000px 600px at 90% -10%, #1e3a8a 0%, rgba(30, 58, 138, 0) 60%), #0a0e22);
+  color: var(--wt-ink, #eef2ff);
+  font-family: var(--wt-font-body, Manrope, system-ui, sans-serif);
+  animation: ck-in 0.2s ease-out;
+  -webkit-user-select: none;
+  user-select: none;
+}
+@keyframes ck-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+.ck-screen button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.ck-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.ck-close {
+  flex-shrink: 0;
+}
+.ck-pic {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.07);
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.12);
+  color: var(--wt-dim, #a9b4d6);
+}
+.ck-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ck-pic--sm {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+.ck-title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ck-title {
+  margin: 0;
+  font-family: var(--wt-font-num, Sora, Manrope, system-ui, sans-serif);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.ck-meta {
+  margin-top: 4px;
+  color: var(--wt-dim, #a9b4d6);
+  font-size: 15px;
+  font-weight: 700;
+}
+.ck-serves {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.12);
+}
+.ck-serves.is-scaled {
+  border-color: rgba(245, 185, 66, 0.55);
+  background: rgba(245, 185, 66, 0.1);
+}
+.ck-serves-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 96px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.ck-serves-text b {
+  font-family: var(--wt-font-num, Sora, Manrope, system-ui, sans-serif);
+  font-size: 22px;
+}
+.ck-scaled {
+  color: var(--wt-amber, #f5b942);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.ck-round {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.14);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  display: grid;
+  place-items: center;
+}
+.ck-round:disabled,
+.ck-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.ck-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 18px;
+}
+.ck-steps,
+.ck-ings {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 24px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.05);
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.1);
+}
+.ck-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+.ck-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: none;
+  text-align: left;
+  color: var(--wt-dim, #a9b4d6);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.45;
+  transition: background 0.15s, color 0.15s;
+}
+.ck-step.is-done {
+  color: rgba(var(--wt-dim-rgb, 169, 180, 214), 0.6);
+}
+.ck-step.is-now {
+  color: var(--wt-hi, #fff);
+  background: rgba(var(--wt-teal-rgb, 60, 207, 180), 0.13);
+  border-color: rgba(var(--wt-teal-rgb, 60, 207, 180), 0.5);
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 20px 20px;
+}
+.ck-step-n {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  margin-top: 1px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  font-family: var(--wt-font-num, Sora, Manrope, system-ui, sans-serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--wt-ink, #eef2ff);
+}
+.ck-step.is-now .ck-step-n {
+  width: 46px;
+  height: 46px;
+  background: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #062a24);
+  font-size: 21px;
+}
+.ck-step-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ck-ings {
+  padding: 16px 18px;
+}
+.ck-h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wt-dim, #a9b4d6);
+}
+.ck-ings ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ck-ings li {
+  display: flex;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.07);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ck-ings li:first-child {
+  border-top: 0;
+}
+.ck-amt {
+  flex-shrink: 0;
+  min-width: 74px;
+  color: var(--wt-teal, #3ccfb4);
+  font-weight: 800;
+}
+.ck-note {
+  color: var(--wt-dim, #a9b4d6);
+  font-weight: 500;
+}
+
+.ck-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ck-nav {
+  height: 64px;
+  min-width: 180px;
+  padding: 0 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.16);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.ck-nav--next:not(:disabled) {
+  background: var(--wt-teal, #3ccfb4);
+  border-color: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #062a24);
+}
+.ck-where {
+  color: var(--wt-dim, #a9b4d6);
+  font-size: 18px;
+  font-weight: 700;
+}
+.ck-where b {
+  color: var(--wt-ink, #eef2ff);
+}
+
+/* Timer cards (VoiceLayer) sit just above the Previous / Next buttons while a recipe is open. */
+html:has(.ck-screen) .vo-timers {
+  top: auto;
+  bottom: 100px;
+}
+
+/* Upright or narrow: one column - the steps, then the ingredients. */
+@media (max-width: 760px), (max-aspect-ratio: 1/1) {
+  .ck-body {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .ck-steps,
+  .ck-ings {
+    overflow: visible;
+    flex-shrink: 0;
+  }
+}
+/* Narrow (a phone-sized screen): Close and the servings on top, then the picture and the name. */
+@media (max-width: 760px) {
+  .ck-screen {
+    padding: 14px 14px 16px;
+    gap: 12px;
+  }
+  .ck-head {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .ck-close {
+    order: 0;
+  }
+  .ck-serves {
+    order: 1;
+    margin-left: auto;
+  }
+  .ck-head .ck-pic {
+    order: 2;
+    width: 56px;
+    height: 56px;
+  }
+  .ck-title-wrap {
+    order: 3;
+    flex: 1 1 calc(100% - 80px);
+  }
+  .ck-title {
+    font-size: 22px;
+  }
+  .ck-step.is-now {
+    font-size: 23px;
+  }
+  .ck-nav {
+    min-width: 0;
+    flex: 1 1 0;
+    height: 56px;
+    font-size: 18px;
+  }
+  .ck-where {
+    font-size: 15px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .ck-head .ck-pic,
+  .ck-scaled-base {
+    display: none;
+  }
+  .ck-serves-text {
+    min-width: 72px;
+  }
+  .ck-title-wrap {
+    flex-basis: 100%;
+  }
+}
+
+/* The Recipes tile */
+.ck-tile {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ck-tile--off {
+  align-items: center;
+  justify-content: center;
+  color: var(--wt-dim, #a9b4d6);
+}
+.ck-tile-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ck-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.04);
+  text-align: left;
+}
+.ck-row:active {
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.1);
+}
+.ck-row-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ck-row-title {
+  font-size: 17px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ck-row-sub {
+  color: var(--wt-dim, #a9b4d6);
+  font-size: 13px;
+  font-weight: 700;
+}

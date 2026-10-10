@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Device owner for kiosk (lock task) mode; it asks for no policies beyond that. -->
+<device-admin>
+    <uses-policies />
+</device-admin>

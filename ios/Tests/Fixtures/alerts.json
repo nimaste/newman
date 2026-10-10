@@ -1,0 +1,102 @@
+[
+ {
+  "id": "1790899165.791995-2un2h6",
+  "camera": "garage",
+  "cameraName": "Garage",
+  "entityId": "frigate.camera_garage",
+  "severity": "alert",
+  "title": "Person at Garage",
+  "objects": [
+   "person"
+  ],
+  "zones": [
+   "Driveway"
+  ],
+  "start": 1790899165.791995,
+  "end": 1790899242.865967,
+  "clip": "frigate:r:1790899165.791995-2un2h6",
+  "thumbUrl": "api/cameras/frigate/reviews/1790899165.791995-2un2h6/thumb.webp",
+  "snapshotUrl": "api/cameras/frigate/reviews/1790899165.791995-2un2h6/snapshot.jpg",
+  "integration": "frigate"
+ },
+ {
+  "id": "1790899161.972472-1y29hf",
+  "camera": "doorbell",
+  "cameraName": "Doorbell",
+  "entityId": "frigate.camera_doorbell",
+  "severity": "alert",
+  "title": "Person at Doorbell",
+  "objects": [
+   "person"
+  ],
+  "zones": [
+   "Porch"
+  ],
+  "start": 1790899161.972472,
+  "end": 1790899251.228881,
+  "clip": "frigate:r:1790899161.972472-1y29hf",
+  "thumbUrl": "api/cameras/frigate/reviews/1790899161.972472-1y29hf/thumb.webp",
+  "snapshotUrl": "api/cameras/frigate/reviews/1790899161.972472-1y29hf/snapshot.jpg",
+  "integration": "frigate"
+ },
+ {
+  "id": "1790899110.48895-7ask38",
+  "camera": "doorbell",
+  "cameraName": "Doorbell",
+  "entityId": "frigate.camera_doorbell",
+  "severity": "alert",
+  "title": "Person at Doorbell",
+  "objects": [
+   "person"
+  ],
+  "zones": [
+   "Porch"
+  ],
+  "start": 1790899110.48895,
+  "end": 1790899119.560625,
+  "clip": "frigate:r:1790899110.48895-7ask38",
+  "thumbUrl": "api/cameras/frigate/reviews/1790899110.48895-7ask38/thumb.webp",
+  "snapshotUrl": "api/cameras/frigate/reviews/1790899110.48895-7ask38/snapshot.jpg",
+  "integration": "frigate"
+ },
+ {
+  "id": "1790899085.1585-5ibv4v",
+  "camera": "front_porch",
+  "cameraName": "Front Porch",
+  "entityId": "frigate.camera_front_porch",
+  "severity": "alert",
+  "title": "Person at Front Porch",
+  "objects": [
+   "person"
+  ],
+  "zones": [
+   "Front Patio"
+  ],
+  "start": 1790899085.1585,
+  "end": 1790899251.502134,
+  "clip": "frigate:r:1790899085.1585-5ibv4v",
+  "thumbUrl": "api/cameras/frigate/reviews/1790899085.1585-5ibv4v/thumb.webp",
+  "snapshotUrl": "api/cameras/frigate/reviews/1790899085.1585-5ibv4v/snapshot.jpg",
+  "integration": "frigate"
+ },
+ {
+  "id": "1790899079.312444-7180p2",
+  "camera": "garage",
+  "cameraName": "Garage",
+  "entityId": "frigate.camera_garage",
+  "severity": "alert",
+  "title": "Person at Garage",
+  "objects": [
+   "person"
+  ],
+  "zones": [
+   "Driveway"
+  ],
+  "start": 1790899079.312444,
+  "end": 1790899104.076516,
+  "clip": "frigate:r:1790899079.312444-7180p2",
+  "thumbUrl": "api/cameras/frigate/reviews/1790899079.312444-7180p2/thumb.webp",
+  "snapshotUrl": "api/cameras/frigate/reviews/1790899079.312444-7180p2/snapshot.jpg",
+  "integration": "frigate"
+ }
+]

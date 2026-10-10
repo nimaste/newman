@@ -1,0 +1,5 @@
+// Auto-synced from the live project by Config/sync-version.sh before every
+// xcodegen regenerate. Set Version/Build in Xcode's General tab as normal —
+// do not hand-edit this file, it gets overwritten on the next regenerate.
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1

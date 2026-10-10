@@ -1,0 +1,12 @@
+{
+ "setupNeeded": false,
+ "signedIn": false,
+ "user": null,
+ "session": null,
+ "where": "home",
+ "certificate": false,
+ "awayPolicy": "cert",
+ "tabletSensitive": "confirm",
+ "time": 1790908474.132019,
+ "version": "dev"
+}

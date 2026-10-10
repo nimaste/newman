@@ -1,0 +1,603 @@
+/* Wall themes (Theme.jsx sets <html data-wt-theme>; the dashboard editor sets it on its preview).
+   wall.css / music.css / cook.css / voice.css read every look decision as var(--token, <Midnight's value>),
+   so Midnight - the original look - defines none of these and stays exactly as it was. Glass and
+   Christmas define them here, plus a few things only they have (Christmas: snowdrift, string lights,
+   greeting and characters, snow). Also the Climate glance tile (ClimateTile.jsx). */
+
+/* ---------------- Glass: iOS-style frosted panels on a soft colour wallpaper (light) ---------------- */
+:root[data-wt-theme='glass'],
+[data-wt-theme='glass'] :is(.wall, .wt-overlay) {
+  --wt-bg: radial-gradient(38% 50% at 18% 22%, rgba(255, 149, 128, 0.85), transparent 70%), radial-gradient(42% 55% at 82% 18%, rgba(132, 170, 255, 0.9), transparent 70%),
+    radial-gradient(45% 60% at 60% 92%, rgba(190, 140, 255, 0.8), transparent 70%), linear-gradient(135deg, #f6d6cf 0%, #cfdcfb 50%, #e3d4fb 100%);
+  --wt-page: #e6def5;
+  --wt-solid: #f2eff8;
+  --wt-ink: #1c1c22;
+  --wt-ink-rgb: 28, 28, 34;
+  --wt-dim: #55556a;
+  --wt-dim-rgb: 85, 85, 106;
+  --wt-soft: #3a3a48;
+  --wt-faint: #626274;
+  --wt-faint-2: #74748a;
+  --wt-hi: #000;
+  --wt-fg: 28, 28, 34;
+  --wt-glass: rgba(255, 255, 255, 0.46);
+  --wt-line: rgba(255, 255, 255, 0.65);
+  --wt-panel: 248, 247, 252;
+  --wt-shade: 255, 255, 255;
+  --wt-teal: #0a7cf0;
+  --wt-teal-rgb: 10, 124, 240;
+  --wt-on-teal: #fff;
+  --wt-on-ink: #fff;
+  --wt-amber: #f0a51a;
+  --wt-coral: #e0502f;
+  --wt-warn-text: #b8381e;
+  --wt-heat: #ff7a2f;
+  --wt-cool: #0a84ff;
+  --wt-radius: 30px;
+  --wt-tile-shadow: 0 14px 34px rgba(60, 50, 110, 0.16);
+  --wt-blur: blur(22px) saturate(160%);
+  --wt-font-body: -apple-system, 'SF Pro Text', Nunito, system-ui, sans-serif;
+  --wt-font-num: -apple-system, 'SF Pro Rounded', 'SF Pro Display', Nunito, system-ui, sans-serif;
+  --wt-dial-w: 22;
+  --wt-dial-w-compact: 17;
+  --wt-knob: #fff;
+  --wt-cam-filter: saturate(1.1);
+  --wt-icon-cut: #f3eef9;
+  color-scheme: light;
+}
+/* weather alerts: the pale-on-dark colours would vanish on light glass - deeper fills, dark text */
+[data-wt-theme='glass'] .wx-c--yellow {
+  background: rgba(245, 190, 40, 0.42) !important;
+  border-color: rgba(190, 140, 0, 0.75) !important;
+  color: #5c4100 !important;
+}
+[data-wt-theme='glass'] .wx-c--orange {
+  background: rgba(255, 140, 50, 0.36) !important;
+  border-color: rgba(214, 104, 20, 0.75) !important;
+  color: #6e2f00 !important;
+}
+[data-wt-theme='glass'] .wx-c--red {
+  background: rgba(255, 80, 80, 0.3) !important;
+  border-color: rgba(200, 40, 40, 0.75) !important;
+  color: #7a1414 !important;
+}
+/* a device sheet's warning note: the bright amber is unreadable on light glass */
+[data-wt-theme='glass'] .wt-sheet-sub.is-warn {
+  color: #8f5600;
+}
+/* the current tab: a white pill with a soft shadow, like iOS */
+[data-wt-theme='glass'] .wall .wt-tab.is-on {
+  background: #fff;
+  color: var(--wt-ink);
+  box-shadow: 0 3px 10px rgba(60, 50, 110, 0.16);
+}
+/* Frosted (blurred) only where nothing opens full screen from inside: a backdrop-filter would hold a
+   full-screen sheet (the music picker) inside its box. Tiles stay unblurred: on the smooth wallpaper the
+   blur showed nothing anyway. */
+[data-wt-theme='glass'] .wall .wt-tabs,
+[data-wt-theme='glass'] .wall .wt-round {
+  -webkit-backdrop-filter: var(--wt-blur);
+  backdrop-filter: var(--wt-blur);
+}
+/* sheets and cards float on a light veil */
+[data-wt-theme='glass'] :is(.wt-confirm, .mu-sheet, .vo-card, .vo-timer, .wa-card, .wx-sheet, .wd-sheet, .fam-card, .wt-pin, .vt-card) {
+  box-shadow: 0 24px 60px rgba(60, 50, 110, 0.22);
+}
+[data-wt-theme='glass'] .wt-dial-svg circle,
+[data-wt-theme='glass'] .cg-arc-svg circle {
+  filter: drop-shadow(0 1px 2px rgba(40, 30, 80, 0.35));
+}
+[data-wt-theme='glass'] .wd-chip.is-on .wd-dim {
+  color: rgba(255, 255, 255, 0.75);
+}
+[data-wt-theme='glass'] .wd-chip.is-on .wx-icon {
+  stroke: #fff;
+}
+
+/* ---------------- Christmas: soft winter blue, frosted tiles, snow ---------------- */
+:root[data-wt-theme='christmas'],
+[data-wt-theme='christmas'] :is(.wall, .wt-overlay) {
+  --wt-bg: radial-gradient(60% 45% at 50% 112%, rgba(255, 255, 255, 0.45), transparent 70%), radial-gradient(45% 40% at 85% 6%, rgba(255, 255, 255, 0.35), transparent 70%),
+    linear-gradient(175deg, #5f8fcb 0%, #6f9dd4 40%, #8db4e2 100%);
+  --wt-page: #6f9dd4;
+  --wt-solid: #4a76b0;
+  --wt-ink: #fff;
+  --wt-ink-rgb: 255, 255, 255;
+  --wt-dim: #e3eefc;
+  --wt-dim-rgb: 227, 238, 252;
+  --wt-soft: #f1f6ff;
+  --wt-faint: #d6e5f8;
+  --wt-faint-2: #c8dbf3;
+  --wt-glass: rgba(28, 58, 110, 0.3);
+  --wt-line: rgba(255, 255, 255, 0.45);
+  --wt-panel: 52, 92, 150;
+  --wt-shade: 24, 48, 92;
+  --wt-teal: #fff;
+  --wt-teal-rgb: 255, 255, 255;
+  --wt-on-teal: #2f5a96;
+  --wt-on-ink: #2f5a96;
+  --wt-warn-text: #ffe1d8;
+  --wt-heat: #e8364f;
+  --wt-cool: #2fa45f;
+  --wt-radius: 28px;
+  --wt-tile-shadow: 0 12px 32px rgba(30, 60, 110, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  --wt-blur: blur(14px) saturate(130%);
+  --wt-font-body: Nunito, system-ui, sans-serif;
+  --wt-font-num: Nunito, system-ui, sans-serif;
+  --wt-dial-w: 24;
+  --wt-dial-w-compact: 19;
+  --wt-knob: #fff;
+  --wt-cam-filter: saturate(0.9) brightness(1.05) hue-rotate(-8deg);
+  --wt-icon-cut: #47719f;
+  color-scheme: dark;
+}
+[data-wt-theme='christmas'] .wall .wt-tile:not(.wt-tile--bare) {
+  border-width: 1.5px;
+}
+[data-wt-theme='christmas'] .wall :is(.wt-time, .wt-dial-value, .cg-now, .cg-room-t, .wx-temp, .wt-reading, .xm-greet) {
+  text-shadow: 0 2px 10px rgba(30, 60, 110, 0.35);
+}
+[data-wt-theme='christmas'] .wall .wt-time,
+[data-wt-theme='christmas'] .wall .cg-now,
+[data-wt-theme='christmas'] .wall .cg-room-t {
+  font-weight: 800;
+}
+/* a soft snowdrift along the bottom */
+[data-wt-theme='christmas'] .wall::after {
+  content: '';
+  position: absolute;
+  left: -2%;
+  right: -2%;
+  bottom: -1.6vw;
+  height: 3.8vw;
+  min-height: 34px;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(60% 100% at 10% 100%, rgba(255, 255, 255, 0.92) 60%, transparent 61%), radial-gradient(50% 90% at 38% 100%, rgba(240, 247, 255, 0.88) 60%, transparent 61%),
+    radial-gradient(55% 95% at 66% 100%, rgba(255, 255, 255, 0.92) 60%, transparent 61%), radial-gradient(50% 85% at 92% 100%, rgba(236, 245, 255, 0.88) 60%, transparent 61%);
+  filter: blur(3px);
+}
+/* glowing string lights along the top of camera pictures */
+[data-wt-theme='christmas'] .wall .wt-cam-pic::after,
+[data-wt-theme='christmas'] .wall .wt-cams-grid .camgrid-tile::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 26px;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(circle at 6% 60%, #fff 5px, transparent 6px) 0 0 / 84px 26px repeat-x, radial-gradient(circle at 40% 60%, #9fd8ff 5px, transparent 6px) 0 0 / 84px 26px repeat-x,
+    radial-gradient(circle at 74% 60%, #ff8b9a 5px, transparent 6px) 0 0 / 84px 26px repeat-x;
+  filter: drop-shadow(0 0 6px rgba(190, 225, 255, 0.9));
+}
+/* Red and green through the theme: a thin pine garland with red berries and little gold lights along
+   the very top of the screen (above the clock and tabs, under every sheet and the dimmed screen) */
+[data-wt-theme='christmas'] .wall::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 17px;
+  z-index: 4;
+  pointer-events: none;
+  background: radial-gradient(circle at 25% 64%, #e8364f 3.4px, transparent 4px) 0 0 / 44px 17px repeat-x,
+    radial-gradient(circle at 34% 50%, #c81e3a 2.8px, transparent 3.4px) 0 0 / 44px 17px repeat-x,
+    radial-gradient(circle at 75% 52%, #ffd36b 2.6px, transparent 3.2px) 0 0 / 44px 17px repeat-x,
+    radial-gradient(120% 90% at 50% 0%, #1f6b3d 45%, transparent 47%) 0 0 / 22px 16px repeat-x,
+    radial-gradient(120% 90% at 50% 0%, #2b8a50 45%, transparent 47%) 11px 0 / 22px 13px repeat-x;
+  filter: drop-shadow(0 2px 3px rgba(20, 50, 30, 0.35));
+}
+/* the current tab: pine green with a red edge */
+[data-wt-theme='christmas'] .wall .wt-tab.is-on {
+  background: #1f7a46;
+  color: #fff;
+  box-shadow: 0 0 0 3px #e8364f;
+}
+/* a sprig of holly (two leaves, three berries) tucked into each tile's top-right corner, inside the
+   tile's own top padding so it never sits on a title, a mode, a search box or a button; cameras have
+   their string lights instead */
+[data-wt-theme='christmas'] .wall .wt-tile:not(.wt-tile--bare) {
+  position: relative;
+}
+[data-wt-theme='christmas'] .wall .wt-tile:not(.wt-tile--bare, .wt-tile--camera, .wt-tile--cameras)::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 24px;
+  width: 32px;
+  height: 15px;
+  pointer-events: none;
+  background: radial-gradient(circle 3.3px at 15px 9.5px, #e8364f 85%, transparent 100%), radial-gradient(circle 3px at 19.5px 11.5px, #c81e3a 85%, transparent 100%),
+    radial-gradient(circle 2.9px at 11.5px 11.8px, #e8364f 85%, transparent 100%), radial-gradient(9px 4.4px at 8.5px 6px, #2b8a50 90%, transparent 100%),
+    radial-gradient(9px 4.4px at 23.5px 5.5px, #1f6b3d 90%, transparent 100%);
+}
+/* the Climate glance tile: a red top edge with a red bow in the middle */
+[data-wt-theme='christmas'] .wall .wt-tile--climate {
+  border-top: 5px solid #e8364f;
+}
+[data-wt-theme='christmas'] .wall .wt-tile--climate::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 46px;
+  height: 16px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 16'%3E%3Cpath d='M21 9 15 16l3-.6L20 16zM25 9l6 7-3-.6L26 16z' fill='%23c81e3a'/%3E%3Cpath d='M23 6C15-1 3-1 4 5c1 6 12 5 19 1zM23 6c8-7 20-7 19-1-1 6-12 5-19 1z' fill='%23e8364f'/%3E%3Ccircle cx='23' cy='6' r='3.6' fill='%23b71c34'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+/* Christmas room bars: pine green into cranberry red along each bar */
+[data-wt-theme='christmas'] .cg-room-bar > i {
+  background: linear-gradient(90deg, #2fa45f, #e8364f) !important;
+}
+/* the thermostat arc as a candy cane: white with red stripes (other themes: no stripes) */
+.wt-arc-stripe {
+  display: none;
+}
+[data-wt-theme='christmas'] :is(.cg-arc-svg, .wt-dial-svg) .wt-arc-fill {
+  stroke: #fff !important;
+}
+[data-wt-theme='christmas'] :is(.cg-arc-svg, .wt-dial-svg) .wt-arc-stripe {
+  display: inline;
+  stroke: #e8364f;
+  stroke-dasharray: 14 14;
+}
+/* Glass and Christmas: the accent buttons' icons in the accent's own text colour, and readable
+   search placeholders. */
+[data-wt-theme] .wall :is(.mu-btn--main, .mu-chip-pp) {
+  color: var(--wt-on-teal);
+}
+/* Christmas: the music play button pine green with a red rim */
+[data-wt-theme='christmas'] :is(.wall, .wt-overlay) :is(.mu-btn--main, .mu-chip-pp) {
+  background: #1f7a46;
+  color: #fff;
+  box-shadow: 0 0 0 3px #e8364f;
+}
+[data-wt-theme] :is(.wall, .wt-overlay) input::placeholder {
+  color: var(--wt-dim);
+  opacity: 0.85;
+}
+
+/* The camera picture's own filter (Midnight: none). */
+.wt-cam-video,
+.wt-cams-grid .camgrid-tile img,
+.wt-cams-grid .camgrid-tile video {
+  filter: var(--wt-cam-filter, none);
+}
+/* Weather icons' stroke from the theme (the same #c9d4f5 in Midnight). */
+.wx-icon {
+  stroke: var(--wt-soft, #c9d4f5);
+}
+
+/* Full-screen camera, a camera alarm and a full-screen alert stay dark in every theme (video is dark):
+   the Midnight colours, whatever the theme. */
+:is(.lv--wall, .wa-full, .wa-alarm) {
+  --wt-ink: #eef2ff;
+  --wt-ink-rgb: initial;
+  --wt-dim: #a9b4d6;
+  --wt-dim-rgb: initial;
+  --wt-soft: initial;
+  --wt-faint: initial;
+  --wt-faint-2: initial;
+  --wt-hi: initial;
+  --wt-fg: initial;
+  --wt-glass: rgba(255, 255, 255, 0.07);
+  --wt-line: rgba(255, 255, 255, 0.1);
+  --wt-panel: initial;
+  --wt-shade: initial;
+  --wt-teal: #3ccfb4;
+  --wt-teal-rgb: initial;
+  --wt-on-teal: initial;
+  --wt-on-ink: initial;
+  --wt-warn-text: initial;
+  color-scheme: dark;
+}
+
+/* ---------------- Christmas decorations ---------------- */
+.xm-decor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  width: max-content;
+}
+.xm-cast {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 54px;
+}
+.xm-who {
+  display: block;
+  height: 100%;
+  flex: none;
+  filter: drop-shadow(0 3px 5px rgba(30, 60, 110, 0.35));
+}
+.xm-who svg {
+  display: block;
+  height: 100%;
+  width: auto;
+}
+.xm-who.is-small {
+  height: 78%;
+}
+.xm-pic {
+  width: auto;
+  max-width: 90px;
+  object-fit: contain;
+}
+.xm-greet {
+  font-family: 'Great Vibes', cursive;
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: var(--wt-ink, #fff);
+  padding-top: 4px;
+}
+.xm-ruler {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.xm-snow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+}
+.xm-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 3vh;
+  pointer-events: none;
+  filter: blur(6px);
+  opacity: 0.5;
+}
+.xm-cast--back {
+  height: 46vh;
+  gap: 5vw;
+}
+/* the dimmed screen: the greeting and characters that didn't fit in the bar, big and soft */
+.xm-dim {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3vh;
+  opacity: 0.72;
+  pointer-events: none;
+}
+.xm-dim-greet {
+  font-family: 'Great Vibes', cursive;
+  font-size: min(12vw, 16vh);
+  line-height: 1.1;
+  color: #eaf3ff;
+  text-shadow: 0 0 28px rgba(160, 205, 255, 0.6);
+  text-align: center;
+  padding: 0 4vw;
+}
+.xm-cast--dim {
+  height: min(24vh, 28vw);
+  gap: 3vw;
+}
+@media (prefers-reduced-motion: reduce) {
+  .xm-snow {
+    display: none;
+  }
+}
+
+/* ---------------- the Climate glance tile ---------------- */
+.cg {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wall .cg-btn {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--wt-ink);
+  zoom: var(--ts, 1);
+}
+.wall .cg-btn:focus-visible {
+  outline: 2px solid var(--wt-teal, #3ccfb4);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+.cg-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.cg-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+.cg-mode {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-hero {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.cg-arc {
+  position: relative;
+  flex: none;
+  width: clamp(96px, 40%, 200px);
+  aspect-ratio: 1;
+  container-type: inline-size;
+}
+.cg-arc-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.cg-now {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--wt-font-num, Sora, Manrope, sans-serif);
+  font-weight: 600;
+  font-size: 23cqw;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.cg-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.cg-set {
+  font-size: 18px;
+  font-weight: 700;
+}
+.cg-set em {
+  font-style: normal;
+}
+.cg-sm {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+.cg-rooms {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  overflow: hidden;
+}
+.cg-room {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+}
+.cg-room-name {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wt-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-room-t {
+  font-family: var(--wt-font-num, Sora, Manrope, sans-serif);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cg-room.is-off .cg-room-t {
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--wt-dim);
+}
+.cg-room-h {
+  align-self: end;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+.cg-room-bar {
+  grid-column: 1 / -1;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.1);
+  overflow: hidden;
+}
+.cg-room-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+}
+.cg-room--more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--wt-dim);
+}
+.wt-confirm.cg-sheet {
+  width: min(680px, 94vw);
+  max-width: none;
+}
+.cg-sheet .wt-dial {
+  height: min(64vh, 540px);
+}
+
+/* the editor: the Christmas pictures */
+.de-pics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.de-pic {
+  position: relative;
+  display: inline-flex;
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  background: repeating-conic-gradient(#d9dce3 0 25%, #f3f4f7 0 50%) 0 0 / 14px 14px;
+  align-items: center;
+  justify-content: center;
+}
+.de-pic img {
+  max-width: 64px;
+  max-height: 64px;
+}
+.de-pic .icon-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+}
+.de-look {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

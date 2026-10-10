@@ -1,0 +1,83 @@
+[
+ {
+  "id": "c_44c5973688c6",
+  "buttons": [
+   {
+    "id": "lock:mqtt.6c765b1f-a573-4618-ab90-faf1f3087526",
+    "label": "Lock Laundry",
+    "icon": "lock",
+    "sensitive": false
+   },
+   {
+    "id": "snooze:60",
+    "label": "Snooze 1 hour",
+    "icon": "clock",
+    "sensitive": false
+   },
+   {
+    "id": "dismiss",
+    "label": "Dismiss",
+    "icon": "x",
+    "sensitive": false
+   }
+  ]
+ },
+ {
+  "id": "c_4474cc832030",
+  "buttons": [
+   {
+    "id": "lock:mqtt.38985d0b-5a70-4741-8d56-58eef53d183c",
+    "label": "Lock Side Door",
+    "icon": "lock",
+    "sensitive": false
+   },
+   {
+    "id": "snooze:60",
+    "label": "Snooze 1 hour",
+    "icon": "clock",
+    "sensitive": false
+   },
+   {
+    "id": "dismiss",
+    "label": "Dismiss",
+    "icon": "x",
+    "sensitive": false
+   }
+  ]
+ },
+ {
+  "id": "c_cea37f40968e",
+  "buttons": [
+   {
+    "id": "lock:mqtt.6c765b1f-a573-4618-ab90-faf1f3087526",
+    "label": "Lock Laundry",
+    "icon": "lock",
+    "sensitive": false
+   },
+   {
+    "id": "lock:mqtt.38985d0b-5a70-4741-8d56-58eef53d183c",
+    "label": "Lock Side Door",
+    "icon": "lock",
+    "sensitive": false
+   },
+   {
+    "id": "lock_all",
+    "label": "Lock all",
+    "icon": "lock",
+    "sensitive": false
+   },
+   {
+    "id": "snooze:60",
+    "label": "Snooze 1 hour",
+    "icon": "clock",
+    "sensitive": false
+   },
+   {
+    "id": "dismiss",
+    "label": "Dismiss",
+    "icon": "x",
+    "sensitive": false
+   }
+  ]
+ }
+]

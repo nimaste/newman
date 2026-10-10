@@ -1,0 +1,56 @@
+name: iOS build
+
+# Every push proves the iOS code compiles: generate the project and build both apps for the
+# simulator, unsigned. (Signed Ad Hoc IPAs come from release.yml on v* tags.)
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build phone app + notification and location push extensions (simulator)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Newman.xcodeproj \
+            -scheme Newman \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/phone.log" | grep -E 'error:|warning: unre|BUILD (SUCCEEDED|FAILED)' || true
+          grep -q 'BUILD SUCCEEDED' "$RUNNER_TEMP/phone.log"
+
+      - name: Build wall app (simulator)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Newman.xcodeproj \
+            -scheme NewmanWall \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/wall.log" | grep -E 'error:|BUILD (SUCCEEDED|FAILED)' || true
+          grep -q 'BUILD SUCCEEDED' "$RUNNER_TEMP/wall.log"
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: ${{ runner.temp }}/*.log

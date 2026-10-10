@@ -1,0 +1,122 @@
+services:
+  newman:
+    image: ghcr.io/nimaste/newman:latest
+    # To build locally instead, comment out `image:` and uncomment:
+    # build: .
+    container_name: newman
+    restart: unless-stopped
+    # Host networking: discovery (mDNS), HomeKit, Sonos, Hue, Matter and printers need multicast,
+    # which doesn't cross Docker's bridge network. Newman listens on port 8093.
+    network_mode: host
+    env_file: .env
+    environment:
+      APNS_KEY_PATH: /app/keys/apns-key.p8
+      APNS_PRODUCTION: "true"
+      FCM_SERVICE_ACCOUNT_PATH: /app/keys/firebase-service-account.json
+      # Apple Maps: MAPKIT_KEY_ID in .env. Its key file is the APNs one above when it's the same key,
+      # else /app/keys/mapkit.p8 - or point at it here:
+      # MAPKIT_KEY_PATH: /app/keys/mapkit.p8
+    volumes:
+      - /mnt/cache/appdata/newman:/data
+      - /mnt/cache/appdata/newman/keys:/app/keys:ro
+    mem_limit: 256m
+
+  # Optional - only for the Docker connection (address http://127.0.0.1:2375 in Newman).
+  # Lets Newman see containers and their events, and start / stop / restart them (POST=1;
+  # remove that line for watch-only). Everything else in Docker's API stays blocked, and it only
+  # listens on the server itself. See README → Companion containers.
+  docker-socket-proxy:
+    image: lscr.io/linuxserver/socket-proxy:latest
+    container_name: docker-socket-proxy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run
+    ports:
+      - "127.0.0.1:2375:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      EVENTS: 1
+      PING: 1
+      VERSION: 1
+      POST: 1
+
+  # Optional - only for the Matter connection (README → Matter and Thread): the Open Home Foundation's
+  # Matter server (matterjs-server), holding Newman's Matter fabric. Host networking for mDNS and IPv6 to
+  # Thread devices; its websocket only on the server itself (Newman: ws://127.0.0.1:5580/ws).
+  # Start with: docker compose --profile matter up -d newman-matter
+  # Its data folder must belong to uid 1000: chown -R 1000:1000 /mnt/cache/appdata/newman-matter
+  newman-matter:
+    image: ghcr.io/matter-js/matterjs-server:stable
+    container_name: newman-matter
+    profiles: ["matter"]
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      LISTEN_ADDRESS: 127.0.0.1
+      DEFAULT_FABRIC_LABEL: Newman
+      PRIMARY_INTERFACE: br0   # the LAN interface (Unraid: br0)
+    volumes:
+      - /mnt/cache/appdata/newman-matter:/data
+
+  # Optional companions - voice on the wall tablets (README → Companion containers → Speech).
+  # Only started with: docker compose --profile voice up -d
+  # Then set for Newman: VOICE_STT=127.0.0.1:10300 and VOICE_TTS=127.0.0.1:10200 (in .env).
+  newman-whisper:
+    image: rhasspy/wyoming-whisper:latest
+    container_name: newman-whisper
+    profiles: ["voice"]
+    restart: unless-stopped
+    command: --model base.en --language en --compute-type int8 --beam-size 1 --cpu-threads 4
+    ports:
+      - "127.0.0.1:10300:10300"
+    volumes:
+      - /mnt/cache/appdata/newman-voice/whisper:/data
+      # The home's names for Whisper to expect, kept current by Newman (README → Voice → The Whisper hint).
+      # Whisper reads them at start; Newman restarts this container through its Docker connection when they
+      # change and nobody is talking (VOICE_STT_CONTAINER names it; VOICE_STT_RESTART=0 turns that off).
+      - /mnt/cache/appdata/newman/voice:/hint:ro
+    environment:
+      - WYO_WHISPER_INITIAL_PROMPT_FILE=/hint/whisper_prompt.txt
+    mem_limit: 1g
+
+  # Optional: the Kokoro voice (more natural than Piper). Uncomment, then set for Newman:
+  # VOICE_TTS_KIND=openai, VOICE_TTS_URL=http://127.0.0.1:8880 and VOICE_NAME=af_heart (Piper stays the fallback).
+  # newman-kokoro:
+  #   image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+  #   container_name: newman-kokoro
+  #   profiles: ["voice"]
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:8880:8880"
+  #   mem_limit: 3g
+
+  newman-piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: newman-piper
+    profiles: ["voice"]
+    restart: unless-stopped
+    command: --voice en_US-lessac-medium
+    ports:
+      - "127.0.0.1:10200:10200"
+    volumes:
+      - /mnt/cache/appdata/newman-voice/piper:/data
+    mem_limit: 512m
+
+  # Retrains "Hey Newman" with the household's own voices when asked from the dashboard (README →
+  # Voice on the wall tablet → Teaching and training "Hey Newman"). Idle until then. Uses the training
+  # setup in newman-build-cache/voice (made once by its scripts/pipeline.sh); build the image first:
+  #   docker build -t newman-wakeword-trainer /mnt/cache/appdata/newman-build-cache/voice
+  newman-wakeword-trainer:
+    image: newman-wakeword-trainer
+    container_name: newman-wakeword-trainer
+    profiles: ["voice"]
+    restart: unless-stopped
+    network_mode: none
+    shm_size: 8g      # Docker's 64 MB default crashes training
+    cpus: 8
+    volumes:
+      - /mnt/cache/appdata/newman-build-cache/voice:/work
+      - /mnt/cache/appdata/newman/voice:/voice   # Newman's data folder's voice/

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Newman house as a white silhouette for the status bar (door cut out). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.5L1.5,11.5H4.5V21H9.5V15.5A2.5,2.5 0,0 1,14.5 15.5V21H19.5V11.5H22.5L18.5,8.07V4H16V5.93Z" />
+</vector>

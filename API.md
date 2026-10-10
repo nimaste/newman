@@ -1,0 +1,1169 @@
+# Newman API (v1)
+
+The contract between the hub (`server/`), the web dashboard (`web/`) and the
+iOS / Android apps. JSON everywhere; times are Unix seconds (float) unless noted.
+
+Every `/api/*` call needs a signed-in session: the `newman_session` cookie (browser) or
+`Authorization: Bearer <token>` (apps), from `POST /api/auth/login`. Open without one:
+`/health`, `/api/meta`, `/api/hello`, `/api/auth/state`, `/api/auth/login` and `/api/auth/setup` (first run, from
+home only). Away from home the admin's sign-in policy applies (client certificate via Caddy mTLS
+and/or a 2FA code - see README). `/api/public/*` is authenticated per request by HMAC tokens minted
+into push notifications (and webhook secrets).
+
+---
+
+## Meta
+
+`GET /api/meta` — everything a client needs to render generic UI.
+
+```json
+{
+  "version": "2026.10.0",
+  "categories": [
+    {"id": "security", "name": "Security"}, {"id": "garage", "name": "Garage"},
+    {"id": "lighting", "name": "Lighting"}, {"id": "climate", "name": "Climate"},
+    {"id": "cleaning", "name": "Cleaning"}, {"id": "other", "name": "Other"}
+  ],
+  "kinds": [
+    {"id": "lock", "name": "Lock", "plural": "Locks", "category": "security",
+     "states": [{"id": "LOCKED", "label": "Locked"}, {"id": "UNLOCKED", "label": "Unlocked"}, {"id": "JAMMED", "label": "Jammed"}],
+     "activeState": "UNLOCKED",
+     "commands": [{"id": "lock", "label": "Lock", "icon": "lock", "confirmsTo": "LOCKED", "sensitive": false},
+                  {"id": "unlock", "label": "Unlock", "icon": "unlock", "confirmsTo": "UNLOCKED", "sensitive": true}]},
+    {"id": "alarm", "...": "..."}, {"id": "contact", "...": "..."}, {"id": "motion", "...": "..."},
+    {"id": "doorbell", "...": "...", "events": [{"id": "pressed", "label": "Pressed"}]}
+  ]
+}
+```
+
+* `activeState` — the state an automation condition means by "is on" (unlocked, open, motion…).
+* `sensitive` commands (unlock, disarm, open garage) need Face ID / fingerprint on a phone.
+
+## Connecting an app
+
+`GET /api/hello` — no sign-in. Which hub this is, for an app's "Connect to your Newman" (`Cache-Control: no-store`):
+
+```json
+{"app": "newman", "id": "3f9c0a1b2c3d4e5f", "name": "The Garitos", "version": "2026.10.0",
+ "outsideUrl": "https://home.example.com/", "localUrls": ["http://10.1.1.2:8093/"],
+ "webBuild": "index-Cg0z-opQ.js index-CpiC5FsT.css"}
+```
+
+* `webBuild` — the web build the hub serves: the hashed script / style names its `index.html` loads, sorted,
+  space-joined (`null` without a build). The live socket's first message carries it too:
+  `{"type": "hello", "time", "version", "webBuild"}`. Web pages compare it with what they loaded and reload
+  themselves at a quiet moment when it differs.
+
+* `id` — made once, never changes (setting `hubId`). Apps check it before using an address.
+* `name` — the `homeName` setting, else `Newman`. `outsideUrl` — the `outsideUrl` setting, else `PUBLIC_URL`, else `null`.
+* `localUrls` — `http://<IPv4>:<port>/` for the hub's home-network addresses (not Docker's or VPNs'; `MDNS_INTERFACE` narrows them).
+
+`GET /api/connect-info` (admin) → the same fields plus `link`:
+`newman://connect?v=1&id=<id>&name=<name>&local=<first local URL>&outside=<outside URL or empty>` (every value
+URL-encoded; no secrets or tokens). The dashboard shows it as a QR code (Household → Accounts → Connect a device).
+
+The name and outside address are admin settings: `GET /api/auth/settings` includes `homeName` and
+`outsideUrl`, and `PATCH /api/auth/settings` takes them (`{"homeName": "The Garitos", "outsideUrl": "home.example.com"}`;
+`outsideUrl` is normalised to `https://home.example.com/`; plain `http://` only for home-network addresses;
+`400 {error}` when it isn't a web address; `"` clears either).
+
+**mDNS**: the hub announces `_newman._tcp.local.` on its HTTP port (instance name = the home name) with TXT
+`id=<id>`, `name=<name>`, `v=1`, `ext=<outside URL or empty>`, `path=/`, re-announced when the name or outside
+address changes. `NEWMAN_MDNS=0` turns it off.
+
+## Status
+
+`GET /api/status` → `{version, uptime, integrations: [{id, type, name, status, detail}], devices, people, automations, nextRuns: [{automationId, name, at}]}`
+
+`status` is one of `connected | connecting | error | disabled`.
+
+## Entities (devices)
+
+`GET /api/entities[?kind=lock]`
+
+```json
+[{"id": "ring.f0b7…", "name": "Side Door", "kind": "lock", "category": "security",
+  "integration": "mqtt", "integrationName": "MQTT devices",
+  "state": "LOCKED", "stateLabel": "Locked", "available": true,
+  "attrs": {"batteryLevel": 100, "tamperStatus": "ok"},
+  "health": {"ok": true, "issues": []},
+  "usedBy": ["auto_1"], "updatedAt": 1790000000.0}]
+```
+
+`health.issues` are short strings ("Battery 15%", "Tamper reported", "Offline").
+
+`POST /api/entities/{id}/command` `{"command": "lock"}` → `{"ok": true}` or 409 `{"ok": false, "error": "…"}`.
+
+Live socket (`/api/ws`): `{"type": "entity", "entity": Entity}` whenever a device changes or first appears;
+`{"type": "entity-removed", "id"}` when one is gone (its connection removed, or no longer has it — a
+connection restarting after its settings are saved only counts once its devices haven't come back within
+90 s, or an admin removed it). Clients drop it from their list.
+`PATCH /api/entities/{id}` `{"name": "Laundry Door"}` — rename (stored as an override).
+Each entity also has `liveStatus` (its "Live status while…" setting; `PUT /api/entities/{id}/live-status`) —
+see [Live statuses](#live-statuses).
+
+`POST /api/entities/remove` (admins) `{"ids": [...], "dryRun"?: true, "force"?: true}` — take offline or
+unavailable devices (`available: false`, or state `offline`) off the hub for good: each is dropped (live
+socket `entity-removed`), and the name and settings given to it in Newman go too ("Video from" links to it
+fall back to Automatic). Answers `{"ok": true, "removed": [ids], "devices": [{id, name, usedBy: [{type, id,
+name}]}]}`, where `usedBy` lists what still refers to it — `type` `automation`, `dashboard`, `phoneLayout`
+(`id` the account, `""` the household default) or `widget`. `dryRun` only reports. Nothing is removed and it
+answers 400 `{"error"}` when a device is unknown or online (*"Only offline or unavailable devices can be
+removed - Side Door is online"*), or 409 `{"error", "devices"}` when one is still in use and `force` isn't
+set. With `force`, those automations, dashboards and layouts keep the missing device (an automation lists
+*"An action refers to a device that no longer exists"* and its other parts carry on). If the device's
+connection reports it again later, it comes back as a new device, under the connection's own name.
+
+### Pictures, live video and video settings
+
+Every device also carries `still` (`api/entities/{id}/still.jpg?h=`), `alerts` and `live`
+(`api/entities/{id}/live?quality=sub|main`, a websocket relaying go2rtc's MSE stream) — each `null` when
+it has none — and `video`, its video settings (any device, any connection):
+
+```json
+"video": {"from": null, "source": null, "tileStream": null, "fullStream": "front_porch_live",
+          "streams": [{"id": "front_porch", "label": "front_porch"}, {"id": "front_porch_live", "label": "front_porch_live"},
+                      {"id": "front_porch_sub", "label": "front_porch_sub"}],
+          "ownLive": true, "showInCameras": false, "key": "||front_porch_live"}
+```
+
+(a Frigate camera); a doorbell from another connection showing that camera's video:
+`{"from": "frigate.camera_front_porch", "source": "frigate.camera_front_porch", "streams": [], "ownLive": false,
+"showInCameras": true, "key": "frigate.camera_front_porch||front_porch_live", …}`.
+
+What "Video from" offers is in `choices` — per connection, never cameras of its own connection:
+
+```json
+"choices": {"own": "Reolink (this device)",
+            "options": [{"integration": "frigate", "label": "Frigate", "device": "frigate.camera_doorbell",
+                         "cameras": [{"id": "frigate.camera_back_ac", "name": "Back Ac"}, …]}]}
+```
+
+`own` — the "its own video" choice (`"<connection> (no video)"` when it has no picture of its own). One
+option per other connection with video origins: `device` — its camera at the same network address
+(`Integration.video_address`: the host only, never credentials), picked automatically; `null` when there's
+none (pick one of `cameras`). `fromIntegration` — the connection of `from`. `derivedFrom` — the device whose
+video this one simply is (`Integration.video_derived_from`, e.g. a Frigate zone → its camera): it's never a
+source, has no `streams` or `choices` of its own and plays that device's chosen streams.
+
+* `streams` — what its own connection offers (`Integration.live_streams`; `[]` = no choice).
+  `tileStream` / `fullStream` — the stream `quality=sub` / `quality=main` plays; `null` = Automatic (the
+  connection's own choice — for Frigate `<cam>_sub` for tiles when it exists, else `<cam>`). A picked stream
+  the connection no longer offers counts as Automatic (it's kept, and used again if it comes back).
+* `from` — "Video from": the device whose live video and pictures it shows (`still`, `live` and wall alerts
+  follow it; its own events and `alerts` stay its own). `source` — that device while the link works
+  (it exists and has live video of its own), else `null`: then its own picture is used. Links aren't
+  followed further. `ownLive` — it has live video of its own (only those, and not derived ones, are sources).
+  A link to a derived device means its origin; one that comes back to the device itself means none (it's
+  dropped on the next save).
+* `showInCameras` — `false` leaves it out of every All Cameras list (its page, tiles, automations and
+  alerts are unchanged).
+* `key` — changes whenever what its video plays changes; open players reconnect.
+
+`PUT /api/entities/{id}/video` (admins) — any of `{"tileStream", "fullStream", "videoFrom"}` (an id, or
+`null` for Automatic / its own; a derived device means its origin) and `"showInCameras"` (`true` / `false`)
+→ the updated Entity. 400 with a reason for a stream it doesn't offer, a link to itself, to a device without
+live video, or one that would loop. Every screen gets `{"type": "entity"}` for the device and for any device showing its video.
+
+## Dashboards and wall tablets
+
+A dashboard: `{"id", "userId", "isDefault", "name", "theme", "christmas", "pages": [{"id", "name", "icon", "tiles": [Tile]}], "names": {entityId: "Show as"}, "home": Home, "tabNames": "current"}`
+on a 12 × 8 grid (`GET /api/dashboards/tiles` lists tile types and their settings; `greeting` and `todo`
+are the Today page's tiles). The `people` tile ("Family map", min 3 × 2, default 6 × 5) shows name chips
+over a map of the home area (people at one place share a bubble; anyone over ~50 km from Home gets an
+edge label instead); its settings: `people` (field type `"people"`: person ids, `[]` = everyone) limits
+who it shows, and `mapLook` (`"light"`, the default, or `"dark"`) is the map's look (Apple Maps' colour
+scheme, or OpenFreeMap's Positron / Fiord). It reads `GET /api/people` and `GET /api/places`, asks for a
+fresh location with `POST /api/people/{id}/refresh` when a person is tapped, and updates from the
+socket's `person` messages. `home` is always filled in (defaults shown):
+
+```json
+"home": {"page": "overview",
+         "morning": {"page": "today",
+                     "weekdays": {"from": "06:00", "to": "10:00"},
+                     "weekends": {"from": "07:00", "to": "12:00"}},
+         "idleMinutes": 2}
+```
+
+`page` defaults to the first page; `morning` is `null` when off (or when its page is deleted); a window
+must end after it starts (400 otherwise); `idleMinutes` 0 = never go back. The wall tablet decides by
+its own clock.
+
+`tabNames` (always filled in): how the wall's page tabs are labelled - `"current"` (the default: every
+tab an icon, only the current one named) or `"fit"` (every name when they all fit, otherwise the same as
+`"current"`); anything else saves as `"current"`.
+
+`theme` (always filled in): the wall's look - `"midnight"` (the default; dashboards saved as
+`"night-glass"` are this), `"glass"` or `"christmas"`; anything else is a 400. `christmas` (always
+filled in, defaults shown):
+
+```json
+"christmas": {"snow": true, "greeting": "Merry Christmas", "characters": "builtin", "place": "clock",
+              "pictures": [], "season": null}
+```
+
+`characters`: `"builtin"` | `"pictures"` | `"off"`; `place`: `"clock"` (the top bar, or the dimmed
+screen when the bar has no room) | `"background"` | `"off"`; `greeting` up to 40 characters (`""` = none);
+`season`: `null` (off) or `{"from": "MM-DD", "to": "MM-DD"}` - every year, inclusive, may wrap over New
+Year (`{}` = December 1 to January 6); in it the wall shows Christmas whatever `theme` says. Bad values
+are a 400. `pictures` (ids) can't be set by a `PUT` - only by:
+
+`POST /api/dashboards/{id}/pictures` (body: the picture itself, `image/png` or `image/webp`, up to 2 MB;
+415 / 413 / 400 otherwise; 409 when it already has 3) → `{"pictures": [id]}`; shrunk to at most 600 px,
+kept with its transparency as a PNG under `data/wall-pictures/` (and in backups) ·
+`DELETE /api/dashboards/{id}/pictures/{pic}` → `{"pictures": [...]}` ·
+`GET /api/dashboards/{id}/pictures/{pic}` → the PNG (the dashboard's owner - the wall tablet - or an
+admin; `?token=` works for `<img>`; cached for good, the id is a hash of the picture). Each change sends
+`{"type": "dashboard"}`; removing the dashboard removes its pictures.
+
+The `climate` tile ("Climate glance", min 3 × 4, default 5 × 8, `wallOnly`: not offered for phone
+layouts) has `entity` (field filter `"temperature-setting"`: a number command in °C / °F), `rooms`
+(filter `"temperature"`: a °C / °F reading that is the device's own state, or any temperature a
+`climate`-category device reports - not a server's CPU or a disk), `outside` (filter `"forecast"`) and
+`page` (field type `"page"`: one of the dashboard's page ids, or none = the thermostat's dial).
+
+`GET /api/dashboards[?all=1]` · `GET /api/dashboards/current` (what this device shows) ·
+`POST /api/dashboards` (no `pages` = a starter laid out from the house's devices; `{"copyFrom": id, "name"?,
+"userId"?}` = a duplicate of one of yours — an admin: anyone's — with everything on it, its tab names, Christmas
+settings and its own copies of the Christmas pictures; a plain create never takes `christmas.pictures`) · `GET|PUT|DELETE /api/dashboards/{id}` ·
+`POST /api/dashboards/{id}/default` · `GET /api/dashboards/today-page` → a ready-made Today page
+(greeting, To do, agenda, weather) for the editor to add. Each tile type in `GET /api/dashboards/tiles`
+also has `phone: [w, h]`, its starting size on a phone layout.
+
+## Phone layouts
+
+How the phone apps arrange their pages: a **household default**, and optionally a layout of a
+person's own (everyone else uses the default; a reset goes back to it). Wall tablets' accounts have
+none (403 / 404).
+
+```
+Layout = {"today": bool,                  // the Today card at the top of the first tab
+          "pages": [{"id", "name", "icon", "tab": bool,
+                     "tiles": [{"id", "type", "x": 0-3, "y": >=0, "w": 1-4, "h": 1-8,
+                                "config": {...}, "textSize": number}]}]}   // textSize only when set
+```
+
+- **Grid:** 4 columns of square cells (a row is as tall as a column is wide); a page scrolls down.
+  Tiles never overlap. Types and settings are the dashboard tiles' (`GET /api/dashboards/tiles`);
+  `textSize` mirrors `config.textSize` (either may be sent).
+- **Wall-only tiles:** types marked `wallOnly` in the catalogue (Music, Recipes, Climate glance) have
+  no `phone` size and are never in a phone layout: a layout saved before they were marked so is sent
+  without them (the rows only they covered close up, nothing else moves), and a `PUT` that holds them
+  saves without them rather than failing.
+- **Tabs:** pages with `tab: true`, in order — at least 1, at most 3; People and Alerts are the
+  phone's last two tabs. Other pages open from links at the bottom of the first tab (a dial tile also
+  opens the non-tab page holding a dial for the same device, as before).
+- **Limits** (400 with `{"error", "errors"}`): 8 pages, 48 tiles a page, `y + h` ≤ 400, unknown tile
+  types, tiles off the 4 columns or overlapping, more than 3 tabs, no tab.
+- **Live:** when someone's effective layout changes (theirs is saved or reset, or the default changes
+  while they use it), their open apps and pages get `{"type": "dashboard", "userId", "phoneLayout": true}`
+  on the socket; apps reload `GET /api/phone-layout`. Nobody else is sent anything.
+
+The first household default (made the first time it's needed, then kept) is laid out from the
+first admin's default wall dashboard by the rules the apps used before: a Today page (only greeting /
+To do / today / calendar / weather tiles) becomes `today: true`; the next 3 pages are tabs, up to 5
+more are links; tiles flow in dashboard order, the greeting and wall-only tiles dropped; half-width tiles pair up. Sizes:
+
+| Wall tile | Phone (w × h) |
+|---|---|
+| dial — wall ≥ 5 × 5 / smaller | 4 × 4 / 2 × 2 |
+| weather — wall ≥ 6 wide or "next hours" / else | 4 × 3 (one-line look: 4 × 1) / 2 × 2 |
+| devices, big-tiles look | one 1-row card per device (a devices tile of that one device): 4 × 1 when the wall tile is ≥ 6 wide, else 2 × 1 |
+| devices list, readings | 4 × (1 + ⌈0.6 × count⌉), 2–6 rows |
+| camera, alerts, people | 4 × 3 |
+| calendar, today, todo | 4 × 4 |
+| attention, house mode | 4 × 2 |
+
+`GET /api/phone-layout` (any signed-in account but a wall tablet) → `{"source": "default"|"own", "layout": Layout}`
+— what this phone shows.
+
+`GET /api/phone-layouts/me` · `PUT /api/phone-layouts/me` (a Layout, or `{"layout": Layout}`; it
+becomes the person's own) · `POST /api/phone-layouts/me/reset` (back to the default) → `{"userId",
+"name", "source", "layout", "updatedAt"}`. Family and guests too, for their own only.
+
+Admins: `GET /api/phone-layouts` → `{"default": Layout, "people": [{"userId", "name", "role", "source",
+"updatedAt"}]}` (accounts that aren't wall tablets or disabled) · `GET|PUT /api/phone-layouts/default`
+→ `{"layout", "updatedAt", "using": count of people on it}` · `GET|PUT /api/phone-layouts/{userId}`,
+`POST /api/phone-layouts/{userId}/reset` (anyone's, same reply as `/me`) · `POST
+/api/phone-layouts/reset-all` → `{"ok": true, "reset": n}`. Swapping devices (`POST
+/api/entities/replace`) moves phone layouts too (`phoneLayouts` in its counts).
+
+`POST /api/tablet/battery` — a wall tablet's own battery, from its signed-in session (cookie or Bearer;
+any role, wall tablets included):
+
+```json
+{"level": 54, "charging": true, "plugged": "ac", "temperatureC": 31.5, "voltageMv": 4012,
+ "screen": "off", "background": true, "nextReportIn": 900, "dozeExempt": false}
+```
+
+`level` 0–100, `charging` bool, `plugged` `ac|usb|wireless|none`, `temperatureC` / `voltageMv` number or
+null; optional `screen` `on|off` (default `on`) and `background` bool (default false: the tablet keeps
+reporting with its screen off - the Android wall does while its check-in alarm is armed, every 15 minutes
+even in Doze; an iPad can't), `nextReportIn` (seconds until its next check-in at the latest, 0–86400, or
+null) and `dozeExempt` bool (Android lets it ignore battery optimisation). → 204; 400 for a
+bad body; 401 signed out. The account becomes one device `tablets.<account id>` (kind `tablet`: state
+`charging` / `battery`; attrs `batteryLevel`, `charging`, `plugged`, `temperature` °C, `voltage` V,
+`screen`, `backgroundReports`, `batteryStale`, `nextReportIn`, `nextReportAt` (epoch s), `dozeExempt`).
+While `screen` is `off` its `stateLabel` is "Screen off"
+(the kind's `notes` in `/api/meta`: `[{"attr": "screen", "value": "off", "label": "Screen off"}]` - shown
+instead of the state's label while an attr has that value; the state itself stays). Offline after 15
+minutes without a report with the screen on, 35 minutes after a screen-off report with `background` (or
+`nextReportIn` + 20 minutes when that's later, up to 12 hours), 12
+hours after one without; `batteryStale` is true once a screen-off tablet without background reports has
+been quiet 15 minutes (its level is unknown: smart charging leaves it alone). While such a tablet is
+asleep (screen off, background, not overdue) its music player stays available with `screen` `off`
+("Screen off") instead of going offline when its page stops reporting.
+
+`GET /api/charging/{account id}` (admin) — a wall tablet account's **smart charging**; 404 for an
+account that isn't a wall tablet's:
+
+```json
+{"enabled": true, "startBelow": 20, "stopAbove": 80, "charger": "matter.86795ff2c4eb54d6_1_onoff",
+ "learned": true, "learnedAt": 1791460800.0, "chargerName": "Smart Plug - Newman Kitchen",
+ "device": "tablets.u_ab12", "criticalLevel": 10,
+ "choices": [{"id": "matter.86795ff2c4eb54d6_1_onoff", "name": "Smart Plug - Newman Kitchen",
+              "group": "Switches & plugs", "available": true}]}
+```
+
+`charger` is a device id or null; `learned` / `learnedAt` (epoch s) say the hub learned it (false / null
+when picked by hand); `device` is the tablet's battery device (null until it reports); `choices` are the
+devices that can be the charger — any whose kind has plain `turn_on` / `turn_off` commands (kinds.py),
+grouped by the kind's plural name. `PATCH /api/charging/{account id}` (admin) with any of `enabled`
+(bool), `startBelow` / `stopAbove` (whole %, 5–95, start lower than stop), `charger` (such a device id,
+or null) → the same object; 400 with the problems. Kept in the settings as `smartCharging`
+(`{account id: {...}}`). The hub acts only when the battery crosses a level (and once when turned on or
+after a restart): below `startBelow` → `turn_on` the charger, above `stopAbove` → `turn_off`, by
+"Smart charging" (activity kind `automation`, `entityId` the tablet). It learns the charger when exactly
+one such device switches and, within 10 s, exactly one tablet's `charging` / `plugged` changes the
+same way; it never switches anything to find out. Below `criticalLevel` and not charging, or a charger
+not responding for 90 s when it should turn on: one push to every admin (kind `followup`, title
+"Smart charging"), at most hourly per tablet and again once it has charged.
+
+`chosenBy` is `"user"` (picked by hand, or the answer below), `"learned"` or null. A charger picked by
+someone is `learned: true` once the learning sees it work ("Confirmed: charges from …").
+
+**The wrong plug.** When the hub has turned the charger on and the tablet, still reporting, hasn't started
+charging within 60 s, it asks once per attempt: `question` in the object above,
+`{"id", "text": "Kitchen tablet didn't start charging from Hall plug. Which plug is it on?", "at", "charger",
+"choices": [{"id", "name", "icon"}]}` (null otherwise; at most 3 other switchable devices that respond — the
+tablet's `area` first, then ones that report `power`, then ones that are off), plus a push to every admin with
+those as buttons (`charger:<device id>` and `charger_none` "None of these"; subject `charging:<account id>:<question
+id>`, pressed through `POST /api/public/actions`; their category is in `GET /api/push/categories` while the question
+is open). Nothing else is switched to find out. `POST /api/charging/{account id}/answer` (admin)
+`{"question": id, "plug": one of its choices' ids | null}` → the settings object: the plug becomes the charger
+(`learned` false, `chosenBy` "user") and is turned on; null leaves the charger as it is. 409 when that question
+is no longer open or the plug isn't one of its choices. A new attempt (the next time it's turned on) may ask again.
+
+## Phone widgets and quick tiles
+
+For the phones' home-screen widgets (iOS WidgetKit, Android Glance) and Android's Quick Settings tiles
+(widgets.py). Any signed-in account; what a device is and does comes from kinds.py alone.
+
+A device is **widget-showable** when its kind has a one-tap command (no value needed), reports a reading
+(a kind whose state is a number, or one of its `summary` properties is a number), or has more than one
+state — cameras and camera zones excepted (a picture, not a state). Remotes, webhooks and the like aren't.
+
+`GET /api/widgets/devices` — every widget-showable device, for the pickers, sorted by room (none last),
+then name:
+
+```json
+{"devices": [{"id": "lutron.device_5", "name": "Porch", "kind": "light", "kindName": "Lights",
+              "area": "Outside", "icon": "light", "controllable": true}]}
+```
+
+`icon` is the device's own `attrs.icon` when it has one, else its kind id (apps map kinds to icons).
+`controllable` = it has one-tap commands. `kindName` (the kind's plural) is for grouping by type.
+
+`GET /api/widgets/state?ids=a,b,c` — those devices now, in that order (at most 64; unknown or no longer
+showable ones are left out; without `ids`, every showable device):
+
+```json
+{"devices": [{"id": "ring.f0b7…", "name": "Side Door", "kind": "lock", "state": "LOCKED",
+              "stateLabel": "Locked", "available": true, "active": false, "icon": "lock", "area": "Mudroom",
+              "actions": [{"command": "unlock", "label": "Unlock", "sensitive": true, "primary": true},
+                          {"command": "lock", "label": "Lock", "sensitive": false, "primary": false}],
+              "reading": null}]}
+```
+
+- `actions` — the kind's one-tap commands. What a tap does **now** comes first with `"primary": true`
+  (none is primary when a tap has nothing sensible to do): the on/off pair toggles when the kind has
+  exactly two plain, non-sensitive commands and one makes it active; otherwise the first command whose
+  `confirmsTo` isn't the current state; a single command (a button's Press) always. The same rule as the
+  apps' own tiles (`HubModel.tapAction`, web `model.js`). `sensitive` is the command's own flag (unlock,
+  open, disarm…) — apps may ask before running one.
+- `reading` — `{"value", "unit"}` exactly as reported (never rounded): the state itself for kinds whose
+  state is a number (temperature, sensor), else the first of the kind's `summary` properties that is a
+  number (a thermostat's current temperature, a server's CPU); `null` otherwise.
+- `active` — in the kind's `activeState` (on, unlocked, open…); apps highlight it.
+
+Run an action with the usual `POST /api/entities/{id}/command` `{"command": "unlock"}` (wall tablets'
+PIN rule for sensitive commands applies as everywhere; phones aren't asked).
+
+`POST /api/widgets/push-token` `{"token": "<hex>"|"<fcm token>"|null, "kind": "ios-widget"|"android",
+"deviceId": "…", "apnsEnvironment"?: "sandbox"|"production"}` → `{"ok": true, "kept": true|false}`; 400
+for a bad kind / missing deviceId / a non-hex iOS token. One token per phone and kind (re-registering
+replaces it; a token that moved to another install leaves the old one); a null or empty token forgets
+it. The APNs environment defaults to the one the phone registered with in `/api/devices/register`.
+Kept with the sign-in it came from: signing out, revoking that device or removing the account drops it
+(and a token whose sign-in has expired is never pushed to). `DELETE /api/phones/{deviceId}` drops it too.
+
+**Reload pushes.** When a widget-showable device changes in a way a widget shows (name, state, state
+label, availability, `active`, actions or reading — not a timestamp or an unshown attribute), each live
+token gets a reload push, **at most one per 30 s per token**: a change inside that window goes out when
+it ends, folded into one. Once an account's widgets have asked for particular devices
+(`GET /api/widgets/state?ids=`, remembered for 3 days), only changes to those count for that account's
+phones; until then any showable device's change does (e.g. after a hub restart).
+- iOS (`ios-widget`): APNs `apns-push-type: widgets`, topic `<APNS_BUNDLE_ID>.push-type.widgets`,
+  priority 5, payload `{"aps": {"content-changed": true}}` — WidgetKit reloads the widgets. Skipped when
+  APNs isn't set up. A dead token (410 / BadDeviceToken) is dropped.
+- Android (`android`): an FCM data message `{"type": "widgets"}` — skipped when FCM isn't set up (the
+  Android widgets also refresh on a tap, from the app's live connection, and every 15 minutes).
+
+## Live statuses
+
+A live status shows devices on phones while they matter — an iPhone **Live Activity** (Lock Screen,
+Dynamic Island), an **ongoing notification** on Android: "Garage Door · Open · 12 min" with a Close button.
+Any device can have one; what it shows (labels, icons, buttons) comes from its kind (kinds.py), never
+from a list of kinds. Two things start one:
+
+- the device's own **"Live status while…"** setting: while it's in one of the chosen states it shows to
+  the chosen people; when it leaves them (moments in between — a door moving — don't count) it ends;
+- an automation's **"Show a live status"** (see [Automations](#automations) → Live status).
+
+**A device's setting.** Every entity carries `"liveStatus"`: `{"enabled", "states": [state ids],
+"recipients": null | [person ids], "choices": [{"id", "label"}], "showing": bool}` — `null` when its kind
+has fewer than two states to pick (a reading). `choices` are the kind's states without its in-between
+ones; the default `states` is the kind's `activeState` (else every state but its `secureState`).
+`PUT /api/entities/{id}/live-status` (admins) `{"enabled"?, "states"?, "recipients"?}` → the entity; 400 for
+a state the kind doesn't have, no state, every state (it would never end), an empty recipients list or
+someone not in the household. `recipients: null` = everyone. The screens hear the change as an `entity`
+message.
+
+**What each person sees.** Their live statuses, newest first; **at most 5**: with more, the newest 4 stay
+their own and the rest share one **"N more"** status (slot `more`) listing them, updated as they change.
+Each entry: `{"key", "slot", "title", "contentState"}` — `slot` is the live status (`device:<id>`,
+`automation:<id>`, `more`), `key` the activity's own id: `<slot>.<start epoch>` plus `.<n>` once it has
+been restarted (iPhones end an activity after 8 hours: one still needed after **7.5 hours** is ended and
+started afresh, same `since`).
+
+`contentState` (also the iPhone activity's content-state; kept under 3.5 KB):
+
+```json
+{"title": "Garage Door", "subtitle": "Open", "since": 1791546327, "active": true, "more": 0,
+ "devices": [{"id": "ring.garage", "name": "Garage Door", "icon": "garage", "stateLabel": "Open", "active": true,
+              "actions": [{"command": "close", "label": "Close", "sensitive": false}]}]}
+```
+
+- `since` — when it started (epoch seconds); apps count the time themselves (the hub never pushes just
+  for the clock).
+- `devices[].active` — in the state it's shown for; `icon` — the device's own icon, else its kind;
+  `actions` — up to 2 one-tap commands that would change it from here (what a tap does first), each run
+  with `POST /api/entities/{id}/command` `{"command"}`; `sensitive` ones (open, unlock, disarm) must be
+  confirmed on the phone (Face ID / fingerprint / screen lock) first.
+- `more` — how many beyond the `devices` listed: **`devices.length + more`** is everything it's about
+  (rows that don't fit the size limit are counted here; an "N more" status lists up to 6).
+- An **ended** one's final state: `active: false`, no actions, its devices as they are now; really over
+  and about one device, the title says it: "Garage Door closed".
+
+`GET /api/live/current[?deviceId=]` → `{"attributesType": "NewmanLiveAttributes", "max": 5, "activities":
+[entry + "attributes": {"key", "title"}]}` — the signed-in person's (or, with `deviceId`, that phone's
+person's) live statuses now. Apps call it when they open: an iPhone starts any it isn't showing (and ends
+ones not listed), Android posts / cancels its notifications.
+
+**Live socket.** `{"type": "live", "activities": [entries], "ended": [entries + "reason": "ended" |
+"moved", "dismissAt": epoch]}` to the person's open sockets whenever their list changes (the whole list;
+also on connect when there's anything). `moved` = it goes on elsewhere (into / out of "N more", or
+restarted): take it away now; `ended` = really over: show the final state until `dismissAt` (2 minutes).
+
+**Android without a live socket.** When FCM is set up, each Android phone of the person gets one data
+message per change: `{"type": "live", "event": "start" | "update" | "end", "key", "slot", "title",
+"state": "<contentState JSON>", "dismissAt"?: "<epoch>"}` (an `end` whose `dismissAt` has passed: remove it
+now). Test phones get the same in `/api/test/outbox` (`"kind": "live"`).
+
+### iPhone: ActivityKit tokens and pushes
+
+The activity type is **`NewmanLiveAttributes`**: attributes `{"key": String, "title": String}`,
+content-state as above.
+
+`POST /api/live/tokens` (any signed-in account, not wall tablets):
+- `{"kind": "push-to-start", "token": "<hex>", "deviceId": "…", "apnsEnvironment"?: "sandbox"|"production"}` —
+  the phone's push-to-start token (iOS 17.2+, `Activity<NewmanLiveAttributes>.pushToStartTokenUpdates`).
+- `{"kind": "update", "activityKey": "<attributes.key>", "token": "<hex>", "deviceId": "…", "apnsEnvironment"?}` —
+  each running activity's push token (`activity.pushTokenUpdates`), whether the hub started it or the app did.
+→ `{"ok": true}`; 400 for another kind, a missing deviceId / activityKey, a non-hex token. One row per phone,
+kind and activity; the same token elsewhere is dropped. The APNs environment defaults to the one the phone
+registered with in `/api/devices/register`. Tokens are tied to the sign-in they came with (like widget push
+tokens): signing out, revoking the device or removing the account drops them; `DELETE /api/phones/{deviceId}`
+too. `DELETE /api/live/tokens` `{"kind", "deviceId", "activityKey"?}` (or as query parameters) forgets one —
+send it when an activity ends on the phone (dismissed there: the hub doesn't start it again; it starts a new one
+only for a new key). An activity token for a key the hub doesn't want (any more) is answered with an `end` at once.
+
+Pushes: `apns-push-type: liveactivity`, topic `<APNS_BUNDLE_ID>.push-type.liveactivity`, priority 10
+(state changes only; nothing is pushed just because time passes):
+- **start** → the push-to-start token: `{"aps": {"timestamp": <now>, "event": "start", "attributes-type":
+  "NewmanLiveAttributes", "attributes": {"key", "title"}, "content-state": {…}, "alert": {"title", "body"}}}`.
+  No push-to-start token yet (the app never opened): nothing is sent; the app starts it from
+  `GET /api/live/current` when it opens.
+- **update** → the activity's token: `{"aps": {"timestamp", "event": "update", "content-state": {…}}}`.
+- **end** → the activity's token: `{"aps": {"timestamp", "event": "end", "content-state": <final>,
+  "dismissal-date": <now + 120>}}` — `dismissal-date` = now for one that only moved (or was restarted).
+Ends go before starts, so a phone never holds more than 5. A dead token (410 / BadDeviceToken) is dropped;
+another failure waits 5 minutes before that push is tried again. What each phone was last sent is kept, so
+a hub restart neither starts an activity twice nor forgets to end one (after a restart it waits 20 s for
+devices to report in first).
+
+## Music (wall tablets)
+
+With the Navidrome connection, each wall tablet account gets one device `<connection id>.<account id>`
+(kind `music_player`: state `playing` / `paused` / `idle`; attrs `volume`, `title`, `artist`, `album`,
+`cover`, `position` / `duration` (s), `queueLength`, `screen` `on|off`). It's available while the wall page
+reports (at least every minute while open); once the page goes quiet it's offline after 3 minutes - unless
+its tablet is asleep (screen off, still checking in its battery, see `/api/tablet/battery`): then it stays
+available with `screen` `off` (`stateLabel` "Screen off", the kind's `notes`), and anything but `pause`,
+`stop` and `set_volume` is refused with “That wall tablet's screen is off right now”. Its commands go through `POST
+/api/entities/{id}/command` like any device's: `play`, `pause`, `stop`, `next`, `previous`, `set_volume`
+(0–100), `volume_up`, `volume_down`, `play_query` and `shuffle` (value: words — “Jump by Van Halen”, an
+artist, “the album 1984”, “my Dinner playlist”; 409 “I couldn't find …”). The hub keeps the queue and
+pushes `{"type": "music", "player": Player, "seek"?: seconds}` to **that account's** sockets only.
+
+`Player` = `{"entityId", "state", "volume", "position", "index", "queueLength", "seq", "track": null |
+{"id", "title", "artist", "album", "duration", "coverArt", "stream": "api/music/stream/<id>", "cover":
+"api/music/cover/<id>" | null}, "upNext": [{"title", "artist"}]}` (`seq` grows with every change — a
+client ignores an older one).
+
+An automation action with `"for"` on a player (“play … for 5 minutes”) snapshots it first (queue, song,
+position, state, volume) and, when the time is up, restores all of it and pushes `{"type": "music", "player",
+"seek": <that position>}` — unless the music was changed meanwhile (other music put on, paused or stopped
+by someone), when it is left alone. Either way the run's `log` gets the line (“Put back: Van Halen – Panama
+at 1:23, playing (volume 40)” / “Left the music alone: it was changed during the 5 minutes”). The pending
+put-back survives a restart. (Integrations: `snapshot` / `marker` / `restore` on the Integration contract;
+devices without them get the generic put-back by state.)
+
+- `GET /api/music` → `{"available", "status", "detail", "player"}`; from a wall tablet session it makes
+  that tablet's player the first time and counts as a report. `available: false` without the connection.
+- `POST /api/music/report` (wall tablet) `{"state"?: "playing|paused|idle|ended|error", "position"?, "trackId"?,
+  "byUser"?}` → Player. `ended` / `error` for the current track moves to the next one (the end of the queue
+  → `idle`); an empty body = “still here” (the page sends one every minute; offline after 3 minutes).
+- `POST /api/music/play` (wall tablet) `{"albumId" | "playlistId" | "songId" | "artistId", "shuffle"?}` or
+  `{"query", "shuffle"?}` → `{"ok", "say", "player"}`. A song plays and then the rest of its album; an artist
+  plays shuffled. An album or playlist can start part way: `"startSongId"` (or `"index"`, from 0) — the whole
+  of it is queued, playing from that song. 400 bad ids, 404 nothing found / not on it, 502 Navidrome didn't answer.
+- `GET /api/music/browse` → `{"albums": [Album] (recently played, else newest), "playlists": [Playlist]}`.
+- `GET /api/music/albums?offset=` → `{"albums": [Album] (A–Z, 60 at a time), "more"}`.
+- `GET /api/music/albums/{id}` → `{"album": Album + {"duration" (s, all songs), "artistId"}, "songs": [Song +
+  {"track", "disc"}]}` in album order (404 unknown) — the picker's album page.
+- `GET /api/music/playlists/{id}` → `{"playlist": Playlist + {"duration"}, "songs": [Song + {"track", "disc"}]}`
+  (404 unknown).
+- `GET /api/music/artists` → `{"index": [{"letter", "artists": [{"id", "name", "albums", "cover"}]}]}` — every
+  artist, grouped by letter as Navidrome's `getArtists` groups them (its ignored articles, `#` for the rest);
+  kept on the hub for 10 minutes.
+- `GET /api/music/artists/{id}` → `{"artist": {"id", "name", "albums", "cover"}, "albums": [Album]}` (404
+  unknown). Shuffle all their songs with `POST /api/music/play {"artistId"}`.
+- `GET /api/music/search?q=` → `{"artists": [{"id", "name", "albums", "cover"}], "albums": [Album], "songs":
+  [Song], "playlists": [Playlist]}` (up to 6 artists, 12 albums, 20 songs, 6 playlists; `&full=1` — the
+  keyboard's Search key — up to 30, 50, 100 and 60).
+  `Album` = `{"id", "name", "artist", "year", "songs", "cover"}`, `Playlist` = `{"id", "name", "songs", "cover"}`,
+  `Song` = `{"id", "title", "artist", "album", "duration", "cover"}`.
+- `GET /api/music/lyrics/{id}` → `{"source": "navidrome" | "lrclib" | null, "synced": bool, "lines": [{"t":
+  seconds, "text"}], "text": "plain text"}` — Navidrome's (OpenSubsonic `getLyricsBySongId`, then `getLyrics`),
+  else LRCLIB's when the connection's `lrclib` setting is on (default; only artist, title, album and length are
+  sent). `synced` → `lines` sorted by time (LRC parsed on the hub; a blank `text` is a pause); otherwise `text`.
+  `source: null` = none found. Kept per song (found: 30 days; none found: 6 hours).
+- `GET /api/music/stream/{id}` — the song's audio as Navidrome sends it (type, length, `Range` → 206); the hub
+  adds the token, which never reaches the client. `GET /api/music/cover/{id}?size=` — its cover (image).
+  Both also accept `?token=` (the wall tablet's), for an `<audio>` / `<img>` without the cookie.
+
+All but `stream` / `cover` answer 503 while Navidrome isn't connected and 404 without the connection.
+Voice understands music requests on a tablet that has a player (see Voice).
+
+## Recipes and cook mode (wall tablets)
+
+With the Forkast connection (read only; it keeps only Forkast's sign-in token) the hub keeps the recipe
+list and one device `<connection id>.recipes` (kind `recipe_book`: state `ready`; attr `recipes` = how
+many). Each account (a wall tablet) has its own **cook mode** on the hub — the open recipe, its step and
+servings — pushed as `{"type": "cook", "cook": Cook | null}` to **that account's** sockets whenever voice
+or a touch changes it; it closes itself after 3 hours untouched.
+
+`Cook` = `{"recipe": {"id", "title", "image": "api/recipes/<id>/image" | null, "baseServings" | null,
+"prepMinutes", "cookMinutes", "totalMinutes"}, "servings", "servingsText" ("1½"), "scaled": bool, "factor",
+"ingredients": [{"amount": "1½ cups" | "" (none given), "name", "notes"}], "steps": ["…"], "step" (0-based,
+the current one), "read": bool (a step was read or picked), "closesIn": seconds}` — amounts already scaled
+and formatted by the hub (exact amounts everywhere: a fraction glyph only when the value is exactly ½, ⅓ etc., otherwise the exact decimal,
+normalised unit names).
+
+- `GET /api/recipes?q=&refresh=1` → `{"available" (connected), "status", "detail", "recipes": [{"id", "title",
+  "image", "totalMinutes", "steps", "servings"}]}` (A–Z; `q` = words the title contains; `refresh=1` reads the
+  list from Forkast first). `available: false, status: null` without the connection.
+- `GET /api/recipes/{id}/image` — the recipe's picture through the hub (also `?token=`); 404 without one.
+- `GET /api/cook` → `{"cook": Cook | null}` for the signed-in account.
+- `POST /api/cook` `{"recipeId"}` → `{"cook"}` — open it (replaces any open recipe). 404 not in Forkast,
+  503 not connected / needs signing in again.
+- `PATCH /api/cook` `{"step"?: 0-based, "servings"?: number > 0}` → `{"cook"}`; 404 when nothing is open.
+- `DELETE /api/cook` → `{"cook": null}`.
+
+A wall tablet's session may use all of these (POST / PATCH / DELETE `api/cook` count as using the house).
+Voice works cook mode on the tablet that heard it (see Voice: `action.type` `cook`).
+
+## People and phones
+
+A **person** receives notifications; a **phone** is one registered app install.
+
+`GET /api/people` → `[Person]` — the household (never guests; a guest gets `[]`), with where each one is
+for those the requester may see (see [Where people are](#where-people-are)):
+
+```json
+[{"id": "p_dante", "name": "Dante", "sharing": true, "home": false, "place": "School", "distanceM": 2140.5,
+  "lat": 43.668, "lon": -79.395, "accuracyM": 12.0, "at": 1790000000.0, "live": false,
+  "color": "#3FAE7A", "photo": "/api/people/p_dante/photo?v=1a2b3c4d5e6f",
+  "phones": [Phone], "automations": ["auto_1"]}]
+```
+
+`color` is always set: someone who never picked one gets the first colour of the hub's palette nobody
+else has (kept from then on, so it's stable). `photo` is null without a photo; its `?v=` changes with
+the picture, so it can be cached for as long as you like. Both go to everyone who sees the names (not
+gated by location sharing). `live` is always `false` now (kept for older apps).
+
+`POST /api/people` `{"name"}` → Person · `PATCH /api/people/{id}` `{"name"}` · `DELETE /api/people/{id}` (also deletes their photo)
+
+**Colour and photo**
+
+- `PUT /api/me/profile` `{"color": "#RRGGBB"}` → 200 Person (your own person; 400 for anything that
+  isn't `#` + 6 hex digits; 404 for an account with no person, e.g. a guest). Admins:
+  `PUT /api/people/{id}/profile` `{"color"}` for anyone.
+- `PUT /api/me/photo` — the body is the picture itself (`Content-Type: image/jpeg|image/png|image/webp`,
+  up to 3 MB) → 200 `{"photo": url}`. The hub crops its centre square, shrinks it to 256 px and keeps a
+  JPEG under the data folder (`people/`, in backups). 415 other content types · 413 over 3 MB · 400 not
+  a readable picture. Admins: `PUT /api/people/{id}/photo` (same body). `DELETE /api/me/photo` /
+  `DELETE /api/people/{id}/photo` (admins) → `{"photo": null}`.
+- `GET /api/people/{id}/photo` → `image/jpeg`, `Cache-Control: private, max-age=31536000, immutable`
+  (signed in, not guests; 404 without a photo). Like music covers it also takes `?token=` for an
+  `<img>` that can't send a header.
+- Wall-tablet sessions can't change profiles (403).
+- Live socket: a `person` message goes to every signed-in socket except guests' when a colour or photo
+  changes (with what each may see of their location).
+
+Phone: `{"deviceId", "name", "platform": "ios|android|test", "personId": "p_chris"|null, "registeredAt", "lastSeen"}`
+`GET /api/phones` · `PATCH /api/phones/{deviceId}` `{"personId", "name"}` · `DELETE /api/phones/{deviceId}`
+
+`POST /api/devices/register` (app launch):
+`{token, platform, deviceId, friendlyName?, deviceModel?, apnsEnvironment?: "sandbox", personId?}` →
+`{"ok": true, "personId": "p_chris"|null}`. An unassigned phone gets nothing until it is given a person
+(the app asks "Who are you?" from `GET /api/people`; the dashboard can also assign it).
+
+## Where people are
+
+Each person's phone can share its location with the hub. Only the newest fix is kept (no history),
+on the hub only. Sharing is set per account by an admin:
+
+* `"choice"` (default) — the person switches it on in their app (off until they do); the household sees them.
+* `"required"` — always on, they can't turn it off; the admin picks who sees them (`visibleTo`, default everyone).
+* `"off"` — not shared; the app hides the switch.
+
+Guests and wall-tablet accounts are always `"off"` (they never share). Guests never see anyone's
+location (a guest isn't one of the people at all). A person always sees themselves.
+
+**Wall tablets** see people by their account's `seesPeople` ("Can see where people are", default
+`true`): with it on, a tablet sees everyone sharing by `"choice"`, and `"required"` people whose
+`visibleTo` is `null` or contains the tablet's **account id**; with it off, nobody. A household member's
+account signed in with a `tablet` session sees nobody (the wall shows the tablet's view, not theirs).
+
+**My sharing (the phone app)**
+
+`GET /api/me/location` →
+`{"mode": "off"|"choice"|"required", "enabled": bool, "requiredBy": "Chris"|null, "everySeconds": 300, "live": false}`
+
+`PUT /api/me/location` `{"enabled": bool}` → the same shape · 403 `{"error"}` when the mode is `"required"`
+(turning it off: `"Required by Chris"`) or `"off"` · 400 without a boolean `enabled`. Turning it off deletes the kept fix.
+
+`POST /api/me/location/report`
+`{"lat": 43.668, "lon": -79.395, "accuracyM": 12.0|null, "at": 1790000000.0, "speedMps": 1.2|null, "source": "background"|"refresh"|"app"}`
+(`"refresh"`: the one fix answering a locate push; older apps' `"live"` is still accepted)
+→ always `{"live": false, "everySeconds": 300}` (there's no live following any more) ·
+403 when this account isn't sharing · 400 bad body · 401 signed out. A fix older than the one kept is
+ignored (still 200); `at` in the future counts as now.
+
+`POST /api/me/location/push-token` `{"deviceId": "ios-…", "token": "<hex>"|null, "env": "sandbox"|"production"}`
+→ `{"ok": true, "kept": bool}` — the iPhone app's **location push token** (from
+`CLLocationManager.startMonitoringLocationPushes`, for its Location Push Service Extension), kept per
+phone with the APNs environment it was made in (anything but `"sandbox"` is production). `deviceId`
+must be this person's iPhone registered with `/api/devices/register` (404 otherwise — register first,
+then send it). A `null` / empty `token` forgets it. 403 when this account isn't sharing · 400 for a
+missing `deviceId` or a token that isn't hex. The hub also forgets a phone's token when the person
+stops sharing, when the phone is removed, and when APNs says it's dead (410 / `BadDeviceToken` /
+`Unregistered` / `DeviceTokenNotForTopic`).
+
+**Seeing people**
+
+`GET /api/people` (above): `sharing` false and every location field null (`home` false) for anyone the
+requester may not see or who isn't sharing. `home` = inside Home's radius; `place` = the smallest named
+place they're inside, else null; `distanceM` = metres from Home's centre (null until Home is placed).
+
+`POST /api/people/{id}/refresh` → 202 `{"requested": true, "nextAllowedAt": epoch}` — someone tapped that
+person: their phones get ONE **locate** push (below) and answer with one fix. At most once per 120 s per
+person, whoever asks: otherwise 429 `{"error", "nextAllowedAt": epoch}` (no push; the earlier one's
+answer is on its way). 403 when the requester can't see them, 404 unknown person. Wall tablets may post
+it too (their Family map) for anyone they can see.
+
+`POST /api/people/{id}/follow` → **410 Gone** `{"error"}` — live following was removed (it drained
+batteries); older apps get this and carry on.
+
+Live socket (`/api/ws`): `{"type": "person", "person": Person}` whenever someone's location, home /
+place, sharing, colour or photo changes — location changes only to sockets allowed to see them (plus,
+when someone stops sharing, to those who could see them a moment ago, with the location fields null).
+
+**Locate push** (one per refresh, to that person's phones):
+- iPhone with a location push token: APNs **location push** to that token — `apns-push-type: location`,
+  `apns-topic: ca.nimaste.newman.location-query` (`APNS_BUNDLE_ID` + `.location-query`),
+  `apns-priority: 10`, `apns-expiration` now + 60 s, payload `{}`, the token's own environment. It
+  starts the app's LocationPushExtension even when the app was swiped away; it posts one fix with
+  `source: "refresh"`. No repeats. If APNs refuses it, the silent push goes instead (and a dead token
+  is forgotten).
+- Other iPhones: silent APNs background push (`apns-push-type: background`, `apns-priority: 5`) with
+  `{"aps": {"content-available": 1}, "newman": {"type": "locate"}}`.
+- Android: an FCM data message `{"type": "locate"}` (skipped when FCM isn't configured).
+
+**Admin: per account** — `GET /api/users` includes
+`"location": {"mode", "enabled", "visibleTo": ["p_chris", "u_hallway", …]|null, "requiredBy": "Chris"|null}`
+and `"seesPeople": true|false` (wall-tablet accounts; `null` for every other role);
+`PATCH /api/users/{id}` `{"location": {"mode": "required", "visibleTo": ["p_chris", "u_hallway"]|null}}` (either key alone is
+fine; `null` = the whole household and every tablet with `seesPeople`; the list holds person ids and
+wall-tablet account ids — anything else is 400). Making it required records the admin as `requiredBy`; switching
+off (or a guest / tablet role) deletes the kept fix.
+`PATCH /api/users/{id}` `{"seesPeople": false}` — a wall tablet's "Can see where people are" (400 for a
+non-tablet account or a non-boolean). The tablet's open sockets get a `person` message for everyone
+straight away (filled in, or with the location fields null).
+`PATCH /api/users/{id}` `{"name"}` (up to 48 characters) — renames the account and the devices named after
+it (a wall tablet's battery and its “<name> music” player — device ids ending `.<account id>`) straight
+away, except a device someone renamed themselves.
+
+**Places**
+
+`GET /api/places` (any signed-in account except guests) →
+`[{"id": "home", "name": "Home", "lat", "lon", "radiusM": 150, "builtIn": true}, {"id": "pl_…", "name": "School", "lat", "lon", "radiusM": 250, "builtIn": false}]`
+
+Home is built in: its centre starts at the weather connection's latitude / longitude (null until there is
+one) with a 150 m radius. Admins: `POST /api/places` `{"name", "lat", "lon", "radiusM"}` ·
+`PUT /api/places/{id}` (any of those; `home` takes `lat`, `lon`, `radiusM`) · `DELETE /api/places/{id}`
+(not `home`: 400). Radius 25 m – 50 km; names up to 40 characters, not "Home".
+
+**Map data**
+
+`GET /api/map/token` (any signed-in account; signed out → 401) — which map to draw. With a MapKit JS key
+set up (`MAPKIT_KEY_ID`, see README): `{"provider": "apple", "token": "<JWT>", "expires": <epoch s>}` —
+an ES256 JWT, header `{"alg": "ES256", "kid": MAPKIT_KEY_ID, "typ": "JWT"}`, payload `{"iss": team id,
+"iat": now, "exp": now + 30 min}`, for MapKit JS's `authorizationCallback`. No `origin` claim: the hub is
+reached at several origins (LAN IP:port, the public name), so the token isn't tied to one. The same token
+is handed out until it has under 5 minutes left, then a new one is signed. Without a key, or if the key
+file can't be read (logged once): `{"provider": "openfreemap"}` — the maps then use the data below.
+`Cache-Control: no-store`.
+
+`GET /api/map/ofm/{path}` (any signed-in account) — OpenFreeMap's map data, fetched by the hub from
+`https://tiles.openfreemap.org/{path}` and kept in `map-tiles/ofm/`: styles (`styles/positron`,
+`styles/fiord`, … → JSON), the TileJSON (`planet`), vector tiles (`planet/<version>/{z}/{x}/{y}.pbf` →
+`application/x-protobuf`), fonts (`fonts/{fontstack}/{range}.pbf`) and sprites (`.json` / `.png`). Every
+link in a style or TileJSON is rewritten to `/api/map/ofm/…`, so a map loaded from the hub never contacts
+anyone else. Sent gzip-compressed when the browser accepts it (plain otherwise). Tiles, fonts and sprites
+are kept 30 days (browser `max-age` 7 days), styles and the TileJSON 6 hours (`max-age` 1 hour; a kept
+copy is served at once and refreshed behind, and still served if OpenFreeMap can't be reached). Only that
+one server: path segments are letters, digits and ` ._,@+-`, no `..`, known file types only — anything
+else is 404; OpenFreeMap unreachable with nothing kept → 502.
+
+## Automations
+
+```json
+{
+  "id": "auto_1",
+  "name": "Nightly lock check",
+  "enabled": true,
+  "trigger":   {"type": "time", "time": "21:00", "days": [0,1,2,3,4,5,6]},
+  "condition": {"mode": "any", "entities": ["ring.f0b7…", "ring.6c76…"]},
+  "notify": {
+    "enabled": true,
+    "title": "",
+    "buttons": ["lock:ring.f0b7…", "lock:ring.6c76…", "lock_all", "snooze:60", "dismiss"],
+    "onlyPending": true,
+    "timeSensitive": true
+  },
+  "autoCommand": {"enabled": false, "command": "lock"},
+  "recipients": ["p_chris", "p_marlina"],
+  "followUp": {"enabled": true, "message": "{person} locked {devices}.", "remindMinutes": 30}
+}
+```
+
+**Trigger ("When")** - a list of parts, any kinds mixed:
+
+```json
+"trigger": {"match": "all", "within": {"amount": 2, "unit": "minutes"}, "items": [
+  {"type": "event", "entity": "frigate.garage", "event": "cat"},
+  {"type": "state", "entities": ["lutron.device_6"], "to": "on"},
+  {"type": "time",  "time": "21:00", "days": [0,1,2,3,4,5,6]}]}
+```
+
+| item `type` | fields | happens |
+|---|---|---|
+| `time` | `time` "HH:MM" 24 h, `days` 0=Mon…6=Sun; or `sun` `sunrise\|sunset\|dawn\|dusk` + `offset` minutes (negative = before; `time` is then ignored) | at that time (or that day's sunrise/sunset ± offset, from the home's location) on those days (a moment) |
+| `state` | `entities` [ids], `to`: a state id or `"any"` | when those devices reach that state (true while it lasts) |
+| `event` | `entity`, `event` (e.g. `"pressed"`, `"person"`) | when that device emits the event (a moment) |
+
+`match: "any"` - any part starts it. `match: "all"` - it starts once every part is true together: states must
+hold right now, moments (events/times) must have happened within `within` (default 2 minutes) of each other.
+After an "all" start, the moments must happen again before it can start again.
+The hub also returns a derived `type` (`time|state|event` when all parts are alike, else `mixed`) and mirrors the
+first part of each kind into older flat fields (`time/days`, `entities/to`, `entity/event`) - write `items`.
+**Condition** ("Only if") — `devices`: rows that must ALL hold:
+`[{"entities": [ids], "state": "<state id>" | "active", "match": "any" | "all" | "none" | "always"}]`
+(e.g. `[{"entities": ["lutron.device_6"], "state": "on", "match": "any"}, {"entities": ["ring.side"], "state": "LOCKED", "match": "any"}]`).
+`"active"` = each device's own `activeState`. For a `time` trigger the devices in these rows are also what the
+notification is about: the ones in the row's state become *pending* (they get buttons and the follow-up).
+Older automations with flat `entities` + `mode` are read as one row with state `active`; the hub always
+returns `devices` (and a derived flat `entities`) - write `devices`.
+Optional limits: `between` `{"after": "19:00", "before": "06:00"}` (may wrap midnight) and
+`days` `[0..6]` (Mon=0; `null` = every day; ignored for `time` triggers, which pick their own days).
+`sun` `{"only": "dark" | "light", "sunset": minutes, "sunrise": minutes}` - only between sunset+offset and
+sunrise+offset (dark, across midnight) or the other way round (daylight); `null` = no limit. Sun times need the
+home's location (the Home place, else the Weather connection's); without one `errors` says so.
+`dates` `{"from": "MM-DD", "to": "MM-DD", "year": null | YYYY}` - only on those dates, both ends included, by the
+hub's local date. `year: null` = every year (`"12-01"`..`"01-06"` wraps over New Year; `"02-29"` is allowed and
+counts as Feb 28 in other years); with a `year` it's that one range only (`to` before `from` = in the next year).
+Missing / `null` = no date limit. All the limits combine (all must hold) whatever starts the automation; a run
+outside them is saved as `skipped` ("Outside its dates…"). `nextRun` skips ahead to the range.
+
+**Actions** — commands run when it fires, each on one or more devices:
+`"actions": [{"entities": ["lutron.device_5", "lutron.device_6"], "command": "turn_on", "value"?, "for"?: {"amount": 2, "unit": "minutes|hours|days|seconds"}}]`.
+With `for`, Newman puts each device back afterwards (unless someone changed it by hand). Older actions with a single `"entity"` still work.
+
+**Live status** ("Show a live status on phones") — `"live": {"enabled": true, "entities": [ids], "title": "", "recipients": null | [person ids], "until": …}`
+(`title` "" = the devices' names; `recipients` null = everyone). `until` is one of
+`{"type": "leaves", "entities": [], "state": "active" | "<state id>"}` (until none of those devices — none listed = the live
+status's own — is in that state; `active` = each one's `activeState`; if none is in it when the automation runs, nothing
+starts), `{"type": "duration", "amount": 30, "unit": "seconds|minutes|hours|days"}`, or
+`{"type": "trigger", "item": <a When part: time / state / event / property>}` (until that happens; at most 12 hours).
+Running again while it shows keeps it (its clock restarts for a duration). Turning it off, disabling or deleting the
+automation ends it. See [Live statuses](#live-statuses).
+
+**Buttons** (order = order shown):
+
+| id | shown as | does |
+|---|---|---|
+| `<command>:<entityId>` | "Lock Side Door" | runs that command on that entity |
+| `<command>_all` | "Lock all" | runs it on every *pending* entity of the run |
+| `snooze:<minutes>` | "Snooze 1 hour" | re-evaluates after N minutes; re-sends if still pending |
+| `dismiss` | "Dismiss" | ends the run, no follow-up reminder |
+| `open` | "Open Newman" | opens the app (no server call) |
+
+With `onlyPending`, a run only shows buttons for entities that were pending (e.g. unlocked) when it fired;
+`*_all` is dropped when fewer than two are pending.
+
+**Follow-up** — once every pending entity reaches the state its command confirms to (e.g. LOCKED),
+send `message` to all recipients. `{person}` = who tapped (or "Someone at the door" when done by hand),
+`{devices}` = "Side Door and Laundry". `remindMinutes` re-sends the alert if still pending (null = never).
+
+**Endpoints**
+
+* `GET /api/automations` → `[Automation + {"summary", "lastRun", "nextRun"}]`
+* `POST /api/automations` (body without id) → Automation · `GET|PUT|DELETE /api/automations/{id}`
+* `POST /api/automations/describe` (any automation body, unsaved is fine) →
+  `{"summary": "At 9:00 PM every day, if any of Side Door or Laundry is unlocked, notify Chris and Marlina with Lock Side Door, … buttons. Once they are locked, tell everyone who did it.",
+    "preview": {"title", "body", "timeSensitive", "buttons": [{"id", "label", "icon", "sensitive"}], "followUp": "Chris locked Side Door and Laundry."},
+    "errors": ["Pick at least one device"]}`
+* `POST /api/automations/{id}/run` `{"force": false}` → runs now (`force` skips the condition) → Run
+* `GET /api/automations/templates` → `[{id, name, category, hint, automation}]` starter recipes
+* `GET /api/runs[?automationId=]` → `[Run]`
+* `POST /api/runs/{id}/press` `{"button": "lock_all" | "lock:<id>" | "snooze:60" | "dismiss" | …}` (any signed-in
+  account: a wall tablet's alert card, the phone app's Alerts tab) → the same replies as the notification buttons
+  below (device buttons answer `{"ok": true, "accepted": true, "commanding": [ids]}` at once). 409 when the run is
+  gone, the button isn't one of the run's, or it needs Face ID / a PIN. A command that fails is pushed to the
+  presser's person (from a wall tablet: the run's recipients).
+
+Run: `{"id", "automationId", "name", "startedAt", "status": "sent|resolved|dismissed|skipped|failed", "pending": [ids], "resolvedBy": "Chris"|null, "log": [{"ts", "text"}]}`
+
+## Voice
+
+Wall tablets talk to Newman (README → Voice on the wall tablet). Any signed-in client may; a wall
+tablet's session may use all of these except the settings.
+
+`GET /api/voice` → `{"available": bool (speech-to-text configured), "speaks": bool (text-to-speech),
+"settings": VoiceSettings, "wakeword": WakeWord | null}` for the signed-in account.
+
+`POST /api/voice/utterance` — something said. Body: raw PCM (`Content-Type: audio/L16; rate=16000`,
+16-bit little-endian mono; `?rate=` also works), a WAV file (`audio/wav`), or `{"text": "…"}`
+(`application/json`: typed, no speech-to-text). Up to 30 s of audio; `?speak=0` skips the spoken reply.
+
+```json
+{"heard": "Turn off the kitchen lights.",
+ "reply": "Okay, the Kitchen Lights are off.",
+ "action": {"type": "command", "command": "turn_off", "entities": ["hue.k1", "hue.k2"], "value": null},
+ "audio": {"type": "audio/wav", "data": "<base64>"},
+ "timings": {"stt": 610, "intent": 2, "tts": 120, "total": 735}}
+```
+
+`action.type`: `command` · `refuse` (sensitive, `reply` "For safety, do that from the screen.") ·
+`ask_state` · `ask_value` · `describe` · `where` · `today` · `show` (`show`: `camera` + `entityId` |
+`cameras` | `page` + `pageId` | `person` + `personId` | `home` | `weather` | `calendar` | `todo` | `lyrics` (the
+wall's player with the lyrics)) ·
+`timer_set` (`timerId`) · `timer_query` · `timer_cancel` (`cancelled`) · `timer_list` · `stop`
+(`stopped`: ringing timers stopped; with none ringing it pauses this tablet's music) · `music_play` (`music`:
+what was asked for - `title`/`artist`/`album`/`playlist`/`query`/`kind` (`song`)/`shuffle`/`random`; the
+reply says what plays, asks "Did you mean …?" when the name heard only fairly matches the library, or says
+"I couldn't find …") · `music_answer` (`yes`: the answer to that question - a yes within 2 minutes plays it) ·
+`music_control` (`command` of this tablet's music player, `value`) · `music_what` · `cook` (`cook`: what was done - `open` / `choose` (which one?) / `close` / `step` / `next` /
+`previous` / `repeat` / `first` / `last` / `count` / `where` / `ingredients` / `how_much` / `scale` /
+`servings_info` / `timer` (+ `timerId`: the "yes" to a step's timer offer) / `no_timer`; the screen follows
+the `cook` push) · `automation_run` (`automation`: its id - "Run Good Night"; `refuse` with `automation` when
+it would do something sensitive and the tablet doesn't allow those) · `confirm` ("Did you mean Massimo?" - a
+name heard only fairly well: `name`, `slot` (`device` / `room` / `person` / `automation` / `recipe` / `page`);
+"yes" within 60 s does the corrected request, "no" → `{"type": "confirm", "yes": false}`) · `ambiguous` ·
+`unknown` · `none` (nothing was said; with `"retry": true` Whisper was restarting for a new hint and isn't
+back yet - `reply` "One moment, I'm just getting ready. Please ask me again in a few seconds."; a request
+during such a restart first waits up to 20 s for it). A request done with a misheard name put right has `action.corrected`
+(the name meant, e.g. "Backyard"). `audio` is
+null when text-to-speech isn't set up (or failed). 503 when speech-to-text isn't set up (audio sent),
+502 when a speech service can't be reached. Nothing about the audio is kept; Activity gets an entry
+(`kind: "voice"`, title `"Hallway: “…”"`, body the reply).
+
+`GET /api/voice/wakewords` → `{"default": "hey_newman", "wakeWords": [{"name": "hey_jarvis", "phrase":
+"Hey Jarvis"}, …]}`: every `<name>.onnx` in the data folder's `voice/` except the two feature models,
+phrase from `<name>.json` (default: the name, “hey_jarvis” → “Hey Jarvis”).
+
+`GET /api/voice/wakeword` (404 when the hub has no model) — for the wall app; the model this tablet
+listens for (its `wakeWord` setting):
+
+```json
+{"name": "hey_newman", "phrase": "Hey Newman", "version": "3f2a…", "threshold": 0.5, "enabled": true,
+ "files": {"melspectrogram": "api/voice/wakeword/melspectrogram.onnx",
+           "embedding_model": "api/voice/wakeword/embedding_model.onnx",
+           "wakeword": "api/voice/wakeword/hey_newman.onnx"}}
+```
+
+`threshold` already includes this tablet's sensitivity (low +0.15, high −0.15 on the model's own,
+from `<name>.json`). `version` changes when any file, the chosen wake word or its threshold changes
+(the wall page passes it to the app in `voiceConfig`; a new one makes the app download the files again). `GET /api/voice/wakeword/{name}.onnx`
+serves the files (from the data folder's `voice/`).
+
+**Timers** (per account): `GET /api/voice/timers` → `{"now": hub time, "timers": [Timer]}` ·
+`DELETE /api/voice/timers/{id}` (cancel / stop ringing) · `GET /api/voice/timers/{id}/done` →
+`{"text": "Your pasta timer is done.", "audio": {...} | null}`.
+Timer: `{"id", "label" ("pasta" or ""), "name" ("pasta timer" / "10 minute timer"), "seconds",
+"createdAt", "endsAt", "state": "running" | "ringing", "doneText"}`. Up to 10 per account, 24 h each; a
+ringing one nobody stops is cleared after an hour. Changes are pushed to that account's sockets as
+`{"type": "timers", "now", "timers"}`.
+
+**Settings** (admin; per wall tablet account): `GET /api/voice/settings/{userId}` ·
+`PATCH /api/voice/settings/{userId}` with any of
+`{"enabled": true, "sensitivity": "low" | "normal" | "high", "volume": 0-100, "voice": "" | name,
+"allowSensitive": false, "wakeWord": name}` (defaults shown; `voice` "" = the hub's `VOICE_NAME`;
+`wakeWord` one of `GET /api/voice/wakewords`, read back as the one in use - the default when unset)
+→ the settings, or 400.
+The tablet's sockets get `{"type": "voice-settings"}`. `GET /api/voice/voices` →
+`{"default": "en_US-lessac-medium", "voices": [{"name", "label"}]}` (the voices offered: Piper's, or with
+`VOICE_TTS_KIND=openai` the speech service's English voices, e.g. `{"name": "af_heart", "label": "Heart
+(American, woman)"}`; a tablet's `voice` must be one of them, and a saved voice the service doesn't have reads
+back as "" - the default).
+
+**The Whisper hint** (admin): `GET /api/voice/hint` → `{"text": "Newman. Chris, Dante, Backyard, …, Good
+Night.", "tokens": estimated Whisper tokens (≤ 200), "words", "file": "/data/voice/whisper_prompt.txt",
+"written": the file holds this text, "writtenAt": time or null, "whisper": {"container": "newman-whisper",
+"auto": restarting it is on (VOICE_STT_RESTART), "state": "current" | "pending" | "restarting" | "failed" |
+"stopped" | "missing" | "no-docker" | "docker-error" | "no-hint" | "starting" | "off", "pending": the file is
+newer than the container's last start, "startedAt", "lastRestart": epoch seconds or null, "lastResult": "ready
+in 14 s" | an error | null}}` - the names the Whisper container is told to expect, and whether it has read
+them yet (Newman restarts it through the Docker connection when nobody is talking; README → Voice → The
+Whisper hint).
+
+**Teaching and training “Hey Newman”** (README → Voice → Teaching and training “Hey Newman”).
+Recordings stay in the data folder (`voice/teach/<person>/positive|negative/<id>.wav`, 16 kHz mono);
+the `newman-wakeword-trainer` container trains from them.
+
+- `POST /api/voice/teach/start` (admin) `{"tablet": userId, "person": "Dana"}` → `{"ok", "person",
+  "slug", "tablet"}`; that tablet's sockets get `{"type": "voice-teach", "person", "slug", "target": 30,
+  "have"}` (it opens the teaching card). 400 when `tablet` isn't a wall tablet account or `person` is empty.
+  A teaching session lasts up to 3 hours.
+- `POST /api/voice/teach/stop` — from the tablet: ends its session; from an admin with `{"tablet"}`:
+  ends it and pushes `{"type": "voice-teach-stop"}`.
+- `POST /api/voice/teach/clips?person=Dana&kind=positive|negative` — one recording, body as for
+  `/utterance` (raw PCM `audio/L16; rate=16000` or a 16 kHz WAV). Allowed from the tablet teaching
+  that person (else 403 "Start teaching from the Newman dashboard first") or an admin.
+  `positive` ("Hey Newman") 0.4–6 s, `negative` (ordinary talking) 5–35 s; it must have a voice in it
+  (loudest 20 ms above ≈ -42 dBFS, enough of it louder than the room). → `{"ok": true, "clip": {"id",
+  "kind", "person" (slug), "ms"}, "positive": n, "negative": n}` (that person's counts), or 422
+  `{"ok": false, "error": "That was too quiet - move closer or speak up", "ms"}`.
+- `GET /api/voice/teach` (admin) → `{"people": [{"slug", "name", "positive", "negative", "seconds",
+  "clips": [{"id", "kind", "ms", "at"}]}], "totals": {"positive", "negative", "minutes"}, "minClips": 20,
+  "target": 30, "teaching": [{"tablet", "person"}]}`.
+- `GET /api/voice/teach/{slug}/{kind}/{id}.wav` (admin) — one recording.
+- `DELETE /api/voice/teach/{slug}` (admin) — all of someone's recordings;
+  `DELETE /api/voice/teach/{slug}/{kind}/{id}` — one (admin, or the tablet teaching that person: "Redo last").
+- `GET /api/voice/train` (admin) →
+
+```json
+{"status": {"state": "idle|running|done|failed", "stage": "Training", "percent": 41.5, "startedAt": 1791069385,
+            "finishedAt": null, "eta": 5400, "message": "", "candidate": null, "trainerOnline": true},
+ "pending": false, "minClips": 20, "recordings": {"positive": 92, "negative": 3, "people": 3},
+ "current": Metrics, "previous": Metrics | null,
+ "candidates": [{"name": "hey_newman-20261003-231624", "createdAt": 1791070400, "metrics": Metrics}]}
+```
+
+  `trainerOnline`: the trainer's heartbeat (every 30 s while idle) is recent. Metrics: `{"threshold",
+  "realRecall" (held-back real recordings caught, 0-1), "byPerson": [{"name", "recall", "clips"}],
+  "realHeldOut", "syntheticRecall", "falseWakesPerHour" (on ~11 h of everyday audio), "steps",
+  "durationSec", "trainedOn", "byThreshold": [...], "current": {the model in use measured on the same
+  clips: "threshold", "realRecall", "byPerson", "syntheticRecall", "falseWakesPerHour"}}`; the installed
+  model's also has `name` and `installedAt`. The first model (no metrics file) reads as
+  `{"name": "hey_newman (first version)", "threshold": 0.5, "syntheticRecall": 0.43, "falseWakesPerHour": 2.5,
+  "realRecall": null}`.
+- `POST /api/voice/train` (admin) `{}` (or `{"steps": 2000}` for a short trial run) — writes a request
+  for the trainer → the same as GET. 409 while one is running or waiting, 400 with fewer than 20
+  "Hey Newman" recordings.
+- `POST /api/voice/train/use/{candidate}` (admin) — installs it as `hey_newman.onnx` (+ `.json` with its
+  threshold, `.metrics.json`), keeping the one in use as `hey_newman.previous.*`; every wall tablet's
+  sockets get `{"type": "voice-settings"}` and the new wake-word `version` makes them download it.
+- `POST /api/voice/train/undo` (admin) — swaps the installed and previous versions (404 without one).
+- `DELETE /api/voice/train/candidates/{candidate}` (admin) — "Keep current": drop a new version.
+
+Trainer files (`voice/train/` in the data folder, shared with the container): `requests/<id>.json`
+(`{"id", "at", "by", "steps"?}`), `status.json` (as `status` above, plus `updatedAt`),
+`candidates/hey_newman-<YYYYmmdd-HHMMSS>.onnx` + `.metrics.json`, `last-run.log`.
+
+**Wall app ↔ page** (Android `window.NewmanWall` / `window.NewmanVoice`): the page calls
+`NewmanWall.voiceConfig('{"enabled", "threshold", "version"}')` and `NewmanWall.voiceDone()` (the reply
+finished - listen again); the app calls `NewmanVoice.event({type: "wake" | "level" (value 0-1) |
+"audio" (pcm base64, rate) | "cancel" | "error" (message)})`. Teaching: `NewmanWall.recordClip(maxMs,
+fixed)` records one clip with the same microphone setup (the wake word paused meanwhile; `fixed`
+false: from the first word to the pause after it, 1–6 s, waiting up to 10 s for speech; true: `maxMs`
+of audio, up to 35 s) and `NewmanWall.stopClip()` ends it (a fixed one hands over what it has, a spoken one is dropped); the
+app answers `{type: "clip", pcm (base64 PCM16), rate: 16000, ms}` · `{type: "clip-level", value}` ·
+`{type: "clip-none"}` (nobody spoke) · `{type: "clip-error", message}`.
+
+## Activity
+
+`GET /api/events?limit=&before=&kind=` → `[{"id", "ts", "kind", "title", "body", "entityId", "data"}]`
+
+## Integrations
+
+`GET /api/integrations/catalog`
+
+```json
+[{"type": "lutron", "name": "Lutron Caséta", "category": "lighting",
+  "description": "Pairs locally with a Smart Bridge…", "available": false,
+  "fields": [{"key": "host", "label": "Bridge address", "type": "text", "required": true,
+              "placeholder": "10.1.1.23", "help": "…"}]}]
+```
+
+Field `type`: `text | password | number | boolean | textarea | select | multiselect | devices`. `available: false` = coming later.
+`options` holds fixed choices; `dynamic: true` means the choices come from `GET /api/integrations/{id}/options`
+(`{fieldKey: [{"value", "label", "group"?}]}`). `advanced: true` = rarely changed, tuck under "More settings".
+`devices` is a list of objects whose sub-fields are in `itemFields` - Reolink uses it:
+`"devices": [{"host": "10.1.1.56", "name": "", "use": "everything|buttons"}]` with one shared username/password;
+its options list Reolink cameras found at the addresses Frigate uses (group "Found" / "Already added").
+
+* `GET /api/integrations` → `[{"id", "type", "name", "status", "detail", "entityCount", "config": {…secrets masked as "••••"}}]`
+* `POST /api/integrations` `{"type", "name"?, "config"}` → Integration (starts it)
+* `PATCH /api/integrations/{id}` `{"name"?, "config"?, "enabled"?}` — a masked secret sent back unchanged is kept
+* `DELETE /api/integrations/{id}`
+* `POST /api/integrations/{id}/reconnect` (admin) — starts it again with its saved settings; answers with the
+  integration (as in `GET /api/integrations`: `status` `connected` / `error` + `detail`, or still `connecting`
+  after ~10 s). Its devices stay meanwhile; any it no longer provides once connected stay too, `available: false`.
+  400 when it's paused.
+
+**Adding devices by setup code** (Matter). A catalog entry with `"addByCode": {"label", "placeholder", "help"}`
+(null for every other connection) adds devices one at a time with a code:
+
+* `POST /api/integrations/{id}/devices` `{"code"}` (admin) → `{"adding": {"state": "working", "message", "at"}}`
+  straight away; the work goes on in the hub. 400 `{"error"}` in plain words when it's refused up front: not a
+  setup code, a typo (a Matter manual code's last digit is a check digit), the Matter server isn't connected,
+  or another device is still being added (cancel it first; a "working" older than the Matter server's own
+  5-minute limit never blocks). The code is passed to the Matter server once and never stored.
+* Progress, in `GET /api/integrations` for admins (not tablets), `adminDetails`:
+  `"adding": {"state": "working" | "done" | "error" | "cancelled", "step"?: "looking" | "adding", "title"?,
+  "message", "at", "startedAt", "elapsed"? (s, while working), "seen", "deviceIds"? }` (`title` is the step in
+  words; `message` is the reason in plain words on error — an expired / used pairing-mode code, unreachable
+  device, missing Thread route…; `seen` false = it ended and hasn't been shown yet),
+* `POST /api/integrations/{id}/adding/cancel` (admin) → `{"adding"}` (state `cancelled`): Newman stops waiting
+  and a new code can be tried at once. The Matter server can't be stopped part way, so a device that finishes
+  pairing anyway simply appears. 409 when nothing is being added. `POST /api/integrations/{id}/adding/seen`
+  (admin) — the ending has been shown (`seen` true).
+  `"pairedDevices": [{"id", "name", "model", "manufacturer", "network": "Wi-Fi" | "Thread" | "Ethernet" | "",
+  "available", "entityIds"}]` (one per Matter node; a node can be several Newman devices), and
+  `"thread": {"ok": true | false | null, "routes": ["fd4a:…::/64 via fe80::… on br0"]}` (null: not readable).
+* `DELETE /api/integrations/{id}/devices/{deviceId}` (admin) — one of `pairedDevices` off Newman's Matter fabric
+  for good (the device leaves Newman's fabric; other apps that control it keep it). Its devices disappear from
+  Newman. 404 unknown, 409 `{"error"}` when the Matter server refuses.
+
+Matter devices report like any other: e.g. a plug is kind `switch` with `power` (W), `energy` (kWh), `voltage`
+(V), `current` (A) when it measures them; a battery device has `batteryLevel` (%, as reported — may be a half
+percent), `batteryLow` (the device says it's low or needs replacing) and `batteryType` ("CR2032 × 2"); `protocol`
+is "Matter over Thread" / "Matter over Wi-Fi" / "Matter over Ethernet" when the device says which network it uses. The status `detail` ends with whether this computer can reach
+a Thread network, and why not in plain words.
+
+Frigate's settings: `hide_cameras` / `hide_zones` — Frigate camera / zone names left out (empty = everything,
+including cameras added later). Older clients may still send `cameras` / `zones` (names to *include*, empty =
+all): they're turned into the hide lists from Frigate's current cameras (kept as sent until Frigate can be read).
+
+Docker's settings: `hide_containers` — container names left out (empty = every container, including ones
+created later). Older clients may still send `containers` (names to *include*, empty = all): it's turned into
+`hide_containers` from Docker's current containers (and still applies as an include list until Docker answers).
+Containers younger than two minutes get no device yet. A container Docker no longer has at all goes (an
+`entity-removed` message) after 10 minutes missing, or on the connection's first successful listing; one still
+used by an automation, dashboard, phone layout or widget stays instead with `available: false`,
+`attrs.removed: true` and `stateLabel` "Removed".
+
+## Snapshots
+
+`GET /api/snapshots/{id}` (jpeg) · public: `GET /api/public/snapshots/{id}?device=&exp=&token=`
+
+## Alert videos
+
+`GET /api/clips/{integration}/{clip id}` (mp4; an alert's `clip` "frigate:r:<review id>" split at the
+first `:`, each part URL-encoded) · public: `GET /api/public/clips/{integration}/{clip id}?device=&exp=&token=`
+(the push's `clip_url`). Once the alert ended more than 30 s ago the clip is fetched from Frigate once,
+kept for 3 days and served with byte ranges; before that it is streamed as Frigate builds it (no
+length, no ranges, not kept). 404/502 while Frigate has no video yet. The phone apps download it
+through their own connection and play the file.
+
+## Notification buttons (public)
+
+`POST /api/public/actions`
+`{"button": "lock:ring.f0b7…", "subject": "<runId>", "deviceId", "exp", "token"}` →
+`{"ok": true}` · 401 bad token · 409 `{"ok": false, "error"}` (button not part of that run, device gone…).
+
+The reply never waits on a device. The token, the run and the button are checked first (401 / 409 at once);
+Dismiss, Snooze and Open are done before replying (`{"ok": true}`, `{"ok": true, "snoozedMinutes": 60}`); a device
+button (lock, lock all…) replies `{"ok": true, "accepted": true, "commanding": [entity ids]}` straight away and
+sends its commands afterwards, so a slow or stalled connection (e.g. Ring's) can't make the phone time out. A
+command that fails or isn't taken within 20 s is pushed back to the phone that pressed it - plain text, title
+"Couldn't lock Side Door", body "Side Door didn't lock: <reason>" - and noted in the run's log and Activity
+(problem). Success follows up as before (the follow-up once the devices report locked). Smart charging's "which
+plug" answer is the same: checked at once, `{"ok": true, "accepted": true, "charger"}`, the plug switched after.
+Every press is logged on arrival with its outcome (accepted / done / refused 401 / refused 409 and why).
+
+The apps send a press to the hub's address in use (home or outside, with the client certificate and Cloudflare
+headers), then its other address, and the push's `action_url` only as a last resort - each try up to 8 s.
+
+A button is only accepted if it was one of the buttons of that run, so a token can never trigger
+a command the automation didn't offer.
+
+## Push payload
+
+Common fields (APNs custom keys / FCM data, all strings):
+`kind` (`automation | followup | test`), `run_id`, `automation_id`, `title`, `body`,
+`buttons` (JSON `[{"id","label","icon","sensitive"}]`), `snapshot_url?`, `action_url`, `action_subject`,
+`action_exp`, `action_token`, `time_sensitive` (`"true"|"false"`), `thread`.
+Camera alerts also carry `clip`, `clip_url`, `frigate_event_id` (the review id) and `camera`; tapping
+one opens that alert's video in the app.
+
+iOS `aps.category` = `run.category` (`c_` + a hash of the button set). The app registers every set the hub
+can foresee from `GET /api/push/categories` (`[{"id": "c_…", "buttons": [...]}]`, refreshed on launch and
+on coming to the foreground, and on any background wake - a silent push or a location event - at most
+every 15 minutes). Only the app registers categories: a set it hasn't fetched yet shows without buttons
+until it has. `aps.mutable-content: 1` is set only for pushes with a snapshot (the Notification Service
+Extension attaches it and never touches categories: on iOS 26, an extension registering a push's category
+stopped every later notification from showing until the phone restarted), and those pushes leave out `buttons`.
+
+The silent **locate** push (someone tapped you on a map: one fresh fix) carries no alert: see
+[Where people are](#where-people-are). Test phones get `{"kind": "locate", "type": "locate"}` in the outbox.
+
+## Test phones (development)
+
+Platform `test` devices don't push anywhere: every notification they'd get is kept in
+`GET /api/test/outbox?deviceId=` (newest first, full payload incl. tokens) so scenarios can be
+run end-to-end from a script or the dashboard. `DELETE /api/test/outbox` clears it.

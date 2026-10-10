@@ -1,0 +1,173 @@
+<!doctype html>
+<!--
+  Newman live camera player for the phone apps (iOS WKWebView, Android WebView).
+
+  The app owns the connection: it opens the hub's live socket (GET api/entities/{id}/live
+  ?quality=sub|main) with its own client certificate and Bearer token, so live video works
+  away from home too. This page only decodes and shows the video (MSE / ManagedMediaSource),
+  the same way the web dashboard's LiveVideo does.
+
+  Page -> app (iOS: webkit.messageHandlers.newmanLive.postMessage(obj);
+               Android: NewmanLiveHost.post(JSON.stringify(obj))):
+    {type: "ready"}                              the page has loaded: call NewmanLive.start()
+    {type: "codecs", value: "avc1.640029,..."}   what this device decodes: the app opens the
+                                                 socket and sends {"type":"mse","value":<value>}
+    {type: "state", value: "loading" | "playing" | "failed" | "retry"}
+        failed = show the still picture instead; retry = reconnect now without H.265
+  App -> page (evaluate JavaScript):
+    NewmanLive.start()          begin (sends "codecs")
+    NewmanLive.text(json)       a text message from the socket, as received
+    NewmanLive.data(base64)     a binary message from the socket, base64-encoded
+    NewmanLive.stop()           tear down (the app closes its socket)
+    NewmanLive.fit("contain"|"cover")
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+</style>
+</head>
+<body>
+<video id="v" muted autoplay playsinline disablepictureinpicture></video>
+<script>
+(function () {
+  var CODECS = ['avc1.640029', 'avc1.64002A', 'avc1.640033', 'hvc1.1.6.L153.B0', 'mp4a.40.2', 'mp4a.40.5', 'flac', 'opus'];
+  var KEEP_SECONDS = 10, MAX_LAG = 2, MAX_QUEUE = 60;
+  var video = document.getElementById('v');
+  var hevcBroken = false;
+  var s = null; // the current session
+
+  function post(obj) {
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.newmanLive) {
+        window.webkit.messageHandlers.newmanLive.postMessage(obj);
+      } else if (window.NewmanLiveHost) {
+        window.NewmanLiveHost.post(JSON.stringify(obj));
+      }
+    } catch (e) { /* no host: nothing to tell */ }
+  }
+  function mediaSourceClass() { return window.ManagedMediaSource || window.MediaSource || null; }
+  function codecs(MS) {
+    return CODECS.filter(function (c) { return !(hevcBroken && /^hvc1|^hev1/.test(c)); })
+      .filter(function (c) { try { return MS.isTypeSupported('video/mp4; codecs="' + c + '"'); } catch (e) { return false; } })
+      .join(',');
+  }
+  function b64(str) {
+    var bin = atob(str), n = bin.length, out = new Uint8Array(n);
+    for (var i = 0; i < n; i++) out[i] = bin.charCodeAt(i);
+    return out.buffer;
+  }
+
+  function start() {
+    stop();
+    var MS = mediaSourceClass();
+    if (!MS) { post({ type: 'state', value: 'failed' }); return; }
+    var me = { closed: false, sb: null, queue: [], hevc: false, watchdog: null, objectUrl: null };
+    s = me;
+    me.ms = new MS();
+    if (window.ManagedMediaSource && MS === window.ManagedMediaSource) {
+      video.disableRemotePlayback = true;
+      video.srcObject = me.ms;
+    } else {
+      me.objectUrl = URL.createObjectURL(me.ms);
+      video.src = me.objectUrl;
+    }
+    me.ms.addEventListener('sourceopen', function () {
+      if (me.closed) return;
+      post({ type: 'codecs', value: codecs(MS) });
+    });
+    me.onPlaying = function () {
+      if (me.closed) return;
+      post({ type: 'state', value: 'playing' });
+      clearTimeout(me.watchdog);
+      // Time moves but no picture decodes: this device can't really play H.265.
+      me.watchdog = setTimeout(function () {
+        if (me.closed || video.videoWidth > 0) return;
+        if (me.hevc && !hevcBroken) { hevcBroken = true; stop(); post({ type: 'state', value: 'retry' }); }
+        else fail();
+      }, 3500);
+    };
+    video.addEventListener('playing', me.onPlaying);
+    post({ type: 'state', value: 'loading' });
+  }
+
+  function fail() {
+    if (!s || s.closed) return;
+    stop();
+    post({ type: 'state', value: 'failed' });
+  }
+
+  function pump() {
+    var me = s;
+    if (!me || me.closed || !me.sb || me.sb.updating) return;
+    var buf = me.sb.buffered;
+    if (buf.length && video.currentTime - buf.start(0) > KEEP_SECONDS + 2) {
+      try { me.sb.remove(buf.start(0), video.currentTime - KEEP_SECONDS); return; } catch (e) { /* retry later */ }
+    }
+    if (!me.queue.length) return;
+    try { me.sb.appendBuffer(me.queue.shift()); } catch (e) { fail(); }
+  }
+
+  function onUpdateEnd() {
+    var me = s;
+    if (!me || me.closed) return;
+    var buf = me.sb.buffered;
+    if (buf.length) {
+      var end = buf.end(buf.length - 1);
+      if (end - video.currentTime > MAX_LAG) video.currentTime = Math.max(buf.start(buf.length - 1), end - 0.3);
+      if (video.paused) { var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+    }
+    pump();
+  }
+
+  function text(json) {
+    var me = s;
+    if (!me || me.closed) return;
+    var msg;
+    try { msg = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return; }
+    if (msg.type === 'mse' && !me.sb) {
+      var mime = String(msg.value || '');
+      if (!/avc1|hvc1|hev1/.test(mime)) { fail(); return; } // audio only: show the still
+      me.hevc = /hvc1|hev1/.test(mime);
+      try {
+        me.sb = me.ms.addSourceBuffer(mime);
+        me.sb.mode = 'segments';
+        me.sb.addEventListener('updateend', onUpdateEnd);
+      } catch (e) { fail(); }
+    } else if (msg.type === 'error') {
+      fail();
+    }
+  }
+
+  function data(base64) {
+    var me = s;
+    if (!me || me.closed || !me.sb) return;
+    me.queue.push(b64(base64));
+    if (me.queue.length > MAX_QUEUE) me.queue.splice(0, me.queue.length - MAX_QUEUE);
+    pump();
+  }
+
+  function stop() {
+    var me = s;
+    if (!me || me.closed) return;
+    me.closed = true;
+    clearTimeout(me.watchdog);
+    video.removeEventListener('playing', me.onPlaying);
+    try { if (me.ms.readyState === 'open') me.ms.endOfStream(); } catch (e) { /* ignore */ }
+    try { video.pause(); video.removeAttribute('src'); video.srcObject = null; video.load(); } catch (e) { /* ignore */ }
+    if (me.objectUrl) URL.revokeObjectURL(me.objectUrl);
+  }
+
+  window.NewmanLive = {
+    start: start, text: text, data: data, stop: stop,
+    fit: function (mode) { video.style.objectFit = mode === 'cover' ? 'cover' : 'contain'; }
+  };
+  // The app decides when to stop (view gone, app in the background) and calls stop().
+  post({ type: 'ready' });
+})();
+</script>
+</body>
+</html>

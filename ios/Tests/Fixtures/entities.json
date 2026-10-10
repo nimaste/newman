@@ -1,0 +1,6367 @@
+[
+ {
+  "id": "mqtt.a8bba342-e19b-4987-9f2b-5066b19641a0",
+  "name": "Woodbridge Alarm",
+  "kind": "alarm",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "disarmed",
+  "stateLabel": "Disarmed",
+  "available": true,
+  "attrs": {
+   "tamperStatus": "ok",
+   "commStatus": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907806.4917617
+ },
+ {
+  "id": "homeconnect.thermador_dwhd770wfm_68a40e7107fc",
+  "name": "Dishwasher",
+  "kind": "appliance",
+  "category": "appliances",
+  "integration": "homeconnect",
+  "integrationName": "Home Connect",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "applianceType": "dishwasher",
+   "manufacturer": "Thermador",
+   "model": "DWHD770WFM",
+   "connected": false,
+   "remaining": null,
+   "progress": null
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "remaining",
+    "label": "Time left",
+    "unit": "min",
+    "attr": "remaining",
+    "type": "number",
+    "options": [],
+    "value": null
+   },
+   {
+    "id": "progress",
+    "label": "Progress",
+    "unit": "%",
+    "attr": "progress",
+    "type": "number",
+    "options": [],
+    "value": null
+   },
+   {
+    "id": "connected",
+    "label": "Connected",
+    "unit": "",
+    "attr": "connected",
+    "type": "boolean",
+    "options": [],
+    "value": false
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.3856418
+ },
+ {
+  "id": "homeconnect.thermador_prg366wh_68a40e692030_001",
+  "name": "Oven",
+  "kind": "appliance",
+  "category": "appliances",
+  "integration": "homeconnect",
+  "integrationName": "Home Connect",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "applianceType": "oven",
+   "manufacturer": "Thermador",
+   "model": "PRG366WH",
+   "connected": false,
+   "remaining": null,
+   "progress": null
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "remaining",
+    "label": "Time left",
+    "unit": "min",
+    "attr": "remaining",
+    "type": "number",
+    "options": [],
+    "value": null
+   },
+   {
+    "id": "progress",
+    "label": "Progress",
+    "unit": "%",
+    "attr": "progress",
+    "type": "number",
+    "options": [],
+    "value": null
+   },
+   {
+    "id": "connected",
+    "label": "Connected",
+    "unit": "",
+    "attr": "connected",
+    "type": "boolean",
+    "options": [],
+    "value": false
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.38579
+ },
+ {
+  "id": "calendar.family",
+  "name": "Family",
+  "kind": "calendar",
+  "category": "other",
+  "integration": "calendar",
+  "integrationName": "Calendars",
+  "state": "free",
+  "stateLabel": "Nothing on",
+  "available": true,
+  "attrs": {
+   "upcoming": [
+    {
+     "title": "Garbage Day",
+     "start": "2026-10-01T00:00:00",
+     "end": "2026-10-02T00:00:00",
+     "allDay": true,
+     "location": ""
+    },
+    {
+     "title": "Garbage Day",
+     "start": "2026-10-15T00:00:00",
+     "end": "2026-10-16T00:00:00",
+     "allDay": true,
+     "location": ""
+    }
+   ],
+   "colour": "#7FB8FF",
+   "now": null
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.343594
+ },
+ {
+  "id": "frigate.camera_back_ac",
+  "name": "Back Ac",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "cat",
+    "dog"
+   ],
+   "zones": [
+    "Firepit"
+   ],
+   "counts": {
+    "person": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "streams": [
+    "back_ac"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_back_ac/still.jpg",
+  "alerts": "api/entities/frigate.camera_back_ac/alerts",
+  "live": "api/entities/frigate.camera_back_ac/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.083553
+ },
+ {
+  "id": "frigate.camera_backyard",
+  "name": "Backyard",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "dog",
+    "cat"
+   ],
+   "zones": [
+    "Back"
+   ],
+   "counts": {
+    "person": 0,
+    "dog": 0,
+    "cat": 0
+   },
+   "streams": [
+    "backyard_live"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_backyard/still.jpg",
+  "alerts": "api/entities/frigate.camera_backyard/alerts",
+  "live": "api/entities/frigate.camera_backyard/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0837076
+ },
+ {
+  "id": "frigate.camera_doorbell",
+  "name": "Doorbell",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "car",
+    "dog",
+    "cat"
+   ],
+   "zones": [
+    "Porch"
+   ],
+   "counts": {
+    "person": 0,
+    "car": 0,
+    "dog": 0,
+    "cat": 0
+   },
+   "streams": [
+    "doorbell"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.car",
+    "label": "Car count",
+    "unit": "",
+    "attr": "counts.car",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_doorbell/still.jpg",
+  "alerts": "api/entities/frigate.camera_doorbell/alerts",
+  "live": "api/entities/frigate.camera_doorbell/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0841062
+ },
+ {
+  "id": "frigate.camera_front_porch",
+  "name": "Front Porch",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "car",
+    "cat",
+    "dog"
+   ],
+   "zones": [
+    "Front Patio"
+   ],
+   "counts": {
+    "person": 0,
+    "car": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "streams": [
+    "front_porch_live"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.car",
+    "label": "Car count",
+    "unit": "",
+    "attr": "counts.car",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_front_porch/still.jpg",
+  "alerts": "api/entities/frigate.camera_front_porch/alerts",
+  "live": "api/entities/frigate.camera_front_porch/live",
+  "usedBy": [
+   "auto_8839b416"
+  ],
+  "updatedAt": 1790907773.0829794
+ },
+ {
+  "id": "frigate.camera_garage",
+  "name": "Garage",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "car",
+    "cat",
+    "dog"
+   ],
+   "zones": [
+    "Driveway"
+   ],
+   "counts": {
+    "person": 0,
+    "car": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "streams": [
+    "garage_live"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.car",
+    "label": "Car count",
+    "unit": "",
+    "attr": "counts.car",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_garage/still.jpg",
+  "alerts": "api/entities/frigate.camera_garage/alerts",
+  "live": "api/entities/frigate.camera_garage/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0832
+ },
+ {
+  "id": "frigate.camera_garage_side",
+  "name": "Garage Side",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "dog",
+    "cat"
+   ],
+   "zones": [
+    "Garage Walkway"
+   ],
+   "counts": {
+    "person": 0,
+    "dog": 0,
+    "cat": 0
+   },
+   "streams": [
+    "garage_side_live"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_garage_side/still.jpg",
+  "alerts": "api/entities/frigate.camera_garage_side/alerts",
+  "live": "api/entities/frigate.camera_garage_side/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0833771
+ },
+ {
+  "id": "frigate.camera_park_side",
+  "name": "Park Side",
+  "kind": "camera",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "online",
+  "stateLabel": "Online",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "cat",
+    "dog"
+   ],
+   "zones": [
+    "Park Sidewalk"
+   ],
+   "counts": {
+    "person": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "streams": [
+    "park_side"
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.camera_park_side/still.jpg",
+  "alerts": "api/entities/frigate.camera_park_side/alerts",
+  "live": "api/entities/frigate.camera_park_side/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0838904
+ },
+ {
+  "id": "mqtt.e7eb4e91-8654-4dbc-8230-61c55c2b220b",
+  "name": "Back Door",
+  "kind": "contact",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "closed",
+  "stateLabel": "Closed",
+  "available": true,
+  "attrs": {
+   "deviceClass": "door",
+   "batteryLevel": 100,
+   "batteryStatus": "full",
+   "tamperStatus": "ok",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 100
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "full"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907806.4944267
+ },
+ {
+  "id": "mqtt.51bb6fc3-be9a-40bc-97f2-2f4dcd297547",
+  "name": "Front Door",
+  "kind": "contact",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "closed",
+  "stateLabel": "Closed",
+  "available": true,
+  "attrs": {
+   "deviceClass": "door",
+   "batteryLevel": 100,
+   "batteryStatus": "full",
+   "tamperStatus": "ok",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 100
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "full"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907806.4941964
+ },
+ {
+  "id": "mqtt.1eb3c1ff-0c19-40e0-8472-2ace3270cd51",
+  "name": "Side Door",
+  "kind": "contact",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "closed",
+  "stateLabel": "Closed",
+  "available": true,
+  "attrs": {
+   "deviceClass": "door",
+   "batteryLevel": 100,
+   "batteryStatus": "full",
+   "tamperStatus": "ok",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 100
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "full"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907806.4946842
+ },
+ {
+  "id": "docker.authelia",
+  "name": "authelia",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": "healthy",
+   "cpu": 0.0,
+   "memory": 48,
+   "memoryPercent": 0.1
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": "healthy"
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 48
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.1
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907776.261397
+ },
+ {
+  "id": "docker.caddy",
+  "name": "caddy",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": null,
+   "cpu": 0.0,
+   "memory": 73,
+   "memoryPercent": 0.1
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": null
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 73
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.1
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908471.9213214
+ },
+ {
+  "id": "docker.crowdsec",
+  "name": "crowdsec",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": null,
+   "cpu": 0.0,
+   "memory": 117,
+   "memoryPercent": 0.2
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": null
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 117
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.2
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908471.9156988
+ },
+ {
+  "id": "docker.cypher",
+  "name": "cypher",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": "healthy",
+   "cpu": 0.2,
+   "memory": 163,
+   "memoryPercent": 0.3
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": "healthy"
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.2
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 163
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.3
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908471.9175022
+ },
+ {
+  "id": "docker.mtls_auth_manager",
+  "name": "mtls-auth-manager",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": null,
+   "cpu": 0.0,
+   "memory": 47,
+   "memoryPercent": 0.1
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": null
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 47
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.1
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908471.9142156
+ },
+ {
+  "id": "docker.safet",
+  "name": "safet",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": null,
+   "cpu": 0.0,
+   "memory": 43,
+   "memoryPercent": 0.1
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": null
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 43
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.1
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907775.2384286
+ },
+ {
+  "id": "docker.sonarr",
+  "name": "sonarr",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": null,
+   "cpu": 0.0,
+   "memory": 354,
+   "memoryPercent": 0.6
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": null
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 354
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.6
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908471.9324265
+ },
+ {
+  "id": "docker.wealthnode",
+  "name": "wealthnode",
+  "kind": "container",
+  "category": "servers",
+  "integration": "docker",
+  "integrationName": "Docker",
+  "state": "running",
+  "stateLabel": "Running",
+  "available": true,
+  "attrs": {
+   "health": "healthy",
+   "cpu": 0.1,
+   "memory": 118,
+   "memoryPercent": 0.2
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "health",
+    "label": "Health",
+    "unit": "",
+    "attr": "health",
+    "type": "text",
+    "options": [
+     {
+      "value": "healthy",
+      "label": "Healthy"
+     },
+     {
+      "value": "unhealthy",
+      "label": "Unhealthy"
+     },
+     {
+      "value": "starting",
+      "label": "Starting"
+     }
+    ],
+    "value": "healthy"
+   },
+   {
+    "id": "cpu",
+    "label": "CPU",
+    "unit": "%",
+    "attr": "cpu",
+    "type": "number",
+    "options": [],
+    "value": 0.1
+   },
+   {
+    "id": "memory",
+    "label": "Memory",
+    "unit": "MB",
+    "attr": "memory",
+    "type": "number",
+    "options": [],
+    "value": 118
+   },
+   {
+    "id": "memoryPercent",
+    "label": "Memory use",
+    "unit": "%",
+    "attr": "memoryPercent",
+    "type": "number",
+    "options": [],
+    "value": 0.2
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907965.3429196
+ },
+ {
+  "id": "reolink.doorbell",
+  "name": "Front Door",
+  "kind": "doorbell",
+  "category": "security",
+  "integration": "reolink",
+  "integrationName": "Reolink",
+  "state": "idle",
+  "stateLabel": "Idle",
+  "available": true,
+  "attrs": {
+   "model": "Reolink Video Doorbell PoE",
+   "firmware": "v3.0.0.4662_2508071283",
+   "channel": 0,
+   "events": [
+    "pressed",
+    "motion",
+    "animal",
+    "person",
+    "car"
+   ],
+   "source": "reolink"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": "api/entities/reolink.doorbell/still.jpg",
+  "alerts": null,
+  "live": null,
+  "usedBy": [
+   "auto_0e34274a"
+  ],
+  "updatedAt": 1790907774.3477757
+ },
+ {
+  "id": "meross.garage",
+  "name": "Garage Door Opener",
+  "kind": "garage",
+  "category": "garage",
+  "integration": "meross",
+  "integrationName": "Garage Door Opener",
+  "state": "closed",
+  "stateLabel": "Closed",
+  "available": true,
+  "attrs": {
+   "model": "msg100",
+   "firmware": "4.2.20"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.120328
+ },
+ {
+  "id": "lutron.device_12",
+  "name": "Basement Kitchen",
+  "kind": "light",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "brightness": 0,
+   "dimmable": true,
+   "model": "PD-6WCL-XX",
+   "area": "Basement Work Area"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "brightness",
+    "label": "Brightness",
+    "unit": "%",
+    "attr": "brightness",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [
+   "auto_8839b416"
+  ],
+  "updatedAt": 1790907773.8762867
+ },
+ {
+  "id": "lutron.device_2",
+  "name": "Dining Room",
+  "kind": "light",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "brightness": 0,
+   "dimmable": true,
+   "model": "PD-6WCL-XX",
+   "area": "Dining Room"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "brightness",
+    "label": "Brightness",
+    "unit": "%",
+    "attr": "brightness",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.8757846
+ },
+ {
+  "id": "lutron.device_8",
+  "name": "Kitchen",
+  "kind": "light",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "on",
+  "stateLabel": "On",
+  "available": true,
+  "attrs": {
+   "brightness": 11,
+   "dimmable": true,
+   "model": "PD-6WCL-XX",
+   "area": "Kitchen"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "brightness",
+    "label": "Brightness",
+    "unit": "%",
+    "attr": "brightness",
+    "type": "number",
+    "options": [],
+    "value": 11
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.876072
+ },
+ {
+  "id": "lutron.device_3",
+  "name": "Powder Room",
+  "kind": "light",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "brightness": 0,
+   "dimmable": true,
+   "model": "PD-6WCL-XX",
+   "area": "Powder Room Bathroom"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "brightness",
+    "label": "Brightness",
+    "unit": "%",
+    "attr": "brightness",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907989.9280832
+ },
+ {
+  "id": "lutron.device_10",
+  "name": "TV Area",
+  "kind": "light",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "brightness": 0,
+   "dimmable": true,
+   "model": "PD-6WCL-XX",
+   "area": "Basement Game Area"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "brightness",
+    "label": "Brightness",
+    "unit": "%",
+    "attr": "brightness",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.876183
+ },
+ {
+  "id": "mqtt.6c765b1f-a573-4618-ab90-faf1f3087526",
+  "name": "Laundry",
+  "kind": "lock",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "LOCKED",
+  "stateLabel": "Locked",
+  "available": true,
+  "attrs": {
+   "batteryLevel": 97,
+   "batteryStatus": "full",
+   "tamperStatus": "ok",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 97
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "full"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [
+   "auto_8dfbc426",
+   "auto_985f8dd6"
+  ],
+  "updatedAt": 1790907806.4936986
+ },
+ {
+  "id": "mqtt.38985d0b-5a70-4741-8d56-58eef53d183c",
+  "name": "Side Door",
+  "kind": "lock",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "LOCKED",
+  "stateLabel": "Locked",
+  "available": true,
+  "attrs": {
+   "batteryLevel": 98,
+   "batteryStatus": "full",
+   "tamperStatus": "ok",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 98
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "full"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [
+   "auto_8dfbc426",
+   "auto_985f8dd6"
+  ],
+  "updatedAt": 1790907806.495085
+ },
+ {
+  "id": "mqtt.00e75b93-e96e-4adb-9f7c-98e67c601b8a",
+  "name": "Basement Motion Sensor",
+  "kind": "motion",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "deviceClass": "motion",
+   "batteryLevel": 15,
+   "batteryStatus": "ok",
+   "tamperStatus": "tamper",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": false,
+   "issues": [
+    "Battery 15%",
+    "Tamper reported"
+   ]
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 15
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "tamper"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [
+   "auto_a1897f94"
+  ],
+  "updatedAt": 1790907878.4346938
+ },
+ {
+  "id": "homekit.occupancy_4295215490_57",
+  "name": "Basement occupancy",
+  "kind": "motion",
+  "category": "security",
+  "integration": "homekit",
+  "integrationName": "Thermostat",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {},
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907775.3895469
+ },
+ {
+  "id": "mqtt.5d11977e-24e6-40ee-b68c-72678fa38684_motion",
+  "name": "Hallway Keypad",
+  "kind": "motion",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "deviceClass": "motion",
+   "batteryLevel": 0,
+   "batteryStatus": "failed",
+   "tamperStatus": "ok",
+   "acStatus": "error",
+   "commStatus": "error",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": false,
+   "issues": [
+    "Battery failed",
+    "No AC power",
+    "Not responding to the hub"
+   ]
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "failed"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "acStatus",
+    "label": "Ac status",
+    "unit": "",
+    "attr": "acStatus",
+    "type": "text",
+    "options": [],
+    "value": "error"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "error"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [
+   "auto_a1897f94"
+  ],
+  "updatedAt": 1790907806.4931748
+ },
+ {
+  "id": "homekit.occupancy_4295216265_57",
+  "name": "Master Bedroom occupancy",
+  "kind": "motion",
+  "category": "security",
+  "integration": "homekit",
+  "integrationName": "Thermostat",
+  "state": "detected",
+  "stateLabel": "Motion",
+  "available": true,
+  "attrs": {},
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908406.8976676
+ },
+ {
+  "id": "mqtt.1e1bb54e-e613-4305-83d3-bfa00da1715b",
+  "name": "Motion Detector",
+  "kind": "motion",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "deviceClass": "motion",
+   "batteryLevel": 85,
+   "batteryStatus": "full",
+   "tamperStatus": "ok",
+   "commStatus": "ok",
+   "linkQuality": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "batteryLevel",
+    "type": "number",
+    "options": [],
+    "value": 85
+   },
+   {
+    "id": "batteryStatus",
+    "label": "Battery status",
+    "unit": "",
+    "attr": "batteryStatus",
+    "type": "text",
+    "options": [],
+    "value": "full"
+   },
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "linkQuality",
+    "label": "Link quality",
+    "unit": "",
+    "attr": "linkQuality",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908449.3137662
+ },
+ {
+  "id": "lutron.remote_7",
+  "name": "Dining Room Pico Remote",
+  "kind": "remote",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "idle",
+  "stateLabel": "Idle",
+  "available": true,
+  "attrs": {
+   "events": [
+    "on",
+    "favorite",
+    "off",
+    "raise",
+    "lower"
+   ],
+   "model": "PJ2-3BRL-GXX-X01",
+   "area": "Dining Room"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.8770373
+ },
+ {
+  "id": "lutron.remote_9",
+  "name": "Kitchen Pico Remote",
+  "kind": "remote",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "idle",
+  "stateLabel": "Idle",
+  "available": true,
+  "attrs": {
+   "events": [
+    "on",
+    "favorite",
+    "off",
+    "raise",
+    "lower"
+   ],
+   "model": "PJ2-3BRL-GXX-X01",
+   "area": "Kitchen"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.8771052
+ },
+ {
+  "id": "lutron.remote_11",
+  "name": "Main Lights Remote 1",
+  "kind": "remote",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "idle",
+  "stateLabel": "Idle",
+  "available": true,
+  "attrs": {
+   "events": [
+    "on",
+    "favorite",
+    "off",
+    "raise",
+    "lower"
+   ],
+   "model": "PJ2-3BRL-GXX-X01",
+   "area": ""
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.8771856
+ },
+ {
+  "id": "lutron.remote_13",
+  "name": "Main Lights Remote 2",
+  "kind": "remote",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "idle",
+  "stateLabel": "Idle",
+  "available": true,
+  "attrs": {
+   "events": [
+    "on",
+    "favorite",
+    "off",
+    "raise",
+    "lower"
+   ],
+   "model": "PJ2-3BRL-GXX-X01",
+   "area": ""
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.877267
+ },
+ {
+  "id": "lutron.remote_4",
+  "name": "Powder Room Pico Remote",
+  "kind": "remote",
+  "category": "lighting",
+  "integration": "lutron",
+  "integrationName": "Lutron Caséta",
+  "state": "idle",
+  "stateLabel": "Idle",
+  "available": true,
+  "attrs": {
+   "events": [
+    "on",
+    "favorite",
+    "off",
+    "raise",
+    "lower"
+   ],
+   "model": "PJ2-3BRL-GXX-X01",
+   "area": "Powder Room Bathroom"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.876964
+ },
+ {
+  "id": "mqtt.a8bba342-e19b-4987-9f2b-5066b19641a0_siren",
+  "name": "Woodbridge Alarm Siren",
+  "kind": "siren",
+  "category": "security",
+  "integration": "mqtt",
+  "integrationName": "MQTT devices",
+  "state": "off",
+  "stateLabel": "Off",
+  "available": true,
+  "attrs": {
+   "tamperStatus": "ok",
+   "commStatus": "ok"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "tamperStatus",
+    "label": "Tamper status",
+    "unit": "",
+    "attr": "tamperStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   },
+   {
+    "id": "commStatus",
+    "label": "Comm status",
+    "unit": "",
+    "attr": "commStatus",
+    "type": "text",
+    "options": [],
+    "value": "ok"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907806.491789
+ },
+ {
+  "id": "homekit.temp_4295215490_208",
+  "name": "Basement",
+  "kind": "temperature",
+  "category": "climate",
+  "integration": "homekit",
+  "integrationName": "Thermostat",
+  "state": "22.0",
+  "stateLabel": "22.0 °C",
+  "available": true,
+  "attrs": {},
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "temperature",
+    "label": "Temperature",
+    "unit": "°C",
+    "attr": "",
+    "type": "number",
+    "options": [],
+    "value": "22.0"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907775.3894572
+ },
+ {
+  "id": "homekit.temp_4295216265_208",
+  "name": "Master Bedroom",
+  "kind": "temperature",
+  "category": "climate",
+  "integration": "homekit",
+  "integrationName": "Thermostat",
+  "state": "22.5",
+  "stateLabel": "22.5 °C",
+  "available": true,
+  "attrs": {},
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "temperature",
+    "label": "Temperature",
+    "unit": "°C",
+    "attr": "",
+    "type": "number",
+    "options": [],
+    "value": "22.5"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908405.8935823
+ },
+ {
+  "id": "homekit.thermostat_1",
+  "name": "Main Floor",
+  "kind": "thermostat",
+  "category": "climate",
+  "integration": "homekit",
+  "integrationName": "Thermostat",
+  "state": "cool",
+  "stateLabel": "Cool",
+  "available": true,
+  "attrs": {
+   "currentTemp": 22.6,
+   "targetTemp": 22.5,
+   "humidity": 50.0,
+   "action": "idle",
+   "coolTo": 22.5,
+   "heatTo": 22.5,
+   "unit": "°C"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "temperature",
+    "label": "Temperature",
+    "unit": "°C",
+    "attr": "currentTemp",
+    "type": "number",
+    "options": [],
+    "value": 22.6
+   },
+   {
+    "id": "humidity",
+    "label": "Humidity",
+    "unit": "%",
+    "attr": "humidity",
+    "type": "number",
+    "options": [],
+    "value": 50.0
+   },
+   {
+    "id": "target",
+    "label": "Set temperature",
+    "unit": "°C",
+    "attr": "targetTemp",
+    "type": "number",
+    "options": [],
+    "value": 22.5
+   },
+   {
+    "id": "coolTo",
+    "label": "Cool to",
+    "unit": "°C",
+    "attr": "coolTo",
+    "type": "number",
+    "options": [],
+    "value": 22.5
+   },
+   {
+    "id": "heatTo",
+    "label": "Heat to",
+    "unit": "°C",
+    "attr": "heatTo",
+    "type": "number",
+    "options": [],
+    "value": 22.5
+   },
+   {
+    "id": "action",
+    "label": "Activity",
+    "unit": "",
+    "attr": "action",
+    "type": "text",
+    "options": [
+     {
+      "value": "idle",
+      "label": "Idle"
+     },
+     {
+      "value": "heating",
+      "label": "Heating"
+     },
+     {
+      "value": "cooling",
+      "label": "Cooling"
+     }
+    ],
+    "value": "idle"
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790908420.5786653
+ },
+ {
+  "id": "roborock.roborock_qr_798",
+  "name": "Roborock QR 798",
+  "kind": "vacuum",
+  "category": "cleaning",
+  "integration": "roborock",
+  "integrationName": "Roborock",
+  "state": "charging",
+  "stateLabel": "Charging",
+  "available": true,
+  "attrs": {
+   "model": "roborock.vacuum.a168",
+   "localConnection": true,
+   "battery": 100,
+   "fanSpeed": "balanced",
+   "cleanArea": 52.2,
+   "cleanTime": 57,
+   "problem": "",
+   "filterLeft": 67,
+   "mainBrushLeft": 84,
+   "sideBrushLeft": 72,
+   "sensorsLeft": 53,
+   "rooms": [
+    {
+     "id": 1,
+     "name": "Family Room"
+    },
+    {
+     "id": 3,
+     "name": "Kitchen"
+    },
+    {
+     "id": 6,
+     "name": "Dining room"
+    },
+    {
+     "id": 7,
+     "name": "Hall"
+    }
+   ]
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "battery",
+    "label": "Battery",
+    "unit": "%",
+    "attr": "battery",
+    "type": "number",
+    "options": [],
+    "value": 100
+   },
+   {
+    "id": "cleanArea",
+    "label": "Area cleaned",
+    "unit": "m²",
+    "attr": "cleanArea",
+    "type": "number",
+    "options": [],
+    "value": 52.2
+   },
+   {
+    "id": "cleanTime",
+    "label": "Cleaning time",
+    "unit": "min",
+    "attr": "cleanTime",
+    "type": "number",
+    "options": [],
+    "value": 57
+   },
+   {
+    "id": "problem",
+    "label": "Problem",
+    "unit": "",
+    "attr": "problem",
+    "type": "text",
+    "options": [],
+    "value": ""
+   },
+   {
+    "id": "fanSpeed",
+    "label": "Suction",
+    "unit": "",
+    "attr": "fanSpeed",
+    "type": "text",
+    "options": [],
+    "value": "balanced"
+   },
+   {
+    "id": "filterLeft",
+    "label": "Filter life left",
+    "unit": "%",
+    "attr": "filterLeft",
+    "type": "number",
+    "options": [],
+    "value": 67
+   },
+   {
+    "id": "mainBrushLeft",
+    "label": "Main brush life left",
+    "unit": "%",
+    "attr": "mainBrushLeft",
+    "type": "number",
+    "options": [],
+    "value": 84
+   },
+   {
+    "id": "sideBrushLeft",
+    "label": "Side brush life left",
+    "unit": "%",
+    "attr": "sideBrushLeft",
+    "type": "number",
+    "options": [],
+    "value": 72
+   },
+   {
+    "id": "sensorsLeft",
+    "label": "Sensors until cleaning",
+    "unit": "%",
+    "attr": "sensorsLeft",
+    "type": "number",
+    "options": [],
+    "value": 53
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.899259
+ },
+ {
+  "id": "weather.weather",
+  "name": "Weather",
+  "kind": "weather",
+  "category": "climate",
+  "integration": "weather",
+  "integrationName": "Weather",
+  "state": "cloudy",
+  "stateLabel": "Cloudy",
+  "available": true,
+  "attrs": {
+   "temperature": 20.2,
+   "feelsLike": 21.6,
+   "humidity": 79,
+   "wind": 5.8,
+   "gusts": 17.6,
+   "isDay": false,
+   "high": 23.5,
+   "low": 17.6,
+   "precipChance": 40,
+   "rainToday": 0.1,
+   "snowToday": 0.0,
+   "uv": 1.55,
+   "sunrise": "2026-10-01T07:16",
+   "sunset": "2026-10-01T18:59",
+   "forecast": [
+    {
+     "date": "2026-10-01",
+     "day": "Thu",
+     "condition": "drizzle",
+     "high": 23.5,
+     "low": 17.6,
+     "feelsHigh": 23.6,
+     "feelsLow": 17.3,
+     "precipChance": 40,
+     "precip": 0.1,
+     "rain": 0.1,
+     "snow": 0.0,
+     "precipHours": 1.0,
+     "wind": 20.6,
+     "gusts": 45.0,
+     "windDirection": 203,
+     "uv": 1.55,
+     "sunrise": "2026-10-01T07:16",
+     "sunset": "2026-10-01T18:59"
+    },
+    {
+     "date": "2026-10-02",
+     "day": "Fri",
+     "condition": "rain",
+     "high": 19.8,
+     "low": 10.2,
+     "feelsHigh": 19.8,
+     "feelsLow": 7.7,
+     "precipChance": 93,
+     "precip": 7.3,
+     "rain": 7.3,
+     "snow": 0.0,
+     "precipHours": 6.0,
+     "wind": 26.4,
+     "gusts": 46.4,
+     "windDirection": 308,
+     "uv": 3.95,
+     "sunrise": "2026-10-02T07:17",
+     "sunset": "2026-10-02T18:57"
+    },
+    {
+     "date": "2026-10-03",
+     "day": "Sat",
+     "condition": "clear",
+     "high": 16.1,
+     "low": 6.4,
+     "feelsHigh": 13.2,
+     "feelsLow": 4.1,
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "precipHours": 0.0,
+     "wind": 11.9,
+     "gusts": 21.6,
+     "windDirection": 6,
+     "uv": 4.65,
+     "sunrise": "2026-10-03T07:18",
+     "sunset": "2026-10-03T18:55"
+    },
+    {
+     "date": "2026-10-04",
+     "day": "Sun",
+     "condition": "cloudy",
+     "high": 20.9,
+     "low": 10.5,
+     "feelsHigh": 18.2,
+     "feelsLow": 8.3,
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "precipHours": 0.0,
+     "wind": 19.2,
+     "gusts": 35.3,
+     "windDirection": 187,
+     "uv": 4.5,
+     "sunrise": "2026-10-04T07:19",
+     "sunset": "2026-10-04T18:53"
+    },
+    {
+     "date": "2026-10-05",
+     "day": "Mon",
+     "condition": "cloudy",
+     "high": 14.1,
+     "low": 7.2,
+     "feelsHigh": 10.2,
+     "feelsLow": 3.4,
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "precipHours": 0.0,
+     "wind": 22.5,
+     "gusts": 40.7,
+     "windDirection": 321,
+     "uv": 4.4,
+     "sunrise": "2026-10-05T07:20",
+     "sunset": "2026-10-05T18:51"
+    },
+    {
+     "date": "2026-10-06",
+     "day": "Tue",
+     "condition": "clear",
+     "high": 14.5,
+     "low": 5.1,
+     "feelsHigh": 11.2,
+     "feelsLow": 1.3,
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "precipHours": 0.0,
+     "wind": 9.1,
+     "gusts": 19.8,
+     "windDirection": 342,
+     "uv": 4.4,
+     "sunrise": "2026-10-06T07:22",
+     "sunset": "2026-10-06T18:50"
+    },
+    {
+     "date": "2026-10-07",
+     "day": "Wed",
+     "condition": "cloudy",
+     "high": 19.2,
+     "low": 7.0,
+     "feelsHigh": 14.9,
+     "feelsLow": 4.3,
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "precipHours": 0.0,
+     "wind": 16.1,
+     "gusts": 36.7,
+     "windDirection": 212,
+     "uv": 4.15,
+     "sunrise": "2026-10-07T07:23",
+     "sunset": "2026-10-07T18:48"
+    }
+   ],
+   "hourly": [
+    {
+     "time": "2026-10-01T22:00",
+     "temperature": 20.1,
+     "feelsLike": 21.5,
+     "condition": "cloudy",
+     "precipChance": 40,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.6,
+     "gusts": 15.8,
+     "windDirection": 243,
+     "humidity": 79,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T23:00",
+     "temperature": 20.1,
+     "feelsLike": 21.6,
+     "condition": "cloudy",
+     "precipChance": 40,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.8,
+     "gusts": 25.6,
+     "windDirection": 263,
+     "humidity": 80,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T00:00",
+     "temperature": 19.8,
+     "feelsLike": 19.8,
+     "condition": "cloudy",
+     "precipChance": 42,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.4,
+     "gusts": 46.4,
+     "windDirection": 276,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T01:00",
+     "temperature": 19.2,
+     "feelsLike": 18.8,
+     "condition": "cloudy",
+     "precipChance": 42,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 18.0,
+     "gusts": 41.4,
+     "windDirection": 307,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T02:00",
+     "temperature": 18.5,
+     "feelsLike": 18.5,
+     "condition": "cloudy",
+     "precipChance": 61,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.8,
+     "gusts": 33.5,
+     "windDirection": 310,
+     "humidity": 83,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T03:00",
+     "temperature": 17.8,
+     "feelsLike": 17.6,
+     "condition": "drizzle",
+     "precipChance": 75,
+     "precip": 0.2,
+     "rain": 0.2,
+     "snow": 0.0,
+     "wind": 13.6,
+     "gusts": 37.1,
+     "windDirection": 310,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T04:00",
+     "temperature": 15.9,
+     "feelsLike": 14.7,
+     "condition": "rain",
+     "precipChance": 93,
+     "precip": 1.9,
+     "rain": 1.9,
+     "snow": 0.0,
+     "wind": 16.9,
+     "gusts": 40.3,
+     "windDirection": 304,
+     "humidity": 88,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T05:00",
+     "temperature": 14.5,
+     "feelsLike": 12.8,
+     "condition": "rain",
+     "precipChance": 88,
+     "precip": 3.0,
+     "rain": 3.0,
+     "snow": 0.0,
+     "wind": 16.6,
+     "gusts": 41.4,
+     "windDirection": 312,
+     "humidity": 88,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T06:00",
+     "temperature": 13.7,
+     "feelsLike": 12.0,
+     "condition": "drizzle",
+     "precipChance": 86,
+     "precip": 1.2,
+     "rain": 1.2,
+     "snow": 0.0,
+     "wind": 14.3,
+     "gusts": 36.7,
+     "windDirection": 311,
+     "humidity": 85,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T07:00",
+     "temperature": 12.7,
+     "feelsLike": 11.1,
+     "condition": "drizzle",
+     "precipChance": 73,
+     "precip": 0.5,
+     "rain": 0.5,
+     "snow": 0.0,
+     "wind": 10.8,
+     "gusts": 34.9,
+     "windDirection": 307,
+     "humidity": 82,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T08:00",
+     "temperature": 12.6,
+     "feelsLike": 11.6,
+     "condition": "drizzle",
+     "precipChance": 33,
+     "precip": 0.5,
+     "rain": 0.5,
+     "snow": 0.0,
+     "wind": 6.4,
+     "gusts": 20.5,
+     "windDirection": 297,
+     "humidity": 83,
+     "cloud": 100,
+     "uv": 0.05
+    },
+    {
+     "time": "2026-10-02T09:00",
+     "temperature": 13.5,
+     "feelsLike": 12.4,
+     "condition": "cloudy",
+     "precipChance": 6,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.9,
+     "gusts": 17.3,
+     "windDirection": 270,
+     "humidity": 80,
+     "cloud": 100,
+     "uv": 0.35
+    }
+   ],
+   "hours": [
+    {
+     "time": "2026-10-01T00:00",
+     "temperature": 18.2,
+     "feelsLike": 17.3,
+     "condition": "clear",
+     "precipChance": 6,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.8,
+     "gusts": 31.0,
+     "windDirection": 218,
+     "humidity": 72,
+     "cloud": 16,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T01:00",
+     "temperature": 18.3,
+     "feelsLike": 18.2,
+     "condition": "cloudy",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.8,
+     "gusts": 32.0,
+     "windDirection": 188,
+     "humidity": 76,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T02:00",
+     "temperature": 18.0,
+     "feelsLike": 18.4,
+     "condition": "cloudy",
+     "precipChance": 7,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.7,
+     "gusts": 35.6,
+     "windDirection": 182,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T03:00",
+     "temperature": 17.9,
+     "feelsLike": 18.3,
+     "condition": "cloudy",
+     "precipChance": 33,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.4,
+     "gusts": 27.0,
+     "windDirection": 163,
+     "humidity": 90,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T04:00",
+     "temperature": 17.8,
+     "feelsLike": 18.2,
+     "condition": "cloudy",
+     "precipChance": 28,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.2,
+     "gusts": 33.1,
+     "windDirection": 182,
+     "humidity": 91,
+     "cloud": 99,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T05:00",
+     "temperature": 17.6,
+     "feelsLike": 18.3,
+     "condition": "cloudy",
+     "precipChance": 21,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.7,
+     "gusts": 28.4,
+     "windDirection": 158,
+     "humidity": 91,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T06:00",
+     "temperature": 17.9,
+     "feelsLike": 18.7,
+     "condition": "cloudy",
+     "precipChance": 20,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 10.3,
+     "gusts": 29.2,
+     "windDirection": 151,
+     "humidity": 92,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T07:00",
+     "temperature": 18.2,
+     "feelsLike": 19.5,
+     "condition": "cloudy",
+     "precipChance": 20,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.6,
+     "gusts": 24.1,
+     "windDirection": 165,
+     "humidity": 94,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T08:00",
+     "temperature": 18.5,
+     "feelsLike": 19.7,
+     "condition": "cloudy",
+     "precipChance": 16,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.3,
+     "gusts": 28.4,
+     "windDirection": 196,
+     "humidity": 92,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T09:00",
+     "temperature": 18.8,
+     "feelsLike": 19.6,
+     "condition": "drizzle",
+     "precipChance": 22,
+     "precip": 0.1,
+     "rain": 0.1,
+     "snow": 0.0,
+     "wind": 11.5,
+     "gusts": 28.8,
+     "windDirection": 182,
+     "humidity": 89,
+     "cloud": 99,
+     "uv": 0.05
+    },
+    {
+     "time": "2026-10-01T10:00",
+     "temperature": 18.5,
+     "feelsLike": 19.4,
+     "condition": "cloudy",
+     "precipChance": 21,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.7,
+     "gusts": 26.6,
+     "windDirection": 182,
+     "humidity": 89,
+     "cloud": 100,
+     "uv": 0.2
+    },
+    {
+     "time": "2026-10-01T11:00",
+     "temperature": 19.4,
+     "feelsLike": 20.4,
+     "condition": "cloudy",
+     "precipChance": 20,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 10.1,
+     "gusts": 30.6,
+     "windDirection": 174,
+     "humidity": 87,
+     "cloud": 100,
+     "uv": 0.35
+    },
+    {
+     "time": "2026-10-01T12:00",
+     "temperature": 20.7,
+     "feelsLike": 20.7,
+     "condition": "cloudy",
+     "precipChance": 11,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 14.8,
+     "gusts": 36.7,
+     "windDirection": 219,
+     "humidity": 75,
+     "cloud": 100,
+     "uv": 0.65
+    },
+    {
+     "time": "2026-10-01T13:00",
+     "temperature": 22.2,
+     "feelsLike": 22.3,
+     "condition": "cloudy",
+     "precipChance": 6,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 19.5,
+     "gusts": 43.2,
+     "windDirection": 236,
+     "humidity": 77,
+     "cloud": 100,
+     "uv": 1.55
+    },
+    {
+     "time": "2026-10-01T14:00",
+     "temperature": 23.5,
+     "feelsLike": 23.6,
+     "condition": "cloudy",
+     "precipChance": 4,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 20.6,
+     "gusts": 39.6,
+     "windDirection": 245,
+     "humidity": 74,
+     "cloud": 100,
+     "uv": 1.3
+    },
+    {
+     "time": "2026-10-01T15:00",
+     "temperature": 22.3,
+     "feelsLike": 23.4,
+     "condition": "cloudy",
+     "precipChance": 4,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.0,
+     "gusts": 36.0,
+     "windDirection": 218,
+     "humidity": 75,
+     "cloud": 100,
+     "uv": 1.55
+    },
+    {
+     "time": "2026-10-01T16:00",
+     "temperature": 21.6,
+     "feelsLike": 23.1,
+     "condition": "cloudy",
+     "precipChance": 7,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.1,
+     "gusts": 26.6,
+     "windDirection": 212,
+     "humidity": 78,
+     "cloud": 100,
+     "uv": 1.1
+    },
+    {
+     "time": "2026-10-01T17:00",
+     "temperature": 21.6,
+     "feelsLike": 23.3,
+     "condition": "cloudy",
+     "precipChance": 22,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.2,
+     "gusts": 28.1,
+     "windDirection": 198,
+     "humidity": 78,
+     "cloud": 100,
+     "uv": 0.6
+    },
+    {
+     "time": "2026-10-01T18:00",
+     "temperature": 21.8,
+     "feelsLike": 22.0,
+     "condition": "cloudy",
+     "precipChance": 20,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 13.7,
+     "gusts": 41.4,
+     "windDirection": 210,
+     "humidity": 71,
+     "cloud": 100,
+     "uv": 0.2
+    },
+    {
+     "time": "2026-10-01T19:00",
+     "temperature": 21.3,
+     "feelsLike": 21.2,
+     "condition": "cloudy",
+     "precipChance": 13,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 16.7,
+     "gusts": 45.0,
+     "windDirection": 205,
+     "humidity": 75,
+     "cloud": 98,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T20:00",
+     "temperature": 20.9,
+     "feelsLike": 22.5,
+     "condition": "cloudy",
+     "precipChance": 25,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.4,
+     "gusts": 16.9,
+     "windDirection": 223,
+     "humidity": 79,
+     "cloud": 88,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T21:00",
+     "temperature": 20.4,
+     "feelsLike": 21.9,
+     "condition": "cloudy",
+     "precipChance": 35,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.8,
+     "gusts": 15.8,
+     "windDirection": 248,
+     "humidity": 79,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T22:00",
+     "temperature": 20.1,
+     "feelsLike": 21.5,
+     "condition": "cloudy",
+     "precipChance": 40,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.6,
+     "gusts": 15.8,
+     "windDirection": 243,
+     "humidity": 79,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-01T23:00",
+     "temperature": 20.1,
+     "feelsLike": 21.6,
+     "condition": "cloudy",
+     "precipChance": 40,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.8,
+     "gusts": 25.6,
+     "windDirection": 263,
+     "humidity": 80,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T00:00",
+     "temperature": 19.8,
+     "feelsLike": 19.8,
+     "condition": "cloudy",
+     "precipChance": 42,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.4,
+     "gusts": 46.4,
+     "windDirection": 276,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T01:00",
+     "temperature": 19.2,
+     "feelsLike": 18.8,
+     "condition": "cloudy",
+     "precipChance": 42,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 18.0,
+     "gusts": 41.4,
+     "windDirection": 307,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T02:00",
+     "temperature": 18.5,
+     "feelsLike": 18.5,
+     "condition": "cloudy",
+     "precipChance": 61,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.8,
+     "gusts": 33.5,
+     "windDirection": 310,
+     "humidity": 83,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T03:00",
+     "temperature": 17.8,
+     "feelsLike": 17.6,
+     "condition": "drizzle",
+     "precipChance": 75,
+     "precip": 0.2,
+     "rain": 0.2,
+     "snow": 0.0,
+     "wind": 13.6,
+     "gusts": 37.1,
+     "windDirection": 310,
+     "humidity": 84,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T04:00",
+     "temperature": 15.9,
+     "feelsLike": 14.7,
+     "condition": "rain",
+     "precipChance": 93,
+     "precip": 1.9,
+     "rain": 1.9,
+     "snow": 0.0,
+     "wind": 16.9,
+     "gusts": 40.3,
+     "windDirection": 304,
+     "humidity": 88,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T05:00",
+     "temperature": 14.5,
+     "feelsLike": 12.8,
+     "condition": "rain",
+     "precipChance": 88,
+     "precip": 3.0,
+     "rain": 3.0,
+     "snow": 0.0,
+     "wind": 16.6,
+     "gusts": 41.4,
+     "windDirection": 312,
+     "humidity": 88,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T06:00",
+     "temperature": 13.7,
+     "feelsLike": 12.0,
+     "condition": "drizzle",
+     "precipChance": 86,
+     "precip": 1.2,
+     "rain": 1.2,
+     "snow": 0.0,
+     "wind": 14.3,
+     "gusts": 36.7,
+     "windDirection": 311,
+     "humidity": 85,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T07:00",
+     "temperature": 12.7,
+     "feelsLike": 11.1,
+     "condition": "drizzle",
+     "precipChance": 73,
+     "precip": 0.5,
+     "rain": 0.5,
+     "snow": 0.0,
+     "wind": 10.8,
+     "gusts": 34.9,
+     "windDirection": 307,
+     "humidity": 82,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T08:00",
+     "temperature": 12.6,
+     "feelsLike": 11.6,
+     "condition": "drizzle",
+     "precipChance": 33,
+     "precip": 0.5,
+     "rain": 0.5,
+     "snow": 0.0,
+     "wind": 6.4,
+     "gusts": 20.5,
+     "windDirection": 297,
+     "humidity": 83,
+     "cloud": 100,
+     "uv": 0.05
+    },
+    {
+     "time": "2026-10-02T09:00",
+     "temperature": 13.5,
+     "feelsLike": 12.4,
+     "condition": "cloudy",
+     "precipChance": 6,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.9,
+     "gusts": 17.3,
+     "windDirection": 270,
+     "humidity": 80,
+     "cloud": 100,
+     "uv": 0.35
+    },
+    {
+     "time": "2026-10-02T10:00",
+     "temperature": 15.0,
+     "feelsLike": 14.0,
+     "condition": "cloudy",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.7,
+     "gusts": 25.9,
+     "windDirection": 294,
+     "humidity": 77,
+     "cloud": 100,
+     "uv": 0.45
+    },
+    {
+     "time": "2026-10-02T11:00",
+     "temperature": 16.1,
+     "feelsLike": 15.0,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.6,
+     "gusts": 24.1,
+     "windDirection": 300,
+     "humidity": 77,
+     "cloud": 100,
+     "uv": 1.75
+    },
+    {
+     "time": "2026-10-02T12:00",
+     "temperature": 17.2,
+     "feelsLike": 15.9,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 15.8,
+     "gusts": 27.7,
+     "windDirection": 315,
+     "humidity": 77,
+     "cloud": 100,
+     "uv": 2.65
+    },
+    {
+     "time": "2026-10-02T13:00",
+     "temperature": 18.2,
+     "feelsLike": 15.9,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 19.1,
+     "gusts": 29.5,
+     "windDirection": 314,
+     "humidity": 61,
+     "cloud": 100,
+     "uv": 3.6
+    },
+    {
+     "time": "2026-10-02T14:00",
+     "temperature": 18.6,
+     "feelsLike": 15.5,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 19.4,
+     "gusts": 29.2,
+     "windDirection": 312,
+     "humidity": 51,
+     "cloud": 100,
+     "uv": 3.65
+    },
+    {
+     "time": "2026-10-02T15:00",
+     "temperature": 19.2,
+     "feelsLike": 16.1,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 19.4,
+     "gusts": 29.2,
+     "windDirection": 305,
+     "humidity": 47,
+     "cloud": 100,
+     "uv": 3.95
+    },
+    {
+     "time": "2026-10-02T16:00",
+     "temperature": 19.4,
+     "feelsLike": 15.2,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 23.0,
+     "gusts": 33.5,
+     "windDirection": 297,
+     "humidity": 44,
+     "cloud": 100,
+     "uv": 3.0
+    },
+    {
+     "time": "2026-10-02T17:00",
+     "temperature": 16.7,
+     "feelsLike": 12.2,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 26.4,
+     "gusts": 40.0,
+     "windDirection": 325,
+     "humidity": 54,
+     "cloud": 100,
+     "uv": 1.85
+    },
+    {
+     "time": "2026-10-02T18:00",
+     "temperature": 15.6,
+     "feelsLike": 11.1,
+     "condition": "cloudy",
+     "precipChance": 4,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 24.2,
+     "gusts": 40.7,
+     "windDirection": 327,
+     "humidity": 53,
+     "cloud": 100,
+     "uv": 0.85
+    },
+    {
+     "time": "2026-10-02T19:00",
+     "temperature": 13.9,
+     "feelsLike": 10.3,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 18.2,
+     "gusts": 42.8,
+     "windDirection": 326,
+     "humidity": 60,
+     "cloud": 3,
+     "uv": 0.2
+    },
+    {
+     "time": "2026-10-02T20:00",
+     "temperature": 12.6,
+     "feelsLike": 10.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.5,
+     "gusts": 23.4,
+     "windDirection": 299,
+     "humidity": 62,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T21:00",
+     "temperature": 11.5,
+     "feelsLike": 9.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.2,
+     "gusts": 20.2,
+     "windDirection": 291,
+     "humidity": 66,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T22:00",
+     "temperature": 10.9,
+     "feelsLike": 8.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.2,
+     "gusts": 22.0,
+     "windDirection": 303,
+     "humidity": 67,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-02T23:00",
+     "temperature": 10.2,
+     "feelsLike": 7.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.2,
+     "gusts": 20.2,
+     "windDirection": 309,
+     "humidity": 72,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T00:00",
+     "temperature": 9.5,
+     "feelsLike": 7.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.9,
+     "gusts": 17.3,
+     "windDirection": 309,
+     "humidity": 77,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T01:00",
+     "temperature": 8.9,
+     "feelsLike": 6.8,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.4,
+     "gusts": 16.9,
+     "windDirection": 317,
+     "humidity": 80,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T02:00",
+     "temperature": 8.3,
+     "feelsLike": 6.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.4,
+     "gusts": 19.8,
+     "windDirection": 320,
+     "humidity": 84,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T03:00",
+     "temperature": 8.2,
+     "feelsLike": 5.8,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.8,
+     "gusts": 18.7,
+     "windDirection": 325,
+     "humidity": 85,
+     "cloud": 1,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T04:00",
+     "temperature": 7.6,
+     "feelsLike": 5.5,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.8,
+     "gusts": 16.6,
+     "windDirection": 328,
+     "humidity": 85,
+     "cloud": 4,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T05:00",
+     "temperature": 7.3,
+     "feelsLike": 4.9,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.2,
+     "gusts": 18.4,
+     "windDirection": 345,
+     "humidity": 86,
+     "cloud": 8,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T06:00",
+     "temperature": 7.0,
+     "feelsLike": 4.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.1,
+     "gusts": 16.2,
+     "windDirection": 339,
+     "humidity": 87,
+     "cloud": 7,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T07:00",
+     "temperature": 6.4,
+     "feelsLike": 4.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.1,
+     "gusts": 14.0,
+     "windDirection": 336,
+     "humidity": 89,
+     "cloud": 2,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T08:00",
+     "temperature": 6.4,
+     "feelsLike": 4.3,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.1,
+     "gusts": 14.0,
+     "windDirection": 332,
+     "humidity": 90,
+     "cloud": 0,
+     "uv": 0.1
+    },
+    {
+     "time": "2026-10-03T09:00",
+     "temperature": 9.7,
+     "feelsLike": 7.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 10.2,
+     "gusts": 21.6,
+     "windDirection": 350,
+     "humidity": 74,
+     "cloud": 1,
+     "uv": 0.75
+    },
+    {
+     "time": "2026-10-03T10:00",
+     "temperature": 11.6,
+     "feelsLike": 8.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.9,
+     "gusts": 16.9,
+     "windDirection": 5,
+     "humidity": 63,
+     "cloud": 2,
+     "uv": 1.8
+    },
+    {
+     "time": "2026-10-03T11:00",
+     "temperature": 13.0,
+     "feelsLike": 9.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.3,
+     "gusts": 14.8,
+     "windDirection": 17,
+     "humidity": 50,
+     "cloud": 0,
+     "uv": 3.0
+    },
+    {
+     "time": "2026-10-03T12:00",
+     "temperature": 14.3,
+     "feelsLike": 11.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 10.2,
+     "gusts": 13.3,
+     "windDirection": 23,
+     "humidity": 42,
+     "cloud": 0,
+     "uv": 4.0
+    },
+    {
+     "time": "2026-10-03T13:00",
+     "temperature": 15.1,
+     "feelsLike": 12.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.1,
+     "gusts": 10.8,
+     "windDirection": 18,
+     "humidity": 37,
+     "cloud": 1,
+     "uv": 4.6
+    },
+    {
+     "time": "2026-10-03T14:00",
+     "temperature": 15.7,
+     "feelsLike": 13.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 10.0,
+     "gusts": 11.5,
+     "windDirection": 13,
+     "humidity": 36,
+     "cloud": 2,
+     "uv": 4.65
+    },
+    {
+     "time": "2026-10-03T15:00",
+     "temperature": 16.0,
+     "feelsLike": 13.2,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.3,
+     "gusts": 11.2,
+     "windDirection": 13,
+     "humidity": 35,
+     "cloud": 2,
+     "uv": 4.2
+    },
+    {
+     "time": "2026-10-03T16:00",
+     "temperature": 16.1,
+     "feelsLike": 12.9,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.1,
+     "gusts": 9.4,
+     "windDirection": 21,
+     "humidity": 35,
+     "cloud": 3,
+     "uv": 3.25
+    },
+    {
+     "time": "2026-10-03T17:00",
+     "temperature": 15.9,
+     "feelsLike": 12.9,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.0,
+     "gusts": 6.8,
+     "windDirection": 25,
+     "humidity": 35,
+     "cloud": 4,
+     "uv": 2.1
+    },
+    {
+     "time": "2026-10-03T18:00",
+     "temperature": 15.2,
+     "feelsLike": 12.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.6,
+     "gusts": 7.7,
+     "windDirection": 71,
+     "humidity": 39,
+     "cloud": 5,
+     "uv": 0.95
+    },
+    {
+     "time": "2026-10-03T19:00",
+     "temperature": 13.3,
+     "feelsLike": 10.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.2,
+     "gusts": 12.8,
+     "windDirection": 147,
+     "humidity": 50,
+     "cloud": 5,
+     "uv": 0.15
+    },
+    {
+     "time": "2026-10-03T20:00",
+     "temperature": 12.7,
+     "feelsLike": 10.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.6,
+     "gusts": 12.1,
+     "windDirection": 130,
+     "humidity": 56,
+     "cloud": 1,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T21:00",
+     "temperature": 12.7,
+     "feelsLike": 10.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.8,
+     "gusts": 12.2,
+     "windDirection": 117,
+     "humidity": 56,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T22:00",
+     "temperature": 12.3,
+     "feelsLike": 10.3,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.3,
+     "gusts": 11.2,
+     "windDirection": 85,
+     "humidity": 58,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-03T23:00",
+     "temperature": 12.0,
+     "feelsLike": 10.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.1,
+     "gusts": 17.6,
+     "windDirection": 86,
+     "humidity": 60,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T00:00",
+     "temperature": 11.8,
+     "feelsLike": 9.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.2,
+     "gusts": 23.0,
+     "windDirection": 97,
+     "humidity": 60,
+     "cloud": 5,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T01:00",
+     "temperature": 11.6,
+     "feelsLike": 9.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.5,
+     "gusts": 25.2,
+     "windDirection": 109,
+     "humidity": 62,
+     "cloud": 5,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T02:00",
+     "temperature": 11.4,
+     "feelsLike": 8.7,
+     "condition": "mostly-clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.8,
+     "gusts": 25.6,
+     "windDirection": 125,
+     "humidity": 61,
+     "cloud": 23,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T03:00",
+     "temperature": 11.1,
+     "feelsLike": 8.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.7,
+     "gusts": 25.6,
+     "windDirection": 120,
+     "humidity": 62,
+     "cloud": 12,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T04:00",
+     "temperature": 11.0,
+     "feelsLike": 8.6,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.8,
+     "gusts": 24.5,
+     "windDirection": 112,
+     "humidity": 64,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T05:00",
+     "temperature": 11.0,
+     "feelsLike": 8.3,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.2,
+     "gusts": 25.6,
+     "windDirection": 121,
+     "humidity": 63,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T06:00",
+     "temperature": 10.9,
+     "feelsLike": 8.4,
+     "condition": "cloudy",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.0,
+     "gusts": 24.8,
+     "windDirection": 117,
+     "humidity": 65,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T07:00",
+     "temperature": 10.5,
+     "feelsLike": 8.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.2,
+     "gusts": 14.0,
+     "windDirection": 115,
+     "humidity": 70,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T08:00",
+     "temperature": 10.8,
+     "feelsLike": 9.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 0.8,
+     "gusts": 1.1,
+     "windDirection": 27,
+     "humidity": 72,
+     "cloud": 5,
+     "uv": 0.1
+    },
+    {
+     "time": "2026-10-04T09:00",
+     "temperature": 12.3,
+     "feelsLike": 11.1,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 1.8,
+     "gusts": 1.4,
+     "windDirection": 307,
+     "humidity": 67,
+     "cloud": 6,
+     "uv": 0.7
+    },
+    {
+     "time": "2026-10-04T10:00",
+     "temperature": 14.1,
+     "feelsLike": 12.9,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 1.5,
+     "gusts": 3.6,
+     "windDirection": 225,
+     "humidity": 59,
+     "cloud": 6,
+     "uv": 1.75
+    },
+    {
+     "time": "2026-10-04T11:00",
+     "temperature": 15.8,
+     "feelsLike": 14.5,
+     "condition": "cloudy",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 2.8,
+     "gusts": 5.4,
+     "windDirection": 220,
+     "humidity": 53,
+     "cloud": 100,
+     "uv": 2.8
+    },
+    {
+     "time": "2026-10-04T12:00",
+     "temperature": 17.1,
+     "feelsLike": 14.6,
+     "condition": "cloudy",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.3,
+     "gusts": 13.0,
+     "windDirection": 153,
+     "humidity": 50,
+     "cloud": 100,
+     "uv": 3.7
+    },
+    {
+     "time": "2026-10-04T13:00",
+     "temperature": 18.1,
+     "feelsLike": 15.5,
+     "condition": "cloudy",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.2,
+     "gusts": 16.2,
+     "windDirection": 178,
+     "humidity": 47,
+     "cloud": 100,
+     "uv": 3.75
+    },
+    {
+     "time": "2026-10-04T14:00",
+     "temperature": 19.3,
+     "feelsLike": 17.3,
+     "condition": "partly-cloudy",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.1,
+     "gusts": 17.6,
+     "windDirection": 192,
+     "humidity": 44,
+     "cloud": 62,
+     "uv": 4.5
+    },
+    {
+     "time": "2026-10-04T15:00",
+     "temperature": 20.2,
+     "feelsLike": 17.9,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.6,
+     "gusts": 20.2,
+     "windDirection": 193,
+     "humidity": 42,
+     "cloud": 6,
+     "uv": 4.05
+    },
+    {
+     "time": "2026-10-04T16:00",
+     "temperature": 20.9,
+     "feelsLike": 18.1,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 13.2,
+     "gusts": 21.6,
+     "windDirection": 197,
+     "humidity": 39,
+     "cloud": 0,
+     "uv": 3.15
+    },
+    {
+     "time": "2026-10-04T17:00",
+     "temperature": 20.8,
+     "feelsLike": 18.2,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.6,
+     "gusts": 22.0,
+     "windDirection": 193,
+     "humidity": 41,
+     "cloud": 0,
+     "uv": 2.0
+    },
+    {
+     "time": "2026-10-04T18:00",
+     "temperature": 19.1,
+     "feelsLike": 17.4,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.3,
+     "gusts": 14.8,
+     "windDirection": 185,
+     "humidity": 49,
+     "cloud": 0,
+     "uv": 0.9
+    },
+    {
+     "time": "2026-10-04T19:00",
+     "temperature": 17.0,
+     "feelsLike": 15.5,
+     "condition": "mostly-clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.8,
+     "gusts": 10.8,
+     "windDirection": 238,
+     "humidity": 55,
+     "cloud": 36,
+     "uv": 0.15
+    },
+    {
+     "time": "2026-10-04T20:00",
+     "temperature": 16.2,
+     "feelsLike": 13.6,
+     "condition": "clear",
+     "precipChance": 2,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.5,
+     "gusts": 33.5,
+     "windDirection": 284,
+     "humidity": 52,
+     "cloud": 11,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T21:00",
+     "temperature": 15.7,
+     "feelsLike": 13.2,
+     "condition": "partly-cloudy",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 11.7,
+     "gusts": 34.6,
+     "windDirection": 281,
+     "humidity": 55,
+     "cloud": 59,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T22:00",
+     "temperature": 15.7,
+     "feelsLike": 13.0,
+     "condition": "cloudy",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 13.5,
+     "gusts": 33.8,
+     "windDirection": 295,
+     "humidity": 57,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-04T23:00",
+     "temperature": 14.5,
+     "feelsLike": 11.7,
+     "condition": "clear",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 19.2,
+     "gusts": 35.3,
+     "windDirection": 322,
+     "humidity": 74,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T00:00",
+     "temperature": 13.7,
+     "feelsLike": 10.2,
+     "condition": "cloudy",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 18.8,
+     "gusts": 38.5,
+     "windDirection": 317,
+     "humidity": 64,
+     "cloud": 100,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T01:00",
+     "temperature": 12.3,
+     "feelsLike": 8.6,
+     "condition": "clear",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.8,
+     "gusts": 38.9,
+     "windDirection": 313,
+     "humidity": 63,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T02:00",
+     "temperature": 11.4,
+     "feelsLike": 7.6,
+     "condition": "clear",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.8,
+     "gusts": 40.7,
+     "windDirection": 315,
+     "humidity": 65,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T03:00",
+     "temperature": 10.8,
+     "feelsLike": 7.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.1,
+     "gusts": 40.3,
+     "windDirection": 314,
+     "humidity": 66,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T04:00",
+     "temperature": 10.2,
+     "feelsLike": 6.2,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.3,
+     "gusts": 40.0,
+     "windDirection": 315,
+     "humidity": 64,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T05:00",
+     "temperature": 9.8,
+     "feelsLike": 6.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 15.8,
+     "gusts": 38.9,
+     "windDirection": 317,
+     "humidity": 64,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T06:00",
+     "temperature": 9.6,
+     "feelsLike": 5.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 16.3,
+     "gusts": 37.8,
+     "windDirection": 315,
+     "humidity": 64,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T07:00",
+     "temperature": 9.3,
+     "feelsLike": 5.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.8,
+     "gusts": 37.4,
+     "windDirection": 312,
+     "humidity": 64,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T08:00",
+     "temperature": 9.1,
+     "feelsLike": 4.9,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.4,
+     "gusts": 36.4,
+     "windDirection": 304,
+     "humidity": 64,
+     "cloud": 0,
+     "uv": 0.05
+    },
+    {
+     "time": "2026-10-05T09:00",
+     "temperature": 10.2,
+     "feelsLike": 6.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 17.6,
+     "gusts": 32.8,
+     "windDirection": 305,
+     "humidity": 60,
+     "cloud": 0,
+     "uv": 0.7
+    },
+    {
+     "time": "2026-10-05T10:00",
+     "temperature": 11.4,
+     "feelsLike": 6.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 20.1,
+     "gusts": 30.6,
+     "windDirection": 316,
+     "humidity": 52,
+     "cloud": 5,
+     "uv": 1.7
+    },
+    {
+     "time": "2026-10-05T11:00",
+     "temperature": 12.4,
+     "feelsLike": 7.3,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 20.9,
+     "gusts": 31.3,
+     "windDirection": 319,
+     "humidity": 44,
+     "cloud": 7,
+     "uv": 2.8
+    },
+    {
+     "time": "2026-10-05T12:00",
+     "temperature": 13.3,
+     "feelsLike": 8.2,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 21.2,
+     "gusts": 30.6,
+     "windDirection": 318,
+     "humidity": 37,
+     "cloud": 6,
+     "uv": 3.75
+    },
+    {
+     "time": "2026-10-05T13:00",
+     "temperature": 13.8,
+     "feelsLike": 8.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 22.5,
+     "gusts": 31.3,
+     "windDirection": 321,
+     "humidity": 32,
+     "cloud": 6,
+     "uv": 4.35
+    },
+    {
+     "time": "2026-10-05T14:00",
+     "temperature": 14.0,
+     "feelsLike": 8.9,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 21.0,
+     "gusts": 32.0,
+     "windDirection": 325,
+     "humidity": 29,
+     "cloud": 6,
+     "uv": 4.4
+    },
+    {
+     "time": "2026-10-05T15:00",
+     "temperature": 14.1,
+     "feelsLike": 8.6,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 21.2,
+     "gusts": 32.8,
+     "windDirection": 328,
+     "humidity": 27,
+     "cloud": 6,
+     "uv": 3.95
+    },
+    {
+     "time": "2026-10-05T16:00",
+     "temperature": 13.7,
+     "feelsLike": 7.7,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 22.1,
+     "gusts": 32.4,
+     "windDirection": 330,
+     "humidity": 26,
+     "cloud": 6,
+     "uv": 3.1
+    },
+    {
+     "time": "2026-10-05T17:00",
+     "temperature": 12.9,
+     "feelsLike": 7.1,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 22.0,
+     "gusts": 33.1,
+     "windDirection": 339,
+     "humidity": 31,
+     "cloud": 6,
+     "uv": 1.95
+    },
+    {
+     "time": "2026-10-05T18:00",
+     "temperature": 10.8,
+     "feelsLike": 5.3,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 21.4,
+     "gusts": 33.5,
+     "windDirection": 352,
+     "humidity": 41,
+     "cloud": 6,
+     "uv": 0.85
+    },
+    {
+     "time": "2026-10-05T19:00",
+     "temperature": 9.2,
+     "feelsLike": 4.0,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 19.4,
+     "gusts": 34.9,
+     "windDirection": 345,
+     "humidity": 45,
+     "cloud": 6,
+     "uv": 0.15
+    },
+    {
+     "time": "2026-10-05T20:00",
+     "temperature": 8.9,
+     "feelsLike": 4.7,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.3,
+     "gusts": 31.3,
+     "windDirection": 322,
+     "humidity": 45,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T21:00",
+     "temperature": 8.3,
+     "feelsLike": 4.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.3,
+     "gusts": 26.3,
+     "windDirection": 306,
+     "humidity": 45,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T22:00",
+     "temperature": 7.7,
+     "feelsLike": 3.8,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.9,
+     "gusts": 21.6,
+     "windDirection": 297,
+     "humidity": 45,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-05T23:00",
+     "temperature": 7.2,
+     "feelsLike": 3.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.5,
+     "gusts": 21.6,
+     "windDirection": 306,
+     "humidity": 46,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T00:00",
+     "temperature": 6.8,
+     "feelsLike": 3.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.4,
+     "gusts": 17.6,
+     "windDirection": 313,
+     "humidity": 47,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T01:00",
+     "temperature": 6.5,
+     "feelsLike": 2.8,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.9,
+     "gusts": 13.7,
+     "windDirection": 313,
+     "humidity": 47,
+     "cloud": 5,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T02:00",
+     "temperature": 6.3,
+     "feelsLike": 2.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.3,
+     "gusts": 11.2,
+     "windDirection": 301,
+     "humidity": 48,
+     "cloud": 5,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T03:00",
+     "temperature": 6.1,
+     "feelsLike": 2.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.4,
+     "gusts": 11.9,
+     "windDirection": 297,
+     "humidity": 50,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T04:00",
+     "temperature": 5.9,
+     "feelsLike": 2.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.8,
+     "gusts": 13.3,
+     "windDirection": 302,
+     "humidity": 52,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T05:00",
+     "temperature": 5.6,
+     "feelsLike": 2.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.4,
+     "gusts": 17.6,
+     "windDirection": 313,
+     "humidity": 54,
+     "cloud": 10,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T06:00",
+     "temperature": 5.4,
+     "feelsLike": 1.7,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.3,
+     "gusts": 19.8,
+     "windDirection": 326,
+     "humidity": 55,
+     "cloud": 10,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T07:00",
+     "temperature": 5.1,
+     "feelsLike": 1.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.4,
+     "gusts": 18.7,
+     "windDirection": 329,
+     "humidity": 57,
+     "cloud": 8,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T08:00",
+     "temperature": 5.1,
+     "feelsLike": 1.3,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.1,
+     "gusts": 16.9,
+     "windDirection": 342,
+     "humidity": 57,
+     "cloud": 11,
+     "uv": 0.05
+    },
+    {
+     "time": "2026-10-06T09:00",
+     "temperature": 6.5,
+     "feelsLike": 2.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.1,
+     "gusts": 13.3,
+     "windDirection": 353,
+     "humidity": 50,
+     "cloud": 7,
+     "uv": 0.65
+    },
+    {
+     "time": "2026-10-06T10:00",
+     "temperature": 8.2,
+     "feelsLike": 4.3,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.0,
+     "gusts": 11.5,
+     "windDirection": 358,
+     "humidity": 43,
+     "cloud": 7,
+     "uv": 1.7
+    },
+    {
+     "time": "2026-10-06T11:00",
+     "temperature": 9.8,
+     "feelsLike": 6.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.3,
+     "gusts": 11.9,
+     "windDirection": 355,
+     "humidity": 42,
+     "cloud": 15,
+     "uv": 2.85
+    },
+    {
+     "time": "2026-10-06T12:00",
+     "temperature": 11.1,
+     "feelsLike": 7.9,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.2,
+     "gusts": 11.9,
+     "windDirection": 337,
+     "humidity": 42,
+     "cloud": 8,
+     "uv": 3.8
+    },
+    {
+     "time": "2026-10-06T13:00",
+     "temperature": 12.2,
+     "feelsLike": 9.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 8.0,
+     "gusts": 11.5,
+     "windDirection": 324,
+     "humidity": 40,
+     "cloud": 8,
+     "uv": 4.35
+    },
+    {
+     "time": "2026-10-06T14:00",
+     "temperature": 13.3,
+     "feelsLike": 10.6,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.8,
+     "gusts": 11.9,
+     "windDirection": 326,
+     "humidity": 37,
+     "cloud": 13,
+     "uv": 4.4
+    },
+    {
+     "time": "2026-10-06T15:00",
+     "temperature": 14.0,
+     "feelsLike": 11.0,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.6,
+     "gusts": 11.9,
+     "windDirection": 335,
+     "humidity": 36,
+     "cloud": 14,
+     "uv": 3.65
+    },
+    {
+     "time": "2026-10-06T16:00",
+     "temperature": 14.5,
+     "feelsLike": 11.2,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.3,
+     "gusts": 11.5,
+     "windDirection": 351,
+     "humidity": 35,
+     "cloud": 15,
+     "uv": 2.9
+    },
+    {
+     "time": "2026-10-06T17:00",
+     "temperature": 14.4,
+     "feelsLike": 11.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.2,
+     "gusts": 10.8,
+     "windDirection": 6,
+     "humidity": 35,
+     "cloud": 14,
+     "uv": 1.95
+    },
+    {
+     "time": "2026-10-06T18:00",
+     "temperature": 13.5,
+     "feelsLike": 10.4,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 6.4,
+     "gusts": 8.3,
+     "windDirection": 16,
+     "humidity": 38,
+     "cloud": 10,
+     "uv": 0.95
+    },
+    {
+     "time": "2026-10-06T19:00",
+     "temperature": 12.1,
+     "feelsLike": 9.2,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.2,
+     "gusts": 5.0,
+     "windDirection": 25,
+     "humidity": 43,
+     "cloud": 4,
+     "uv": 0.15
+    },
+    {
+     "time": "2026-10-06T20:00",
+     "temperature": 10.9,
+     "feelsLike": 8.1,
+     "condition": "clear",
+     "precipChance": 0,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.3,
+     "gusts": 3.2,
+     "windDirection": 42,
+     "humidity": 46,
+     "cloud": 0,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T21:00",
+     "temperature": 10.4,
+     "feelsLike": 7.5,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.4,
+     "gusts": 4.3,
+     "windDirection": 55,
+     "humidity": 47,
+     "cloud": 1,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T22:00",
+     "temperature": 10.1,
+     "feelsLike": 7.1,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.0,
+     "gusts": 6.5,
+     "windDirection": 60,
+     "humidity": 47,
+     "cloud": 4,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-06T23:00",
+     "temperature": 9.8,
+     "feelsLike": 6.8,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.8,
+     "gusts": 7.6,
+     "windDirection": 63,
+     "humidity": 47,
+     "cloud": 7,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T00:00",
+     "temperature": 9.5,
+     "feelsLike": 6.8,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 3.1,
+     "gusts": 5.8,
+     "windDirection": 54,
+     "humidity": 49,
+     "cloud": 7,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T01:00",
+     "temperature": 9.1,
+     "feelsLike": 6.7,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 1.5,
+     "gusts": 2.9,
+     "windDirection": 346,
+     "humidity": 51,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T02:00",
+     "temperature": 8.8,
+     "feelsLike": 6.2,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 2.6,
+     "gusts": 1.8,
+     "windDirection": 286,
+     "humidity": 53,
+     "cloud": 6,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T03:00",
+     "temperature": 8.4,
+     "feelsLike": 5.6,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.0,
+     "gusts": 3.6,
+     "windDirection": 270,
+     "humidity": 55,
+     "cloud": 9,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T04:00",
+     "temperature": 7.9,
+     "feelsLike": 5.1,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 4.7,
+     "gusts": 7.2,
+     "windDirection": 261,
+     "humidity": 56,
+     "cloud": 13,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T05:00",
+     "temperature": 7.6,
+     "feelsLike": 4.7,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.2,
+     "gusts": 10.4,
+     "windDirection": 254,
+     "humidity": 58,
+     "cloud": 16,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T06:00",
+     "temperature": 7.3,
+     "feelsLike": 4.4,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.4,
+     "gusts": 12.6,
+     "windDirection": 250,
+     "humidity": 61,
+     "cloud": 16,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T07:00",
+     "temperature": 7.0,
+     "feelsLike": 4.3,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.3,
+     "gusts": 14.0,
+     "windDirection": 242,
+     "humidity": 65,
+     "cloud": 14,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T08:00",
+     "temperature": 7.5,
+     "feelsLike": 4.8,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 5.6,
+     "gusts": 15.5,
+     "windDirection": 230,
+     "humidity": 66,
+     "cloud": 12,
+     "uv": 0.05
+    },
+    {
+     "time": "2026-10-07T09:00",
+     "temperature": 9.1,
+     "feelsLike": 6.3,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 7.2,
+     "gusts": 16.9,
+     "windDirection": 217,
+     "humidity": 63,
+     "cloud": 10,
+     "uv": 0.85
+    },
+    {
+     "time": "2026-10-07T10:00",
+     "temperature": 11.4,
+     "feelsLike": 8.3,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.8,
+     "gusts": 18.0,
+     "windDirection": 208,
+     "humidity": 57,
+     "cloud": 8,
+     "uv": 1.85
+    },
+    {
+     "time": "2026-10-07T11:00",
+     "temperature": 13.5,
+     "feelsLike": 10.2,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.1,
+     "gusts": 19.1,
+     "windDirection": 203,
+     "humidity": 51,
+     "cloud": 9,
+     "uv": 2.85
+    },
+    {
+     "time": "2026-10-07T12:00",
+     "temperature": 15.4,
+     "feelsLike": 11.9,
+     "condition": "clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 13.8,
+     "gusts": 20.2,
+     "windDirection": 200,
+     "humidity": 44,
+     "cloud": 14,
+     "uv": 3.8
+    },
+    {
+     "time": "2026-10-07T13:00",
+     "temperature": 17.1,
+     "feelsLike": 13.5,
+     "condition": "mostly-clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 14.9,
+     "gusts": 21.2,
+     "windDirection": 200,
+     "humidity": 36,
+     "cloud": 21,
+     "uv": 4.15
+    },
+    {
+     "time": "2026-10-07T14:00",
+     "temperature": 18.3,
+     "feelsLike": 14.5,
+     "condition": "mostly-clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 15.6,
+     "gusts": 22.3,
+     "windDirection": 199,
+     "humidity": 31,
+     "cloud": 28,
+     "uv": 4.1
+    },
+    {
+     "time": "2026-10-07T15:00",
+     "temperature": 19.0,
+     "feelsLike": 14.8,
+     "condition": "mostly-clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 16.1,
+     "gusts": 22.7,
+     "windDirection": 200,
+     "humidity": 29,
+     "cloud": 33,
+     "uv": 3.55
+    },
+    {
+     "time": "2026-10-07T16:00",
+     "temperature": 19.2,
+     "feelsLike": 14.9,
+     "condition": "mostly-clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 15.8,
+     "gusts": 23.0,
+     "windDirection": 201,
+     "humidity": 29,
+     "cloud": 38,
+     "uv": 2.8
+    },
+    {
+     "time": "2026-10-07T17:00",
+     "temperature": 18.9,
+     "feelsLike": 14.7,
+     "condition": "mostly-clear",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 15.3,
+     "gusts": 24.1,
+     "windDirection": 204,
+     "humidity": 30,
+     "cloud": 44,
+     "uv": 1.85
+    },
+    {
+     "time": "2026-10-07T18:00",
+     "temperature": 17.9,
+     "feelsLike": 13.8,
+     "condition": "partly-cloudy",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 14.3,
+     "gusts": 26.6,
+     "windDirection": 205,
+     "humidity": 32,
+     "cloud": 52,
+     "uv": 0.85
+    },
+    {
+     "time": "2026-10-07T19:00",
+     "temperature": 16.3,
+     "feelsLike": 12.4,
+     "condition": "partly-cloudy",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 13.4,
+     "gusts": 29.5,
+     "windDirection": 207,
+     "humidity": 36,
+     "cloud": 62,
+     "uv": 0.1
+    },
+    {
+     "time": "2026-10-07T20:00",
+     "temperature": 15.0,
+     "feelsLike": 11.3,
+     "condition": "partly-cloudy",
+     "precipChance": 1,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 12.1,
+     "gusts": 32.4,
+     "windDirection": 210,
+     "humidity": 39,
+     "cloud": 70,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T21:00",
+     "temperature": 14.4,
+     "feelsLike": 10.9,
+     "condition": "partly-cloudy",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 10.9,
+     "gusts": 34.2,
+     "windDirection": 214,
+     "humidity": 42,
+     "cloud": 74,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T22:00",
+     "temperature": 14.1,
+     "feelsLike": 10.9,
+     "condition": "partly-cloudy",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.7,
+     "gusts": 35.6,
+     "windDirection": 222,
+     "humidity": 44,
+     "cloud": 77,
+     "uv": 0.0
+    },
+    {
+     "time": "2026-10-07T23:00",
+     "temperature": 13.9,
+     "feelsLike": 10.9,
+     "condition": "cloudy",
+     "precipChance": 3,
+     "precip": 0.0,
+     "rain": 0,
+     "snow": 0.0,
+     "wind": 9.2,
+     "gusts": 36.7,
+     "windDirection": 225,
+     "humidity": 46,
+     "cloud": 81,
+     "uv": 0.0
+    }
+   ],
+   "updated": 1790907773.533255,
+   "source": "Open-Meteo",
+   "alerts": []
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "temperature",
+    "label": "Temperature",
+    "unit": "°C",
+    "attr": "temperature",
+    "type": "number",
+    "options": [],
+    "value": 20.2
+   },
+   {
+    "id": "feelsLike",
+    "label": "Feels like",
+    "unit": "°C",
+    "attr": "feelsLike",
+    "type": "number",
+    "options": [],
+    "value": 21.6
+   },
+   {
+    "id": "humidity",
+    "label": "Humidity",
+    "unit": "%",
+    "attr": "humidity",
+    "type": "number",
+    "options": [],
+    "value": 79
+   },
+   {
+    "id": "wind",
+    "label": "Wind",
+    "unit": "km/h",
+    "attr": "wind",
+    "type": "number",
+    "options": [],
+    "value": 5.8
+   },
+   {
+    "id": "high",
+    "label": "High today",
+    "unit": "°C",
+    "attr": "high",
+    "type": "number",
+    "options": [],
+    "value": 23.5
+   },
+   {
+    "id": "low",
+    "label": "Low today",
+    "unit": "°C",
+    "attr": "low",
+    "type": "number",
+    "options": [],
+    "value": 17.6
+   },
+   {
+    "id": "precipChance",
+    "label": "Chance of rain or snow today",
+    "unit": "%",
+    "attr": "precipChance",
+    "type": "number",
+    "options": [],
+    "value": 40
+   },
+   {
+    "id": "rainToday",
+    "label": "Rain today",
+    "unit": "mm",
+    "attr": "rainToday",
+    "type": "number",
+    "options": [],
+    "value": 0.1
+   },
+   {
+    "id": "snowToday",
+    "label": "Snow today",
+    "unit": "cm",
+    "attr": "snowToday",
+    "type": "number",
+    "options": [],
+    "value": 0.0
+   },
+   {
+    "id": "gusts",
+    "label": "Wind gusts",
+    "unit": "km/h",
+    "attr": "gusts",
+    "type": "number",
+    "options": [],
+    "value": 17.6
+   },
+   {
+    "id": "uv",
+    "label": "UV index today",
+    "unit": "",
+    "attr": "uv",
+    "type": "number",
+    "options": [],
+    "value": 1.55
+   }
+  ],
+  "still": null,
+  "alerts": null,
+  "live": null,
+  "usedBy": [],
+  "updatedAt": 1790907773.6365235
+ },
+ {
+  "id": "frigate.zone_back",
+  "name": "Back",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "dog",
+    "cat"
+   ],
+   "counts": {
+    "person": 0,
+    "dog": 0,
+    "cat": 0
+   },
+   "camera": "Backyard",
+   "area": "Backyard"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_back/still.jpg",
+  "alerts": "api/entities/frigate.zone_back/alerts",
+  "live": "api/entities/frigate.zone_back/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.083782
+ },
+ {
+  "id": "frigate.zone_driveway",
+  "name": "Driveway",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "dog",
+    "cat",
+    "car"
+   ],
+   "counts": {
+    "person": 0,
+    "dog": 0,
+    "cat": 0,
+    "car": 0
+   },
+   "camera": "Garage",
+   "area": "Garage"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.car",
+    "label": "Car count",
+    "unit": "",
+    "attr": "counts.car",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_driveway/still.jpg",
+  "alerts": "api/entities/frigate.zone_driveway/alerts",
+  "live": "api/entities/frigate.zone_driveway/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0832808
+ },
+ {
+  "id": "frigate.zone_firepit",
+  "name": "Firepit",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "cat",
+    "dog"
+   ],
+   "counts": {
+    "person": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "camera": "Back Ac",
+   "area": "Back Ac"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_firepit/still.jpg",
+  "alerts": "api/entities/frigate.zone_firepit/alerts",
+  "live": "api/entities/frigate.zone_firepit/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0836282
+ },
+ {
+  "id": "frigate.zone_front_patio",
+  "name": "Front Patio",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "car",
+    "cat",
+    "dog"
+   ],
+   "counts": {
+    "person": 0,
+    "car": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "camera": "Front Porch",
+   "area": "Front Porch"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.car",
+    "label": "Car count",
+    "unit": "",
+    "attr": "counts.car",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_front_patio/still.jpg",
+  "alerts": "api/entities/frigate.zone_front_patio/alerts",
+  "live": "api/entities/frigate.zone_front_patio/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0831072
+ },
+ {
+  "id": "frigate.zone_garage_walkway",
+  "name": "Garage Walkway",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "dog",
+    "cat"
+   ],
+   "counts": {
+    "person": 0,
+    "dog": 0,
+    "cat": 0
+   },
+   "camera": "Garage Side",
+   "area": "Garage Side"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_garage_walkway/still.jpg",
+  "alerts": "api/entities/frigate.zone_garage_walkway/alerts",
+  "live": "api/entities/frigate.zone_garage_walkway/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0834715
+ },
+ {
+  "id": "frigate.zone_park_sidewalk",
+  "name": "Park Sidewalk",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "cat",
+    "dog"
+   ],
+   "counts": {
+    "person": 0,
+    "cat": 0,
+    "dog": 0
+   },
+   "camera": "Park Side",
+   "area": "Park Side"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_park_sidewalk/still.jpg",
+  "alerts": "api/entities/frigate.zone_park_sidewalk/alerts",
+  "live": "api/entities/frigate.zone_park_sidewalk/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0839965
+ },
+ {
+  "id": "frigate.zone_porch",
+  "name": "Porch",
+  "kind": "zone",
+  "category": "cameras",
+  "integration": "frigate",
+  "integrationName": "Frigate",
+  "state": "clear",
+  "stateLabel": "Clear",
+  "available": true,
+  "attrs": {
+   "events": [
+    "person",
+    "dog",
+    "cat"
+   ],
+   "counts": {
+    "person": 0,
+    "dog": 0,
+    "cat": 0
+   },
+   "camera": "Doorbell",
+   "area": "Doorbell"
+  },
+  "health": {
+   "ok": true,
+   "issues": []
+  },
+  "properties": [
+   {
+    "id": "counts.person",
+    "label": "Person count",
+    "unit": "",
+    "attr": "counts.person",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.dog",
+    "label": "Dog count",
+    "unit": "",
+    "attr": "counts.dog",
+    "type": "number",
+    "options": [],
+    "value": 0
+   },
+   {
+    "id": "counts.cat",
+    "label": "Cat count",
+    "unit": "",
+    "attr": "counts.cat",
+    "type": "number",
+    "options": [],
+    "value": 0
+   }
+  ],
+  "still": "api/entities/frigate.zone_porch/still.jpg",
+  "alerts": "api/entities/frigate.zone_porch/alerts",
+  "live": "api/entities/frigate.zone_porch/live",
+  "usedBy": [],
+  "updatedAt": 1790907773.0842106
+ }
+]

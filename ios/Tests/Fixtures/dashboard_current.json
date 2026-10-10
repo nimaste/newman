@@ -1,0 +1,267 @@
+{
+ "id": "d_68605b91",
+ "userId": "local",
+ "isDefault": true,
+ "updatedAt": 1790908474.084858,
+ "name": "Wall tablet",
+ "theme": "night-glass",
+ "pages": [
+  {
+   "id": "overview",
+   "name": "Overview",
+   "icon": "home",
+   "tiles": [
+    {
+     "id": "t_f9d5b45b",
+     "type": "weather",
+     "x": 0,
+     "y": 0,
+     "w": 4,
+     "h": 3,
+     "config": {
+      "entity": "weather.weather",
+      "show": "days"
+     }
+    },
+    {
+     "id": "t_1389ad1e",
+     "type": "calendar",
+     "x": 0,
+     "y": 3,
+     "w": 4,
+     "h": 5,
+     "config": {
+      "entities": [],
+      "days": 7
+     }
+    },
+    {
+     "id": "t_cc56018e",
+     "type": "camera",
+     "x": 4,
+     "y": 0,
+     "w": 5,
+     "h": 5,
+     "config": {
+      "entities": [
+       "frigate.camera_back_ac",
+       "frigate.camera_backyard",
+       "frigate.camera_doorbell",
+       "frigate.camera_front_porch"
+      ]
+     }
+    },
+    {
+     "id": "t_768b8d3b",
+     "type": "alerts",
+     "x": 4,
+     "y": 5,
+     "w": 5,
+     "h": 3,
+     "config": {
+      "limit": 4
+     }
+    },
+    {
+     "id": "t_ce40f398",
+     "type": "dial",
+     "x": 9,
+     "y": 0,
+     "w": 3,
+     "h": 4,
+     "config": {
+      "entity": "homekit.thermostat_1",
+      "command": "set_temperature",
+      "modeCommand": "set_mode"
+     }
+    },
+    {
+     "id": "t_67ee4de1",
+     "type": "devices",
+     "x": 9,
+     "y": 4,
+     "w": 3,
+     "h": 4,
+     "config": {
+      "title": "Shortcuts",
+      "entities": [
+       "meross.garage",
+       "mqtt.6c765b1f-a573-4618-ab90-faf1f3087526",
+       "mqtt.38985d0b-5a70-4741-8d56-58eef53d183c",
+       "lutron.device_12"
+      ],
+      "style": "tiles"
+     }
+    }
+   ]
+  },
+  {
+   "id": "security",
+   "name": "Security",
+   "icon": "shield",
+   "tiles": [
+    {
+     "id": "t_e1fc20ad",
+     "type": "mode",
+     "x": 0,
+     "y": 0,
+     "w": 7,
+     "h": 1,
+     "config": {
+      "entity": "mqtt.a8bba342-e19b-4987-9f2b-5066b19641a0"
+     }
+    },
+    {
+     "id": "t_fc607763",
+     "type": "devices",
+     "x": 0,
+     "y": 1,
+     "w": 7,
+     "h": 3,
+     "config": {
+      "title": "Locks & doors",
+      "entities": [
+       "meross.garage",
+       "mqtt.6c765b1f-a573-4618-ab90-faf1f3087526",
+       "mqtt.38985d0b-5a70-4741-8d56-58eef53d183c"
+      ],
+      "style": "list"
+     }
+    },
+    {
+     "id": "t_34222bec",
+     "type": "devices",
+     "x": 0,
+     "y": 4,
+     "w": 4,
+     "h": 4,
+     "config": {
+      "title": "Doors & windows",
+      "entities": [
+       "mqtt.e7eb4e91-8654-4dbc-8230-61c55c2b220b",
+       "mqtt.51bb6fc3-be9a-40bc-97f2-2f4dcd297547",
+       "mqtt.1eb3c1ff-0c19-40e0-8472-2ace3270cd51"
+      ],
+      "style": "list"
+     }
+    },
+    {
+     "id": "t_b1af5c79",
+     "type": "attention",
+     "x": 4,
+     "y": 4,
+     "w": 3,
+     "h": 4,
+     "config": {}
+    },
+    {
+     "id": "t_7148fbc3",
+     "type": "camera",
+     "x": 7,
+     "y": 0,
+     "w": 5,
+     "h": 5,
+     "config": {
+      "entities": [
+       "frigate.camera_back_ac",
+       "frigate.camera_backyard",
+       "frigate.camera_doorbell",
+       "frigate.camera_front_porch",
+       "frigate.camera_garage",
+       "frigate.camera_garage_side",
+       "frigate.camera_park_side",
+       "reolink.doorbell"
+      ]
+     }
+    },
+    {
+     "id": "t_2c03b177",
+     "type": "alerts",
+     "x": 7,
+     "y": 5,
+     "w": 5,
+     "h": 3,
+     "config": {
+      "limit": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "lights",
+   "name": "Lights",
+   "icon": "bulb",
+   "tiles": [
+    {
+     "id": "t_b688685c",
+     "type": "devices",
+     "x": 0,
+     "y": 0,
+     "w": 12,
+     "h": 8,
+     "config": {
+      "title": "Lights",
+      "entities": [
+       "lutron.device_12",
+       "lutron.device_2",
+       "lutron.device_8",
+       "lutron.device_3",
+       "lutron.device_10"
+      ],
+      "style": "tiles",
+      "groupBy": "area"
+     }
+    }
+   ]
+  },
+  {
+   "id": "climate",
+   "name": "Climate",
+   "icon": "thermometer",
+   "tiles": [
+    {
+     "id": "t_42201f55",
+     "type": "dial",
+     "x": 0,
+     "y": 0,
+     "w": 8,
+     "h": 8,
+     "config": {
+      "entity": "homekit.thermostat_1",
+      "command": "set_temperature",
+      "modeCommand": "set_mode"
+     }
+    },
+    {
+     "id": "t_801f8a17",
+     "type": "values",
+     "x": 8,
+     "y": 0,
+     "w": 4,
+     "h": 8,
+     "config": {
+      "title": "Around the house",
+      "items": [
+       {
+        "entity": "homekit.temp_4295215490_208",
+        "property": "temperature"
+       },
+       {
+        "entity": "homekit.temp_4295216265_208",
+        "property": "temperature"
+       },
+       {
+        "entity": "homekit.thermostat_1",
+        "property": "temperature"
+       },
+       {
+        "entity": "weather.weather",
+        "property": "temperature"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

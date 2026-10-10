@@ -1,0 +1,910 @@
+/* Tiles the phone's way (PhoneTiles.jsx), in the phone layout editor's preview. Everything sits in
+   .wt-tile--phone, so the wall tablet's tiles are untouched. Sizes follow the apps' GlassCard,
+   DeviceButton, CompactDial / FullDial… in px for dp. Text scales with the tile's --ts. */
+
+.wall .wt-tile.wt-tile--phone {
+  display: block;
+  position: relative;
+  padding: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  justify-content: initial;
+}
+.wt-tile--phone .pt {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+}
+.wt-tile--phone .pt-box {
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+.wt-tile--phone .pt-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+}
+.wt-tile--phone .pt-ell,
+.wt-tile--phone .pt-head-text,
+.wt-tile--phone .pt-head-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  color: var(--wt-dim);
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.wt-tile--phone .pt-note.is-center {
+  margin: auto 0;
+  text-align: center;
+}
+.wt-tile--phone .pt-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: calc(15px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-head > svg {
+  flex: 0 0 auto;
+}
+.wt-tile--phone .pt-head-text {
+  flex: 1 1 auto;
+}
+.wt-tile--phone .pt-head-note {
+  flex: 0 1 auto;
+  font-size: 13px;
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-more {
+  flex: 0 0 18px;
+  height: 18px;
+  line-height: 18px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--wt-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* House mode: the name (small, muted) and the state (large) on one row, the buttons below. */
+.wt-tile--phone .pt-mode-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-mode-head.is-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+}
+.wt-tile--phone .pt-mode-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 800;
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-mode-state {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Sora, sans-serif;
+  font-size: calc(20px * var(--ts, 1));
+  font-weight: 600;
+  line-height: 1.2;
+}
+.wt-tile--phone .pt-mode-state.is-small {
+  font-size: calc(15px * var(--ts, 1));
+}
+.wt-tile--phone .pt-mode-btns {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-mode-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  min-width: 0;
+}
+.wall .wt-tile--phone .pt-btn {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--wt-ink);
+}
+.wall .wt-tile--phone .pt-btn--more {
+  color: var(--wt-dim);
+}
+
+/* Dial: the ring sized to the room, the number inside its opening. */
+.wt-tile--phone .pt-ring {
+  position: relative;
+  flex: 0 0 auto;
+}
+.wt-tile--phone .pt-ring svg {
+  display: block;
+}
+.wt-tile--phone .pt-ring-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  pointer-events: none;
+}
+.wt-tile--phone .pt-ring-center > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-ring-word {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  line-height: 1.3;
+}
+.wt-tile--phone .pt-ring-value {
+  font-family: Sora, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.wt-tile--phone .pt-ring-now {
+  font-weight: 700;
+  color: var(--wt-dim);
+  line-height: 1.3;
+}
+.wt-tile--phone .pt-dial-head,
+.wt-tile--phone .pt-dial-chead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-dial-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Sora, sans-serif;
+  font-size: calc(20px * var(--ts, 1));
+  font-weight: 600;
+}
+.wt-tile--phone .pt-dial-status,
+.wt-tile--phone .pt-dial-smode {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+}
+.wt-tile--phone .pt-dial-sname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(13px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-dial-snow {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wt-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wt-tile--phone .pt-dial-ringbox {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+}
+.wt-tile--phone .pt-dial-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wt-tile--phone .pt-dial-stack {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.wt-tile--phone .pt-dial-pm {
+  display: flex;
+  gap: 40px;
+}
+.wall .wt-tile--phone .pt-round {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--wt-ink);
+}
+.wt-tile--phone .pt-dial-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+  min-width: 0;
+}
+.wt-tile--phone .pt-dial-words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-modes {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.wall .wt-tile--phone .pt-mode {
+  height: 36px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--wt-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+.wt-tile--phone .pt-mode svg {
+  flex: 0 0 auto;
+}
+
+/* Readings: rows that fit, the rest as "+N more". */
+.wt-tile--phone .pt-val {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-val.has-line {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.wt-tile--phone .pt-val-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wt-tile--phone .pt-val-name,
+.wt-tile--phone .pt-val-label,
+.wt-tile--phone .pt-val-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-val-name {
+  font-size: calc(15px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-val-label {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-val-value {
+  flex: 0 1 auto;
+  font-family: Sora, sans-serif;
+  font-size: calc(20px * var(--ts, 1));
+  font-weight: 600;
+}
+.wt-tile--phone .pt-val--line .pt-val-name {
+  font-size: calc(13px * var(--ts, 1));
+}
+.wt-tile--phone .pt-val--line .pt-val-value {
+  font-size: calc(15px * var(--ts, 1));
+}
+.wt-tile--phone .pt-val--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}
+.wt-tile--phone .pt-val--stack .pt-val-value {
+  max-width: 100%;
+  font-size: calc(17px * var(--ts, 1));
+}
+.wt-tile--phone .pt-val--stack .pt-val-name {
+  max-width: 100%;
+  font-size: calc(11px * var(--ts, 1));
+  color: var(--wt-dim);
+}
+
+/* Devices (DevicesGridTile): device buttons in one or two columns, "+N more" in the last slot. */
+.wt-tile--phone .pt-dev-title {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 2px 0 0 4px;
+  font-size: calc(15px * var(--ts, 1));
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-dev-grid {
+  display: grid;
+  min-width: 0;
+}
+.wall .wt-tile--phone .pt-devbtn {
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--wt-ink);
+  text-align: left;
+  overflow: hidden;
+}
+.wall .wt-tile--phone .pt-devbtn:disabled {
+  cursor: default;
+}
+.wall .wt-tile--phone .pt-devbtn.is-lit {
+  background: var(--wt-amber);
+  color: #241a05;
+}
+.wall .wt-tile--phone .pt-devbtn.is-warn {
+  border-color: rgba(255, 138, 107, 0.5);
+}
+.wall .wt-tile--phone .pt-devbtn.is-off {
+  opacity: 0.55;
+}
+.wall .wt-tile--phone .pt-devbtn--more {
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-devbtn > svg {
+  flex: 0 0 auto;
+}
+.wt-tile--phone .pt-devbtn-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wt-tile--phone .pt-devbtn-name,
+.wt-tile--phone .pt-devbtn-state {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-devbtn-name {
+  font-size: calc(14px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-devbtn-state {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  opacity: 0.8;
+}
+.wt-tile--phone .pt-devbtn-state.is-warn {
+  color: var(--wt-coral);
+  opacity: 1;
+}
+.wt-tile--phone .pt-devbtn-state.is-calm {
+  color: var(--wt-teal);
+  opacity: 1;
+}
+
+/* Needs attention. */
+.wall .wt-tile--phone.wt-tile--attention:has(.pt-attn.is-bad) {
+  background: rgba(255, 122, 89, 0.1);
+  border-color: rgba(255, 122, 89, 0.35);
+}
+.wt-tile--phone .pt-attn .pt-head > svg {
+  color: var(--wt-teal);
+}
+.wt-tile--phone .pt-attn.is-bad .pt-head > svg {
+  color: var(--wt-coral);
+}
+.wt-tile--phone .pt-attn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wt-tile--phone .pt-attn-item {
+  height: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.wt-tile--phone .pt-attn-name,
+.wt-tile--phone .pt-attn-issues {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-attn-name {
+  font-size: calc(14px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-attn-count {
+  flex: 0 0 auto;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  font-family: Sora, sans-serif;
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--wt-teal);
+}
+.wt-tile--phone .pt-attn.is-bad .pt-attn-count {
+  color: var(--wt-coral);
+}
+.wt-tile--phone .pt-attn-what {
+  flex: 0 0 auto;
+  height: 16px;
+  line-height: 16px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--wt-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-attn-name.is-small {
+  flex: 0 0 18px;
+  line-height: 18px;
+  font-size: 12px;
+}
+.wt-tile--phone .pt-attn-issues {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-coral);
+}
+
+/* Camera, alerts. */
+.wt-tile--phone .pt-cam {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+}
+.wt-tile--phone .pt-cam .wt-cam-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.wt-tile--phone .pt-cam-name {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 99px;
+  background: rgba(11, 16, 38, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+.wt-tile--phone .pt-pills {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  height: 30px;
+  overflow: hidden;
+}
+.wt-tile--phone .pt-pill {
+  flex: 0 0 auto;
+  height: 30px;
+  line-height: 30px;
+  padding: 0 12px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+  font-weight: 800;
+}
+.wt-tile--phone .pt-pill.is-on {
+  background: var(--wt-ink);
+  color: #0b1026;
+}
+.wt-tile--phone .pt-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wt-tile--phone .pt-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 4px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.wt-tile--phone .pt-alert-thumb {
+  flex: 0 0 auto;
+  width: 96px;
+  height: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+}
+.wt-tile--phone .pt-alert-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wt-tile--phone .pt-alert-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wt-tile--phone .pt-alert-title,
+.wt-tile--phone .pt-alert-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-alert-title {
+  font-size: calc(14px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-alert-sub {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+
+/* Weather. */
+.wt-tile--phone .pt-wx-main {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-wx-main svg {
+  flex: 0 0 auto;
+}
+.wt-tile--phone .pt-wx-temp {
+  font-family: Sora, sans-serif;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-wx-line,
+.wt-tile--phone .pt-wx-sub,
+.wt-tile--phone .pt-wx-alert {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 18px;
+}
+.wt-tile--phone .pt-wx-line {
+  margin-top: 2px;
+  font-size: calc(13px * var(--ts, 1));
+  font-weight: 700;
+}
+.wt-tile--phone .pt-wx-inline {
+  min-width: 0;
+  margin: 0 0 0 4px;
+}
+.wt-tile--phone .pt-wx-sub {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-wx-alert {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--wt-amber);
+}
+.wt-tile--phone .pt-wx-alert svg {
+  flex: 0 0 auto;
+}
+.wt-tile--phone .pt-wx-days {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.wt-tile--phone .pt-wx-day {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.wt-tile--phone .pt-wx-day svg {
+  flex: 0 0 auto;
+}
+.wt-tile--phone .pt-wx-dname {
+  flex: 0 0 38px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-wx-chance {
+  flex: 0 0 34px;
+  font-size: 12px;
+  color: #7fb8ff;
+}
+.wt-tile--phone .pt-wx-lo,
+.wt-tile--phone .pt-wx-hi {
+  flex: 0 0 30px;
+}
+.wt-tile--phone .pt-wx-lo {
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-wx-bar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 10px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.wt-tile--phone .pt-wx-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--wt-amber);
+}
+
+/* Calendar. */
+.wt-tile--phone .pt-cal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wt-tile--phone .pt-cal-ev {
+  height: 38px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-cal-bar {
+  flex: 0 0 4px;
+  border-radius: 4px;
+}
+.wt-tile--phone .pt-cal-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.wt-tile--phone .pt-cal-title,
+.wt-tile--phone .pt-cal-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-cal-title {
+  font-size: calc(14px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-cal-time {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+
+/* Today / To do. */
+.wt-tile--phone .pt-today-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.wt-tile--phone .pt-today-head.is-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0;
+}
+.wt-tile--phone .pt-today-title {
+  font-size: calc(15px * var(--ts, 1));
+  font-weight: 800;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-today-sum {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-today-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wt-tile--phone .pt-today-row {
+  height: 40px;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-today-stripe {
+  flex: 0 0 4px;
+  border-radius: 4px;
+}
+.wt-tile--phone .pt-today-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.wt-tile--phone .pt-today-rtitle,
+.wt-tile--phone .pt-today-rsub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-today-rtitle {
+  font-size: calc(14px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-today-rsub {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+}
+
+/* Greeting, people, unknown. */
+.wt-tile--phone .pt-greet {
+  justify-content: center;
+}
+.wt-tile--phone .pt-greet-hello {
+  font-family: Sora, sans-serif;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-greet-line {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  color: var(--wt-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-people {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wt-tile--phone .pt-person {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.wt-tile--phone .pt-avatar {
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 800;
+}
+.wt-tile--phone .pt-avatar.is-home {
+  background: rgba(60, 207, 180, 0.2);
+  color: var(--wt-teal);
+}
+.wt-tile--phone .pt-person-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wt-tile--phone .pt-person-name,
+.wt-tile--phone .pt-person-where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wt-tile--phone .pt-person-name {
+  font-size: calc(15px * var(--ts, 1));
+  font-weight: 800;
+}
+.wt-tile--phone .pt-person-where {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-dim);
+}
+.wt-tile--phone .pt-person-where.is-calm {
+  color: var(--wt-teal);
+}
+.wt-tile--phone .pt-soon {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--wt-dim);
+  font-weight: 800;
+}

@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/__pycache__
+**/*.pyc
+web/dist
+server/data
+server/tests
+ios
+android
+*.md
+.env
+mobile-shared

@@ -1,0 +1,850 @@
+/* Music on the wall (Music.jsx): the now-playing chip, the player sheet (and lyrics), the Music tile and the full-screen picker -
+   the same night glass as the tiles. */
+
+.mu-cover {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  color: var(--wt-dim, #a9b4d6);
+}
+.mu-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mu-cover--sm {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+.mu-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mu-title {
+  font-size: calc(16px * var(--ts, 1));
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-title--big {
+  font-size: calc(20px * var(--ts, 1));
+}
+.mu-artist {
+  font-size: calc(13px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-dim, #a9b4d6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* controls */
+.mu-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.mu-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.12);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+  color: inherit;
+}
+.mu-btn--main {
+  width: 52px;
+  height: 52px;
+  background: var(--wt-teal, #3ccfb4);
+  border-color: transparent;
+  color: var(--wt-on-teal, #0b1026);
+}
+.mu-controls.is-big .mu-btn--main {
+  width: 60px;
+  height: 60px;
+}
+.mu-vol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.mu-vol input {
+  width: 96px;
+  accent-color: var(--wt-teal, #3ccfb4);
+}
+.mu-progress {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.1);
+  overflow: hidden;
+}
+.mu-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--wt-teal, #3ccfb4);
+  transform-origin: left;
+  transition: transform 1s linear;
+}
+
+/* the now-playing chip (the status chips, or the top bar on other pages) */
+.mu-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 340px;
+  gap: 10px;
+  padding: 0 4px 0 5px;
+  background: rgba(var(--wt-teal-rgb, 60, 207, 180), 0.12);
+  border-color: rgba(var(--wt-teal-rgb, 60, 207, 180), 0.5);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mu-cover--chip {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.mu-cover--chip svg {
+  width: 16px;
+  height: 16px;
+}
+.mu-chip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.mu-chip-pp {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #0b1026);
+}
+.mu-chip--top {
+  flex: 0 0 auto;
+  max-width: 300px;
+}
+
+/* the player sheet */
+.mu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(var(--wt-shade, 4, 6, 16), 0.5);
+  animation: mu-fade 0.18s ease-out;
+}
+.mu-sheet {
+  width: min(580px, 100%);
+  max-height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 26px;
+  background: rgba(var(--wt-panel, 28, 34, 62), 0.97);
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.14);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  color: var(--wt-ink, #eef2ff);
+  animation: mu-up 0.22s ease-out;
+}
+.mu-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.mu-sheet-head .mu-text {
+  flex: 1 1 auto;
+}
+.mu-cover--sheet {
+  width: 128px;
+  height: 128px;
+  border-radius: 18px;
+}
+.mu-title--sheet {
+  font-size: 26px;
+  line-height: 1.2;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.mu-sheet-head .mu-artist {
+  font-size: 15px;
+}
+.mu-sheet.is-lyrics .mu-title--sheet {
+  font-size: 20px;
+  -webkit-line-clamp: 1;
+}
+.mu-sheet-close {
+  align-self: flex-start;
+  flex: 0 0 auto;
+}
+.mu-time {
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wt-dim, #a9b4d6);
+  font-variant-numeric: tabular-nums;
+}
+.mu-time > span:last-child {
+  text-align: right;
+}
+.mu-time-bar {
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.12);
+  overflow: hidden;
+}
+.mu-time-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--wt-teal, #3ccfb4);
+  transform-origin: left;
+  transition: transform 1s linear;
+}
+.mu-sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mu-lyrics-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.mu-next {
+  border-top: 1px solid var(--wt-line, rgba(var(--wt-fg, 255, 255, 255), 0.1));
+  padding-top: 12px;
+  font-size: 14px;
+  color: var(--wt-dim, #a9b4d6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-next b {
+  color: var(--wt-ink, #eef2ff);
+  font-weight: 700;
+}
+
+/* the lyrics */
+.mu-lyrics-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.mu-lyrics {
+  position: relative;
+  height: 300px;
+  max-height: 40vh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 24px 20px;
+}
+.mu-lyrics::-webkit-scrollbar {
+  display: none;
+}
+.mu-lyrics.is-synced {
+  padding: 120px 20px;
+  -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+}
+.mu-lyrics.is-plain {
+  white-space: pre-line;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.mu-lyrics--msg {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--wt-dim, #a9b4d6);
+}
+.mu-line {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: rgba(var(--wt-ink-rgb, 238, 242, 255), 0.38);
+  transform-origin: left center;
+  transition:
+    color 0.3s,
+    transform 0.3s;
+}
+.mu-line.is-past {
+  color: rgba(var(--wt-ink-rgb, 238, 242, 255), 0.55);
+}
+.mu-line.is-now {
+  color: var(--wt-ink, #eef2ff);
+  transform: scale(1.04);
+}
+.mu-lyrics-src {
+  align-self: flex-end;
+  font-size: 12px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.mu-now-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  border-radius: 14px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+@keyframes mu-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mu-scrim,
+  .mu-sheet {
+    animation: none;
+  }
+  .mu-line {
+    transition: none;
+  }
+  .mu-line.is-now {
+    transform: none;
+  }
+  .mu-time-bar > span {
+    transition: none;
+  }
+}
+
+@keyframes mu-up {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* the tile */
+.mu-tile {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mu-tile--off {
+  align-items: center;
+  justify-content: center;
+  color: var(--wt-dim, #a9b4d6);
+}
+.mu-now {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 14px;
+}
+.mu-now .mu-progress {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.mu-cover--now {
+  width: 112px;
+  height: 112px;
+  border-radius: 16px;
+}
+.mu-now-side {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mu-search {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.14);
+  background: rgba(var(--wt-shade, 5, 7, 15), 0.35);
+  color: var(--wt-dim, #a9b4d6);
+}
+.mu-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--wt-ink, #eef2ff);
+  font: 700 16px Manrope, sans-serif;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.mu-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.mu-search--big {
+  height: 56px;
+  flex: 1 1 auto;
+}
+.mu-clear {
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+.mu-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.mu-grid {
+  display: grid;
+  gap: 12px;
+}
+.mu-card,
+.mu-row,
+.mu-clear {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.mu-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  color: inherit;
+}
+.mu-card .mu-cover {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 14px;
+}
+.mu-card-name {
+  font-size: calc(14px * var(--ts, 1));
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-card-sub {
+  font-size: calc(12px * var(--ts, 1));
+  font-weight: 700;
+  color: var(--wt-dim, #a9b4d6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mu-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 6px;
+  border-radius: 14px;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+}
+.mu-row:active {
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+}
+.mu-none {
+  padding: 10px 4px;
+}
+.mu-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* the picker */
+.mu-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 28px;
+  box-sizing: border-box;
+  background: var(--wt-solid, #0a0e22);
+  opacity: 1;
+  color: var(--wt-ink, #eef2ff);
+}
+.mu-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.mu-tabs {
+  display: flex;
+  gap: 10px;
+}
+.mu-tabs .wt-pill.is-on {
+  background: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #0b1026);
+  border-color: transparent;
+}
+.mu-picker-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mu-grid--full {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 18px;
+}
+.mu-picker .mu-results {
+  max-width: 760px;
+}
+.mu-loadmore {
+  margin: 18px auto;
+}
+
+/* the picker's Artists tab: A-Z list (scrolls itself) + the letter strip; one artist's page */
+.mu-picker-body--az {
+  overflow: hidden;
+  display: flex;
+}
+.mu-az {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  gap: 6px;
+}
+.mu-az-list {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.mu-az-letter {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 6px 6px 4px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--wt-teal, #3ccfb4);
+  background: var(--wt-solid, #0a0e22);
+}
+.mu-az-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px 18px;
+  padding: 4px 0 14px;
+}
+.mu-az-rows .mu-row {
+  padding: 6px;
+}
+.mu-az-strip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.mu-az-strip button {
+  flex: 0 1 34px;
+  min-height: 0;
+  width: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--wt-teal, #3ccfb4);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.mu-az-strip button:active {
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+}
+.mu-cover--round {
+  border-radius: 50%;
+}
+.mu-artist-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.mu-cover--artist {
+  width: 96px;
+  height: 96px;
+}
+.mu-cover--artist.mu-cover--round {
+  border-radius: 50%;
+}
+.mu-title--artist {
+  font-size: calc(28px * var(--ts, 1));
+  white-space: normal;
+}
+.mu-picker .mu-shuffle {
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 52px;
+  padding: 0 22px;
+  font-size: 16px;
+  background: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #0b1026);
+  border-color: transparent;
+}
+
+/* the picker's album / playlist page: cover and about, Play and Shuffle, then the numbered songs */
+form.mu-search {
+  margin: 0;
+}
+.mu-tracks-page {
+  max-width: 980px;
+}
+.mu-tracks-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+.mu-cover--album {
+  width: clamp(150px, 22vw, 230px);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+.mu-tracks-about {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mu-tracks-kind {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wt-teal, #3ccfb4);
+}
+.mu-title--album {
+  font-size: calc(30px * var(--ts, 1));
+  line-height: 1.15;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.mu-tracks-artist {
+  font-size: calc(18px * var(--ts, 1));
+  font-weight: 800;
+  color: var(--wt-soft, #dfe5ff);
+}
+.mu-tracks-btns {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+.mu-tracks-btns .wt-pill {
+  height: 52px;
+  padding: 0 24px;
+  font-size: 16px;
+  gap: 8px;
+}
+.mu-picker .mu-play-all {
+  background: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #0b1026);
+  border-color: transparent;
+}
+.mu-tracks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mu-track {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mu-tracks li + li .mu-track {
+  border-top: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.06);
+}
+.mu-track:active {
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+}
+.mu-track .mu-text {
+  flex: 1 1 auto;
+}
+.mu-track-n {
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--wt-dim, #a9b4d6);
+  font-variant-numeric: tabular-nums;
+}
+.mu-track-time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wt-dim, #a9b4d6);
+  font-variant-numeric: tabular-nums;
+}
+.mu-track.is-now .mu-title,
+.mu-track.is-now .mu-track-n {
+  color: var(--wt-teal, #3ccfb4);
+}
+
+/* the full results of a search */
+.mu-full {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-bottom: 20px;
+}
+.mu-full-h {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--wt-teal, #3ccfb4);
+}
+.mu-full-songs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 4px 18px;
+}
+.mu-full-songs .mu-row {
+  padding: 6px;
+}
+.mu-full-songs .mu-text {
+  flex: 1 1 auto;
+}
+/* Names that don't fit: held to their box, scrolled slowly end to end (Marquee in Music.jsx). */
+.mu-card > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.mu-marquee {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+.mu-marquee-in {
+  display: inline-block;
+}
+.mu-marquee.is-long .mu-marquee-in {
+  animation: mu-marquee var(--mq-time, 8s) ease-in-out infinite alternate;
+}
+@keyframes mu-marquee {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  85%, 100% {
+    transform: translateX(var(--mq-shift, 0));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mu-marquee.is-long .mu-marquee-in {
+    animation: none;
+  }
+  .mu-marquee {
+    text-overflow: ellipsis;
+  }
+}
+/* Text columns next to a cover may shrink so their Marquee lines scroll instead of pushing out. */
+.mu-text,
+.mu-tracks-about,
+.mu-now-side {
+  min-width: 0;
+}
+.mu-chip-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}

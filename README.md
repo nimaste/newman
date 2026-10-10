@@ -1,0 +1,1479 @@
+<h1 align="center">Newman</h1>
+
+<p align="center">
+  A small, self-hosted home hub — locks, alarm, doorbell and cameras, lights, garage, thermostat,
+  vacuum, appliances, containers and more — with a web dashboard, a wall-tablet view and
+  (coming) native iOS / Android apps. Built to replace Home Assistant without needing it for anything.
+</p>
+
+---
+
+## Contents
+
+- [What Newman is](#what-newman-is)
+- [Quick start](#quick-start)
+- [Signing in and security](#signing-in-and-security)
+- [Connections](#connections) — every device type, how it connects, what it needs (and [camera video settings](#camera-video-settings), [music from Navidrome](#music-navidrome), [recipes from Forkast](#recipes-forkast))
+- [Matter and Thread](#matter-and-thread) — the Matter server, the host's IPv6 settings (Unraid, Debian, TrueNAS, Synology), adding devices shared from Apple Home or Google Home
+- [Companion containers](#companion-containers) — Docker socket proxy, speech (Whisper, Piper), Matter server, Mosquitto
+- [Voice on the wall tablet](#voice-on-the-wall-tablet) — “Hey Newman”, what it understands, timers, teaching it your voices
+- [Where people are](#where-people-are) — location sharing, places, the Household map
+- [Automations](#automations)
+- [Dashboards and the wall tablet](#dashboards-and-the-wall-tablet) (and [phone layouts](#phone-layouts))
+- [Deploying behind Caddy](#deploying-behind-caddy)
+- [Settings (environment variables)](#settings-environment-variables)
+- [Data and backups](#data-and-backups)
+- [Development](#development)
+
+## What Newman is
+
+One container (~270 MB image, ~80 MB of RAM in use) holding:
+
+- **The hub** (Python 3.12, asyncio + aiohttp, SQLite) — talks to every device, runs automations,
+  sends push notifications, serves the API.
+- **The web dashboard** (React, built with Vite) — devices, automations, connections, accounts,
+  dashboards, activity, live cameras.
+- **The wall tablet view** at `/wall` — a full-screen, swipeable, touch-first view of a dashboard.
+
+Everything a client shows is driven by the hub's own description of each kind of device (what it
+reports, what it can do, how to word it), so a new kind of device never needs screens hand-built
+for it — the dashboard, wall tablet, automation builder and phones all render it generically.
+
+Wherever possible Newman talks to devices **directly on your network** (Lutron, HomeKit, Reolink,
+Shelly, Kasa, Hue, ESPHome, Sonos, Meross, printers, Roborock when it can). Where a maker only offers
+a cloud service (Bosch/Thermador Home Connect, LG ThinQ), Newman keeps **only an access token, never
+your password**.
+
+## Quick start
+
+```bash
+docker compose up -d          # uses docker-compose.yml + .env (copy .env.example)
+```
+
+Open `http://<your server>:8093` from a device at home (first-time setup is refused from outside).
+The first account you create is the admin. Then go to
+**Connections**: anything Newman found on your network is listed under *Discovered* — one click to set
+it up — and **Add** lists everything else.
+
+Newman needs **host networking** (`network_mode: host`, as in the compose file): device discovery
+(mDNS), HomeKit, Sonos, Hue, Matter and printers all rely on multicast, which doesn't cross Docker's
+bridge network.
+
+## Signing in and security
+
+- **Accounts** — admin, family, guest and wall-tablet roles. Admins manage connections, accounts and settings; family
+  members use devices, automations and dashboards. A **guest** uses the house like family but isn't one of
+  the people — never notified, never on People, can't see where anyone is. Sessions use a cookie (browser) or a Bearer token
+  (apps); passwords are stored with scrypt.
+- **Home vs. away** — a request from a private address (your LAN, your home VPN) is *home*, whether
+  it comes straight to Newman or through the reverse proxy (matching the proxy's own "no certificate
+  needed on the LAN" exclusion). Everything else is *away*. Only the reverse proxy's address range is
+  trusted to say who the client is (`X-Forwarded-For`, default `172.16.0.0/12`, Docker's; change it
+  in *Settings → Sign-in*), and only the address the proxy itself added counts.
+- **Certificates** — Newman only counts a real fingerprint in `X-Client-Cert-Fingerprint`; the
+  placeholder text Caddy passes when no certificate was presented is ignored.
+- **Away sign-in policy** (admin setting): `cert_or_2fa` (default — a client certificate *or* a
+  2FA code), `cert`, `2fa`, or `password`. Client certificates are checked by Caddy (mTLS), which
+  passes the fingerprint and subject to Newman in `X-Client-Cert-Fingerprint` /
+  `X-Client-Cert-Subject` (see [Deploying behind Caddy](#deploying-behind-caddy)).
+- **2FA** — optional per account, standard TOTP (any authenticator app).
+- **Wall tablet** — give each tablet its own **Wall tablet** account (Accounts → role "Wall tablet"):
+  it signs in only on a wall tablet, has its own dashboard (an admin lays it out), can use devices but
+  never change settings, and isn't a person — never notified, never on People. Whether it can see
+  where people are is its own setting (*Can see where people are*, on by default — see
+  [Where people are](#where-people-are)). Signing in on a tablet
+  with your own account also works (it then shows *your* dashboard). To switch accounts, press and
+  hold the clock on the wall screen → **Sign out**. Renaming the account (the pencil by its name, or
+  **⋯ → Rename…**) renames its battery and music player too — unless you renamed those yourself.
+- **Alerts on wall tablets** — an automation's **Then** can also *show it on a wall tablet*: as a card
+  that slides in, full screen with the camera live (e.g. the doorbell), or as an alarm that stays until
+  someone taps OK; with or without a sound, waking a dimmed screen or not. It reaches the tablet over
+  its live connection, so it needs no push service (Fire tablets included). Whether unlock / disarm / open-garage on the tablet needs
+  nothing (default), an "Are you sure?", or a PIN is an admin setting.
+- **Sensitive commands** (unlock, disarm, open the garage, sound a siren) are marked as such so the
+  phone apps can ask for Face ID / fingerprint. Notification buttons can only ever *lock*.
+- **Secrets in connection settings** (keys, tokens) are never sent back to the browser — forms show
+  `••••`. Webhook addresses, which contain their secret, are shown to admins only.
+- **Maintenance** — `data/.local_token` lets scripts on the server itself call the API
+  (header `X-Newman-Local-Token`); it's only accepted from `127.0.0.1`.
+
+## Connections
+
+Status: ✅ in daily use · 🧪 tested against the real thing, new · β built and tested offline, not yet
+tried on real hardware.
+
+| Connection | Devices | How it connects | You'll need |
+|---|---|---|---|
+| ✅ **MQTT devices** | locks, alarms, sensors, leak/smoke, sirens, plugs, lights, blinds, fans, garage doors, buttons | Home Assistant–style MQTT discovery: ring-mqtt, Zigbee2MQTT, Z-Wave JS UI, Tasmota, ratgdo… | An MQTT broker (Mosquitto) |
+| ✅ **Reolink** | cameras, doorbells, NVRs; button presses, motion and AI detection, snapshots, floodlights | Directly to each device (Baichuan push) | Camera address, user, password |
+| ✅ **Frigate** | cameras and zones; detections with snapshots, live counts, live video, alerts | Frigate's API + its MQTT events | Frigate's address |
+| ✅ **Lutron Caséta** | dimmers, switches, Pico remotes | Locally to the Smart Bridge (LEAP) | Press the bridge's button once |
+| ✅ **Meross garage opener** | garage doors | Locally; the cloud is used once to fetch the device key | Meross sign-in once (the password isn't kept) |
+| ✅ **HomeKit device** | e.g. Ecobee thermostat + room sensors | HomeKit Accessory Protocol, locally | The 8-digit HomeKit code; remove it from other hubs first |
+| ✅ **Weather** | conditions, hourly / 7-day forecast, Environment Canada warnings | Open-Meteo (free, no account) | Nothing |
+| ✅ **Calendars** | upcoming events, "event starts" | Private iCal links (Google, iCloud, Outlook…) | The calendar's secret iCal address |
+| ✅ **Roborock** | vacuums: start, pause, dock, find, clean rooms; battery, consumables | Locally when it can, Roborock's cloud as fallback | Email code sign-in once (session kept, no password) |
+| 🧪 **Home Connect** | Bosch, Thermador, Siemens, Gaggenau, Neff appliances | Home Connect's API + live event stream | A free developer app (Client ID) — see below |
+| β **LG ThinQ** | LG washers, dryers, WashTowers, dishwashers, ovens, fridges | LG's official ThinQ Connect API | A personal access token — see below |
+| β **Ring** | the Ring alarm live: arm / disarm, locks, door and window, motion, smoke / CO and leak sensors, sirens, keypads; who did it (the person or keypad code the Ring app shows) | Directly to Ring, like the Ring app (its live connection) — replaces the ring-mqtt container | Ring sign-in once (email, password, texted code; only the token is kept) — see below |
+| 🧪 **Docker** | containers: state, health, CPU, memory; start / stop / restart | Docker API, live events | A socket proxy — see [below](#docker-socket-proxy) |
+| β **Unraid** | the server (CPU, memory, uptime, array, parity checks) and every disk (how full, temperature, errors, asleep) | The official Unraid API (GraphQL, built into Unraid 7) | An API key, role “viewer” — see [Servers](#servers-unraid-linux-computers-proxmox) |
+| β **Linux computer** | a Debian / Ubuntu / Raspberry Pi OS machine: CPU, load, memory, temperatures, uptime, each disk | Glances (or node_exporter) running on it | [Glances](#servers-unraid-linux-computers-proxmox) on the machine |
+| β **Proxmox VE** | nodes, storage, disks (SMART), VMs and LXC containers: start / shut down / reboot | Proxmox's API | An API token — see [Servers](#servers-unraid-linux-computers-proxmox) |
+| 🧪 **Printer** | ready / printing, toner and ink levels, paper / jam / cover alerts | IPP (AirPrint / Mopria), found automatically | Nothing |
+| β **Shelly** | relays, plugs, dimmers, blinds, sensors, power | Locally (Gen1 polled, Gen2+ instant) | Nothing |
+| β **TP-Link Kasa / Tapo** | plugs, strips, switches, dimmers, bulbs, power | Locally | Tapo / newer Kasa: TP-Link sign-in |
+| β **ESPHome** | anything running ESPHome (e.g. ratgdo) | Native API, locally | Encryption key if set |
+| β **Philips Hue** | lights, motion sensors, remotes | Locally to the bridge | Press the bridge's button |
+| β **Matter** | any brand's Matter devices — plugs (with power and energy), lights, motion, leak, door / window, temperature and humidity sensors, buttons, locks, blinds, thermostats, fans; battery level and "replace the battery" — over Wi-Fi, Ethernet or Thread | Newman's own Matter fabric, through the Open Home Foundation's Matter server (matterjs-server); devices shared from Apple Home / Google Home with their pairing-mode code | The Matter server container; for Thread devices a Thread border router (Apple TV, HomePod, Nest hub) and the host's IPv6 settings — see [Matter and Thread](#matter-and-thread) |
+| β **Sonos** | speakers: play, pause, volume, what's playing | Locally | Nothing |
+| 🧪 **Navidrome** | your own music on the wall tablets' speakers: one music player per tablet — play / pause / next / previous / stop, volume, “play something” by search, shuffle an artist or playlist; what's playing | Navidrome's Subsonic API (any Subsonic server works); the audio streams through the hub to the wall page | Username and password **once** — Newman keeps only a token (see [Music](#music-navidrome)) |
+| 🧪 **Forkast** | your recipes in **cook mode** on a wall tablet — “pull up the pancakes”, steps one by one, ingredients and amounts, scaling, timers from the steps — by voice or touch; one *Recipe book* device (how many recipes) | Forkast's API (read only) | Email and password **once** — Newman keeps only Forkast's sign-in token (see [Recipes](#recipes-forkast)) |
+| β **Webhooks** | addresses that start automations, and that Newman can call | HTTP | Nothing |
+| 🧪 **Wall tablets** | each wall tablet's own battery: level, charging, temperature, voltage; smart charging from its plug (20–80 %) | The Newman Wall app reports it (made by itself the first time) | Nothing — see [Wall tablet battery](#wall-tablet-battery) |
+| β **AdGuard Home** | network ad blocking: on / off / pause N minutes, queries and blocks today, clients, rules, updates; "turned off" / "back on" | AdGuard Home's API, every 30 s | A user and password — AdGuard Home has no API tokens; make a separate user for Newman — see [DNS filters](#dns-filters-adguard-home-pi-hole-technitium) |
+| β **Pi-hole** | the same, for Pi-hole v6 (v5 too) | Pi-hole's API, every 30 s | An app password (a revocable key, not your sign-in password) |
+| β **Technitium DNS** | the same, for Technitium DNS Server | Technitium's API, every 30 s | An API token |
+| β **Hunter Hydrawise** | sprinkler controllers and zones: what's watering, time left, next run; water a zone for N minutes, stop, rain delay, standby | Hydrawise's API, polled as often as Hydrawise allows (≥ 1 min) | The account's API key — see [Sprinklers](#sprinklers) |
+| β **Rain Bird** | sprinkler controllers and zones: what's watering, rain sensor, rain delay; water a zone for N minutes, stop, rain delay | Locally to the LNK / LNK2 Wi-Fi module (pyrainbird), every minute (20 s while watering) | Controller address and its password — Rain Bird has no tokens, so the password is kept (masked) |
+| β **Rachio** | sprinkler controllers and zones: what's watering, time left, last / next run; water a zone for N minutes, stop, rain delay, standby | Rachio's public API, polled within its 1,700-a-day limit; optional instant webhooks | The account's API key — see [Sprinklers](#sprinklers) |
+| β **Network checks** | one device per check: a ping, a TCP port or a web address (status code / a word on the page) — online / offline, response time, uptime over 24 h; "goes offline" / "comes back" | From the hub, every 60 s per check (your choice); ping without special rights, TCP as fallback | Nothing — see [Network checks](#network-checks) |
+| β **Sun** | the Sun: up / down, next sunrise / sunset / dawn / dusk, height and direction in the sky; sunrise, sunset, dawn, dusk events | Worked out on the hub (NOAA's equations), nothing online | Your home's location (the Home place, or the Weather connection's) — see [Sun](#sun) |
+| 🧪 **Roku TV** | Roku TVs and players (TCL, Hisense, onn… Roku TVs): on / off, volume up / down, inputs, apps, keys, what's open | Roku's local control (ECP, port 8060), found automatically | Nothing — see [TVs](#tvs) |
+| β **Samsung TV** | Tizen TVs (2016+): on / off, volume, inputs, apps, keys | The TV's remote websocket (8002) + REST (8001) + UPnP volume, found automatically | Allow Newman on the TV once (only the TV's key is kept) |
+| β **LG TV (webOS)** | on / off, volume, inputs, apps, keys, playback; live updates | The TV's SSAP websocket (aiowebostv), found automatically | Accept Newman on the TV once (only the client key is kept) |
+| β **Android TV / Google TV** | Google TV, Chromecast, onn, TCL / Hisense / Sony Google TVs, Shield: on / off, volume, apps, keys, current app | Android TV Remote v2 (androidtvremote2), found automatically | The code the TV shows, once (only Newman's own certificate is kept) |
+| β **Apple TV** | on / sleep, keys, volume, apps, what's playing | pyatv (AirPlay + Companion), found automatically | Two codes the Apple TV shows, once (only the pairing credentials are kept) |
+| β **Hisense TV (VIDAA)** | VIDAA Hisense / Toshiba TVs: on / off, volume, inputs, apps, keys | The TV's own MQTT broker (36669, TLS) — community-researched | The code the TV shows, once; some sets need a client certificate — see [TVs](#tvs) |
+| **Virtual test devices** | pretend locks, doors and a doorbell | — | Nothing |
+
+### Reconnecting a connection
+
+Every connection's page has **Reconnect** (also in its ⋯ menu, admins only): it starts the connection
+again with its saved settings, nothing changed, and says whether it came back. Its devices stay put while
+it does; any it no longer provides once it's back (a camera removed at the source, say) are kept and shown
+unavailable, never deleted, so automations that use them keep pointing at them.
+
+### Finding and removing devices
+
+**Devices** narrows the list by category (and type), **status** — *Online*, *Offline or unavailable*,
+*Needs attention* (offline, low battery, tamper, no power… the same as the *Needs attention* tile) —
+**connection** (every installed one by its name) and a name or room search, each option with how many
+devices it would show alongside the other filters. The filters live in the page's address, so Back from a
+device returns to the same list.
+
+Admins can remove devices that are offline or unavailable: with the status filter on *Offline or
+unavailable*, the tiles and table rows can be picked (*Select all* picks the whole list), then
+*Remove N devices…*; an offline device's own page has *Remove device…*. The confirmation names what still
+uses each one (*Used by 2 automations: …*, dashboards, phone layouts, phone widgets) and offers *Remove
+anyway*, which leaves those with a missing device. A removed device's name and settings given in Newman go
+with it. Online devices can't be removed. If its connection reports the device again later, it simply comes
+back as a new device.
+
+### Frigate: new cameras and zones
+
+Frigate restarts to apply a config change; Newman notices it coming back (its `<prefix>/available` going
+`online` again) and re-reads Frigate's config — new cameras and zones appear, renamed ones, new streams and
+tracked objects are updated, and ones Frigate no longer has are kept but unavailable. As a fallback (a missed
+message) it also re-reads the config every 10 minutes and applies it when the cameras, zones or streams changed.
+
+The connection's settings choose cameras and zones to **leave out** (*Leave out these cameras* / *zones*);
+everything else, including cameras added to Frigate later, appears. Settings from older versions, which listed
+the cameras to *include*, are converted once Frigate can be reached: left out = what Frigate has minus what
+was ticked (all ticked = nothing left out). Until Frigate answers, the old list keeps applying.
+
+### Camera video settings
+
+Any device with live video or pictures, from any connection, has a **Video** tab on its page (admins):
+
+- **Show in All Cameras** (on by default) — off leaves it out of the All Cameras grid on the dashboard,
+  the wall tablet (and from the full-screen view's next / previous); it still has its page, tiles,
+  automations and alerts.
+- **Video from** — which connection supplies the device's live video and pictures: *<its connection> (this
+  device)* by default (*(no video)* when it has no picture of its own), or another connection that has
+  cameras. When both know where the camera is on the network (Frigate: the camera's go2rtc sources, through
+  Frigate's own restream; Reolink: the device's address), the camera at the same address is used
+  automatically — e.g. the Reolink doorbell "Front Door" at 10.1.1.56 offers *Frigate*, meaning Frigate's
+  `doorbell` camera (also 10.1.1.56). Otherwise (or for cloud connections that don't know addresses) a
+  *Camera in <connection>* choice lists that connection's cameras. Other cameras of the device's own
+  connection, and devices whose video is just another device's (Frigate zones show their camera), are never
+  offered; such a zone follows its camera, streams included. Its own events — button presses, motion —
+  still come from its own connection; its tiles, page, full-screen view, wall alerts and the snapshots on
+  its notifications use the other device's picture. A device that loses its video (or is removed) means
+  the device's own picture is used again.
+- **Tile stream** / **Full-screen stream** — for connections that offer several streams per camera
+  (Frigate: the camera's go2rtc streams named `<camera>` or `<camera>_…`, plus any in its `live.streams`).
+  *Automatic* (the default) is the connection's own choice; Frigate's is `<camera>_sub` for tiles when there
+  is one, else `<camera>`. A picked stream that disappears counts as Automatic again.
+
+Changes reach every open screen straight away (players reconnect).
+
+### Home Connect (Bosch, Thermador, Siemens…)
+
+Home Connect only talks to registered apps, so:
+
+1. Sign up at **developer.home-connect.com** → *Applications* → *Register*.
+   OAuth flow: **Device Flow**. *Home Connect User Account for Testing*: the email you use in the
+   Home Connect app.
+2. Paste the **Client ID** into Newman's Home Connect connection and save.
+3. Newman shows a link and a code — open it, sign in to Home Connect, approve. Done; Newman keeps the
+   token and renews it itself.
+
+Notes: Home Connect allows ~1000 requests a day per app, so Newman reads everything once and then
+follows Home Connect's live event stream. Dishwashers, ovens and washers drop off Home Connect when
+switched off — Newman shows them as **Off**. *Start* only works after you press *Remote Start* on the
+appliance (Home Connect's rule).
+
+### LG ThinQ
+
+Create a token at **connect-pat.lgthinq.com** (sign in with the LG account your ThinQ app uses →
+*Add new token* → tick every permission) and paste it into Newman with your country. Appliances are
+read every 30 s while one is running, every 2 min otherwise. Starting remotely needs *Remote
+control* switched on at the appliance.
+
+### Ring
+
+*Connections → Add → Ring*: your Ring email and password, save; Ring texts (or emails) a code —
+paste it under *Code from Ring* and save again. Newman keeps only Ring's token (renewed as Ring
+requires) and forgets the password. The alarm, locks, sensors, sirens and keypads appear on their
+own and change live; each lock / alarm / siren change carries who did it.
+
+- **Who and how:** notifications say "Unlocked by Christopher" (the first name on the Ring
+  account, or the keypad code's name — change it in the Ring app). With no one behind it, they say
+  how, as the Ring app does: "Locked manually", "Locked by one-touch locking". If Ring's live update
+  has no name, Newman looks in Ring's activity history for that exact change.
+
+- The old **Ring activity** connection is now part of **Ring**: it's switched over automatically on
+  the first start, keeping its sign-in, so there's nothing to set up again.
+- **Moving off ring-mqtt:** both can run side by side. Meanwhile Newman also puts "who did it" on
+  ring-mqtt's matching devices, so existing automations get names too. When ready, the Ring
+  connection suggests which ring-mqtt device each of its devices replaces
+  (`GET /api/integrations/<id>/replacements`), and `POST /api/entities/replace` moves automations,
+  dashboards, device names and upkeep items to the new devices in one go. Then the ring-mqtt container
+  can go.
+- Ring won't arm while a door or window is open; tick *Bypass open doors and windows when arming*
+  to have Newman bypass them, as the Ring app offers.
+
+### DNS filters (AdGuard Home, Pi-hole, Technitium)
+
+Each server is one **DNS filter** device: *Protecting* / *Off* / *Paused* (with the time it comes back on),
+queries and blocks over the last day, % blocked, clients, blocking rules, version and whether an update
+is out. Commands: turn on, turn off, **pause for N minutes** (the server turns itself back on). Events
+for automations: *protection is turned off* and *comes back on*. Add as many servers as you have.
+
+- **AdGuard Home** — its API has **no tokens or API keys**, only its web sign-in, so Newman has to keep
+  a password (masked, never shown again). Don't give it yours: add a user just for Newman to
+  `users:` in `AdGuardHome.yaml` (a bcrypt hash, e.g. `htpasswd -B -n newman`) and restart AdGuard Home.
+- **Pi-hole v6** — *Settings → Web interface / API* (Expert mode) → *Configure app password*, and paste
+  it. It's a separate key you can revoke, not your sign-in password. Newman signs in again by itself
+  when Pi-hole's session runs out and signs out when the connection stops. **Pi-hole v5**: paste the
+  API token (*Settings → API → Show API token*) instead.
+- **Technitium DNS Server** — *Administration → Sessions → Create Token*, and paste the token
+  (address like `http://192.168.1.2:5380`). Only the token is kept.
+
+### Sprinklers
+
+Hunter Hydrawise, Rain Bird and Rachio all bring in a **Sprinkler controller** (Idle / Watering /
+Rain delay / Standby; *Stop watering*, *Rain delay* N days — 0 cancels, *Standby*, *Resume schedule*)
+and one **Sprinkler zone** per zone (*Water for* N minutes, *Stop*; time left, last and next run;
+*starts watering* / *finishes watering* for automations). Rename zones in Newman as you like.
+
+- **Hydrawise:** app.hydrawise.com → *Account → Account Details → API Key → Generate*, paste it.
+  Newman uses Hydrawise's key-based API (not the newer one, which needs your password kept). It
+  doesn't report the rain sensor, and can't tell a rain delay from standby on its own: a suspension
+  Newman set as a rain delay shows as **Rain delay**, any other full suspension as **Standby**.
+- **Rain Bird:** the controller's IP address (give it a fixed one in the router) and the password
+  set in the Rain Bird app. **Rain Bird has no tokens** — its local protocol encrypts every request
+  with that password, so Newman has to keep it (masked, never shown back). Zones are named *Zone 1…*
+  (Rain Bird keeps names only in its cloud). Rain Bird only knows "stop watering", so *Stop* on a zone
+  stops whatever is running, and there's no standby over Wi-Fi (use a rain delay or the dial).
+- **Rachio:** app.rach.io → your account → *Account settings → Get API key*, paste it. Rachio allows
+  1,700 requests a day, so Newman checks what's watering every 3 minutes (slower with several
+  controllers, hourly if Rachio says the day's allowance is nearly gone), plus once right after each
+  command and when a run should end. Rain delay is up to 7 days.
+  *Instant updates (optional):* if Rachio can reach `/api/public/webhooks/…` from the internet
+  without a client certificate (let that path through the proxy), put Newman's public address under
+  *More settings → Webhook address*; Newman registers itself with Rachio and then polls only every
+  half hour. Behind a client-certificate proxy, leave it empty — polling is the default.
+
+### Servers (Unraid, Linux computers, Proxmox)
+
+Three connections watch the computers in the house. Each brings in a **server** (*Online* / *Needs a
+look* / *Offline*; CPU %, load, memory %, CPU temperature, uptime, OS and version, pending updates; the
+*Problem* property says what "needs a look" is about) and its **disks** (*OK* / *Needs a look* /
+*Failed* / *Asleep*; used %, free, size, temperature, SMART, errors, power-on hours, SSD life left).
+Events for automations: a server *goes offline* / *comes back online* / *gets too hot* / *CPU or memory
+stays high* (for 10 minutes, by default); a disk *fails* / *shows a SMART warning* / *is almost full* /
+*gets too hot*. The limits are under *More settings* on each connection. Something that was already
+wrong when Newman started is shown but not alerted again.
+
+- **Unraid** — Newman reads the official **Unraid API** (built into Unraid 7.x; the *Unraid Connect*
+  plugin on 6.12). In Unraid: *Settings → Management Access → API Keys → Create*, role **viewer**, and
+  paste the key with the address you open Unraid at (with its port, e.g. `http://192.168.1.10:8080`).
+  Only the key is kept. The array is part of the server device — *Array* (started / stopped), *Parity
+  check* (running / paused / not running) with its progress, the last check's result and errors, and
+  containers running — with events *a parity check starts*, *a parity check finishes* (with the error
+  count) and *the array stops*. Disk details come from Unraid's own table, which never wakes a sleeping
+  disk; *Read SMART status* (off by default) may wake them.
+- **Linux computer** (Debian, Ubuntu, Raspberry Pi OS…) — Linux can't be asked how it's doing without
+  signing in, so Newman reads **Glances**, a small read-only monitoring agent many Home Assistant users
+  already run (Glances 4 or 3 — Newman speaks both). On the machine, without Docker:
+
+  ```bash
+  sudo apt install pipx lm-sensors smartmontools
+  sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install 'glances[web]'
+  sudo tee /etc/systemd/system/glances.service >/dev/null <<'EOF'
+  [Unit]
+  Description=Glances (read by Newman)
+  After=network-online.target
+  [Service]
+  ExecStart=/usr/local/bin/glances -w --disable-webui
+  Restart=on-failure
+  [Install]
+  WantedBy=multi-user.target
+  EOF
+  sudo systemctl enable --now glances
+  ```
+
+  Or with Docker: `docker run -d --name glances --restart unless-stopped --network host --pid host
+  -v /:/rootfs:ro -e GLANCES_OPT="-w --disable-webui" nicolargo/glances:latest-full` (the host's disks
+  then show under `/rootfs`).
+  Then add *Linux computer* with `http://<machine>:61208`. Glances has no API keys, so keep port 61208
+  on your LAN. SMART per disk appears when Glances runs as root with `smartctl` installed. Already run
+  Prometheus **node_exporter**? Pick it under *Reads it through* and use `http://<machine>:9100`
+  (pending apt updates appear if its `apt` textfile collector is set up).
+- **Proxmox VE** — *Datacenter → Permissions → API Tokens → Add* (e.g. user `newman@pve`, token
+  `monitor`, privilege separation off or the roles below given to the token), role **PVEAuditor** on `/`
+  to watch; add **PVEVMUser** (or just `VM.PowerMgmt`) to start, shut down and reboot guests. Paste the
+  token ID (`newman@pve!monitor`) and secret with `https://<host>:8006`. Only the token is kept. Each node
+  is a server (pending updates included), each storage and physical disk a disk (SMART health, SSD
+  wear), and each VM / LXC container a **virtual machine** (*Running* / *Stopped* / *Paused*, CPU,
+  memory; *Shut down* and *Force stop* ask for Face ID / fingerprint on a phone). Proxmox's API doesn't
+  report temperatures — add the node as a *Linux computer* through Glances for those.
+
+### Network checks
+
+*Connections → Add → Network checks*, then one row per thing to watch:
+
+- **Ping** — an address (`10.1.1.1`, `nas.local`). Uses unprivileged ICMP, which works in the
+  container as is (no extra rights); where the system doesn't allow it, Newman checks that the host
+  answers on a TCP port instead (a refused port still proves it's there).
+- **TCP port** — `address:port` (`nas:445`, `10.1.1.2:8123`).
+- **Web address** — the full link. *Expect* can be a status code (`200`, `401`…) or a word the page
+  must contain; without it anything below 400 counts as up. **Web address (any certificate)** skips
+  the certificate check (self-signed admin pages).
+
+Each check is a *Network check* device: **online / offline**, with response time (ms), uptime over
+the last 24 hours (%), the status code (web checks), the last change and the problem in plain words.
+Its events — **goes offline** and **comes back online** — only fire after *N failures in a row*
+(default 3, a connection setting), so one dropped ping doesn't count as an outage. Every check runs on
+its own interval (default 60 s); the give-up time (default 5 s) is under *More settings*.
+
+### Sun
+
+*Connections → Add → Sun* — nothing to fill in. It's a one-click connection rather than built in, so
+nobody gets a device they don't want; automations don't need it at all (see below). The Sun device is
+**up** or **down**, with the next sunrise, sunset, dawn and dusk (civil twilight), and the sun's height
+and compass direction; its events are **sunrise**, **sunset**, **dawn** and **dusk**. Everything is
+worked out on the hub from the home's location — the Home place, else the Weather connection's spot;
+until one is set the connection says so.
+
+### TVs
+
+Each TV is its own connection (*Connections → Add*, or one click from *Discovered*) and becomes one **TV**
+device: on / standby / off, and — as far as the TV allows — volume, mute, input, app, playback and remote
+keys. *Choose input*, *Open app* and *Press key* offer only what that TV lists. Turning a TV on that has
+dropped off the network uses **Wake-on-LAN**: Newman learns the TV's MAC the first time it reaches it (or
+type it in), and needs host networking (as in the compose file) for the broadcast.
+
+| Brand | Setup | What you see on the TV | Limits |
+|---|---|---|---|
+| **Roku** (incl. TCL / Hisense / onn Roku TVs) | Nothing — found as e.g. “Basement TV (Hisense Roku TV)” | Nothing | Volume only steps up / down (no level). Recent Roku OS defaults *Control by mobile apps* to **Limited**: keys, power and inputs still work, but the app list, what's playing and opening apps are refused — set *Settings › System › Advanced system settings › Control by mobile apps › Network access* to **Permissive** for those. A Roku TV in standby wakes with its own PowerOn key. |
+| **Samsung** (Tizen, 2016+) | Save; switch the TV on | “Allow Newman to connect?” — choose Allow. Newman keeps the key the TV hands back | Fully off = Wake-on-LAN, which needs *Power On with Mobile* (or *IP Remote*) on the TV. Inputs are the TV / HDMI keys. 2014–2015 sets (encrypted pairing) aren't supported. |
+| **LG** (webOS) | Save; switch the TV on | “Allow this device to connect?” — Accept. Newman keeps the client key | On = Wake-on-LAN: turn on *Turn on via Wi-Fi* / *Mobile TV On* in the TV's settings. |
+| **Android TV / Google TV** | Save; a 6-character code appears on the TV — type it into *Code shown on the TV* and save again | The pairing code | No app or input list in this protocol: common apps are offered (add more under *More settings*, `Name = package`), inputs via the Input key. Volume level is set by stepping. |
+| **Apple TV** | Save; a 4-digit code appears — enter it and save; a second code follows (AirPlay, then Companion) — enter that too | Two codes, one after the other | No mute key. Sleep / wake through the Apple TV itself (no Wake-on-LAN needed). |
+| **Hisense VIDAA** | Save; a 4-digit code appears — enter it and save | The pairing code | Built from community research (the hisense_tv / vidaa-control projects), untested on a real set. Many 2020+ sets also want the RemoteNOW app's TLS client certificate: Newman doesn't ship it — put the community-extracted certificate and key in the data folder and give their paths under *More settings*. Some 2023+ firmware uses per-device broker passwords and isn't supported yet. |
+
+While a pairing code is waiting, the TV keeps its pairing session open for five minutes; if it times out,
+save again for a new code. Pairing keys live in the connection's settings (Samsung, LG, Apple TV, VIDAA) or
+its data folder (Android TV's certificate) — never a password.
+
+### Music (Navidrome)
+
+Music from your own [Navidrome](https://www.navidrome.org/) (or any Subsonic-compatible server) plays
+**through the wall tablets' own speakers** — from the screen, by voice and from automations.
+
+**Setting it up**: *Connections → Add → Navidrome*: the server address (on the NAS:
+`http://10.1.1.2:4533` — use the address on your network rather than the public `music.garito.ca`), your
+Navidrome username and password. Then open (or reload) each wall tablet: each one gets its own **music
+player** device (“Hallway music”). Add a **Music** tile to a wall dashboard for search and albums.
+
+**Only a token is kept.** Subsonic's token sign-in is `t = md5(password + salt)`: Newman uses the password
+once to make a token with a random salt, checks it (`ping`), then keeps only the username, token and salt
+(`integrations/<id>/token.json`, readable by the hub only) and drops the password from the settings. If
+Navidrome stops accepting the token (you changed the password), the connection says so and asks for the
+password once more. Accounts that sign in through LDAP can't use tokens — use a local Navidrome user. The
+token never leaves the hub: the wall page gets the music through `api/music/stream/<id>` and the covers
+through `api/music/cover/<id>`, which the hub fetches from Navidrome.
+
+**How it plays**: the hub keeps each tablet's queue and tells that tablet (over its live connection) what
+to play; the wall page plays it in an `<audio>` element and reports back position, paused and ended, so
+*next* works and the device stays true (offline when the page hasn't reported for 3 minutes). Music goes
+quiet (ducks) while Newman listens or speaks, while a timer rings and while a wall alert sounds, then comes
+back. While music plays (and for a minute after it is paused), a small **now-playing chip** (cover, song · artist, a play / pause button) sits
+with the status chips (in the top bar on other pages) — except on a page with a Music tile, which shows the
+same. Tapping it opens the **player**: a card over the page with the cover, progress, previous / play /
+next, volume, what's up next and **Lyrics** (tap outside or × to close; it closes itself after a minute
+untouched). Synced lyrics follow the song with the current line lit; plain ones scroll.
+
+**Lyrics** come from Navidrome first (lyrics in the files' tags or `.lrc` files next to them, through
+OpenSubsonic, else the classic lyrics call), then — when the Navidrome connection's **Look up missing
+lyrics online (LRCLIB)** setting is on (the default) — from [LRCLIB](https://lrclib.net), a free public
+lyrics database. Only the song's artist, title, album and length are sent; nothing about you or your home.
+Turn the setting off for Navidrome's lyrics only. Answers (including “none found”, for a few hours) are kept
+per song under the connection's data folder.
+
+**Music tile**: what's playing with its controls, a search box, a few recent albums (or playlists — the
+tile's *Show* setting); *More* opens a full-screen picker (recent, artists A–Z, albums A–Z, playlists,
+search). *Artists* lists every artist by letter as Navidrome groups them (“The” ignored), each with its
+album count, and a letter strip down the side to jump (tap or slide) when the list is long; an artist
+shows *Shuffle* (all their songs) and their albums, and *Back* returns to the same spot in the list.
+An album — anywhere: the tile's covers, *Recent*, *Albums*, an artist's page, search — opens its page:
+cover, name, artist, year, how many songs and how long, **Play** and **Shuffle**, then the numbered songs
+with their lengths (the one playing is marked); tapping a song plays the album from that song on. A
+playlist opens the same kind of page. *Back* returns to where you were, scrolled as you left it. In
+search, an artist opens their page (as in *Artists*), an album or playlist its page, and a song plays it
+and then the rest of its album. The keyboard's **Search** key shows every match — all the artists,
+albums, songs and playlists — instead of the few shown while typing (from the tile's search box too).
+
+**Voice** (see [what it understands](#voice-on-the-wall-tablet)): “play Jump by Van Halen”, “play Van
+Halen”, “play the album 1984”, “play my road trip playlist”, “shuffle Queen”, “play some music”, “pause /
+resume / stop the music”, “next song”, “previous song”, “volume up / down”, “set the volume to 40”,
+“what's playing?”, “show the lyrics” (opens the player with the lyrics). Other ways in work too — “can you
+play …”, “put on …”, “let's hear …”, “I want to hear …”, and “played / plays / playing …” (what speech-to-text
+often makes of “play”) — as do “the song …” (a song, not an album or artist of that name), “something from
+the album …” and “the band …”. A song is matched on its title *and* artist (“Remastered”, “(Live)” and a
+leading “The” don't count). When Navidrome's own search finds nothing — speech-to-text mishears names
+(“Better Roses” for “Bed of Roses”) — the library is matched by how the words look *and sound*: Navidrome
+is asked for the whole phrase and for each longer word on its own, alongside every artist and album name
+(kept 10 minutes), and each candidate is scored on its words, its letters and its consonant sounds (“bed of
+roses” and “better roses” sound the same). Sure → it plays (“Playing Bed of Roses by Bon Jovi.”); fairly
+sure → it asks “Did you mean Bed of Roses by Bon Jovi?” and a “yes” within two minutes plays it (“no” lets
+it go); otherwise “I couldn't find better roses.” “Hey Newman, stop” with no timer ringing pauses the music.
+
+**Automations**: the player's commands are ordinary device actions — *Play something* (words: a song
+“Jump by Van Halen”, an artist, “the album 1984”, “my Dinner playlist”), *Shuffle*, *Pause*, *Stop*,
+*Next song*, *Set volume* — e.g. “When someone rings the Front Door doorbell, pause Hallway music”. Its
+song, artist, volume and playing / paused are properties to trigger on.
+
+**For a while, then put back** (“play Bohemian Rhapsody on Kitchen music for 5 minutes”): before it
+starts, Newman notes the player exactly — the whole queue, which song, how far into it (the tablet's last
+report, every ~15 s, plus the time since), playing / paused / stopped, and the volume. When the time is up
+the player goes back to all of that: playing music carries on from the same spot, paused music sits paused
+at that spot, and nothing playing stops again. The run's log says what came back (“Put back: Van Halen –
+Panama at 1:23, playing (volume 40)”). If someone changed the music in the meantime — put on something
+else, paused or stopped it — it's left as they had it (“Left the music alone: it was changed during the 5
+minutes”); skipping to the next song of the automation's music, or that music simply running out, still
+counts as the automation's. The pending put-back is kept with the timer, so a restart of Newman during
+those minutes still finishes it (straight away if the time ran out while it was down).
+
+### Recipes (Forkast)
+
+Your recipes from [Forkast](http://10.1.1.2:9700) open in **cook mode** on the wall tablet that heard you —
+full screen, readable from across the kitchen, worked through by voice or touch.
+
+**Setting it up**: *Connections → Add → Forkast*: the server address (on the NAS: `http://10.1.1.2:9700`),
+your Forkast email and password. Newman signs in once with Forkast's login, keeps **only the sign-in token**
+(`integrations/<id>/token.json`, readable by the hub only — Forkast set to `SESSION_DURATION=never` issues
+tokens that never expire) and drops the password from the settings. If Forkast stops accepting the token (a
+401: the password or Forkast's secret changed) the connection shows *Waiting for setup* and asks for the
+password once more. Newman only reads: the recipe list (refreshed every 10 minutes, and again whenever a
+spoken name isn't found — so a recipe added a minute ago is found), one recipe at a time, and its picture
+(through `api/recipes/<id>/image`, so the tablet never talks to Forkast). The connection's one device, a
+*Recipe book*, shows how many recipes there are.
+
+**Cook mode** (one per wall tablet, on the hub; it closes itself after 3 hours untouched): the picture,
+name and times; the **servings** with − / + (scaled amounts show *×2 · recipe makes 4*); the
+**ingredients** with their amounts worked out for those servings — exact amounts (a kitchen fraction only when the amount is one, like ½ or ⅓; otherwise the exact decimal) for spoons, cups and
+counts (1½ cups, ⅓ tsp, 2 large), exact grams and millilitres (52.5 g x 2 = 105 g), unit spellings made
+consistent (“Tablespoon”, “tbsp”, “T” → tbsp); and the **steps**, the current one large and lit. Tap a step,
+*Previous* / *Next*, or *Close*. While it's open the screen stays awake and the wall doesn't go back to its
+home page. A **Recipes tile** (dashboard editor → add tile → *Recipes*) lists them with a search box; tap one
+to open it.
+
+**Voice** (on the tablet that heard it; Whisper's spellings are fine — “pan cakes”, “grandmas”):
+
+| Say | Newman |
+|---|---|
+| “Pull up / open / show me the sesame chicken (recipe)” · “How do I make pancakes?” | opens it: “Here's Fluffy Pancakes: 9 ingredients and 5 steps.” — matched on the words of the name (“the”, “my”, “recipe” don't count; “sesame chicken” finds a long title that contains them). Two close matches (“the chicken recipe”): “I found two: Lemon Chicken Thighs or Honey Garlic Chicken Wings. Which one?” — answer “the honey one”, “the second one” |
+| “Read me step 1” · “What's step 4?” · “Next (step)” · “Previous” / “Go back” · “Repeat that” · “What's the first / last step?” · “How many steps?” · “What step am I on?” | reads the step (temperatures and abbreviations said in full). Past the end: “That was the last step.” / “There are only 6 steps.” |
+| “What are the ingredients?” · “How much flour?” · “How many eggs?” | the amounts for the current servings; an ingredient that's in there twice gets every amount (“1 cup of sugar, for the cake and a quarter of a cup of sugar, for the drizzle”); one without an amount is “to taste” / “as needed” |
+| “Make it for 8” · “Scale it to 6 servings” · “Double it” · “Half” · “Back to the original amounts” | scales from the recipe's servings, on screen too |
+| (a step with a time in it) | ends with an offer: “… Want a timer for 25 minutes?” — a range (“10 to 12 minutes”) offers the longer time and says so. **“Yes”** starts an ordinary timer named after the step (“step 4 timer”); “no thanks”, or anything else, and nothing starts |
+| “Close the recipe” · “I'm done cooking” | closes cook mode |
+
+“Next”, “go back” and “repeat” mean the recipe only while one is open (otherwise they're the music's);
+step and ingredient questions with nothing open get “There's no recipe open. Ask me to pull one up first.”
+
+## Matter and Thread
+
+Matter is the cross-brand standard most new plugs, sensors and lights speak (the cheap IKEA ones —
+GRILLPLATS plug, MYGGSPRAY motion sensor, KLIPPBOK leak sensor — included). Newman controls Matter
+devices **directly on your network**, on its own Matter "fabric", without Home Assistant and without
+the cloud. Tested so far against the real Matter server and a virtual Matter plug (matter.js); not yet
+with physical devices.
+
+### The pieces, in plain words
+
+- **Matter controller** — something that controls a device: Apple Home, Google Home, and now Newman. Each
+  controller has its own *fabric* (its own keys). A device can belong to several fabrics at once —
+  Matter devices take **at least 5** — and each controller works on its own: that's *multi-admin*.
+- **Commissioner** — the controller that adds a device. A brand-new Wi-Fi or Thread device is first set up
+  over Bluetooth by a phone app (Apple Home, Google Home). Newman doesn't do Bluetooth: you add the device in
+  Apple Home or Google Home as usual, then **share** it to Newman with a one-time code. Newman then adds it
+  over the network onto its own fabric.
+- **Thread** — a low-power mesh radio many battery sensors and plugs use instead of Wi-Fi. It's IPv6-only.
+- **Thread border router** — the box that joins the Thread mesh to your home network: an **Apple TV 4K**
+  (Wi-Fi + Ethernet models) or **HomePod**, a Google Nest hub, or an OpenThread border router. It announces
+  a route to the Thread network (an `fd…::/64` prefix) on your LAN. Your Apple TV does this for every Thread
+  device in the house — not only for Apple Home — so Newman reaches Thread devices *through* it.
+- **The Matter server** — a small open-source container next to Newman that speaks Matter and holds
+  Newman's fabric. Newman talks to it over a websocket on the same machine.
+
+**If you leave iPhone (or Android) behind:** Newman's fabric is Newman's — nothing it does goes through
+Apple's or Google's apps or clouds, so removing Apple Home from your phone, or the phone itself, doesn't
+touch Newman's control. Thread devices still need a border router of *their* Thread network to be on: an
+Apple TV keeps routing as long as it's plugged in and still in your home. If that border router goes away
+for good, Thread devices need another border router on the same Thread network, or to be added again on a
+new one. Wi-Fi and Ethernet devices don't need one at all.
+
+### The host's IPv6 (for Thread devices)
+
+Thread devices only have IPv6 addresses, so the machine running Newman and the Matter server needs:
+
+- **IPv6 turned on**, on the same network (same LAN / VLAN) as the border router. LAN-only IPv6 is enough —
+  the `fe80::` link-local address every interface gets once IPv6 is on. Your internet provider doesn't
+  need to offer IPv6, and nothing is exposed to the internet.
+- **`accept_ra = 2`** on that interface. The border router tells the LAN about the Thread network in a
+  *router advertisement*. Linux ignores those on a machine that forwards packets, and Docker (and VMs,
+  bridges) turn forwarding on — `2` means "listen to them anyway".
+- **`accept_ra_rt_info_max_plen = 64`**. The Thread network arrives as a *route* inside the advertisement
+  (a /64 route). Linux ignores advertised routes by default (`0`); `64` accepts them.
+
+Use the interface your LAN address is on (Unraid: `br0`; Debian: e.g. `eno1`, `enp3s0`, or `br0` if you
+made a bridge; TrueNAS: e.g. `enp3s0` or `br0`; Synology: `eth0`, or `ovs_eth0` with Virtual Machine Manager).
+The examples below use `br0` — swap in yours.
+
+**Check it** (the same on every system, after the steps for yours):
+
+```bash
+ip -6 -br addr show dev br0                            # IPv6 is on: at least an fe80::… address
+cat /proc/sys/net/ipv6/conf/br0/disable_ipv6           # 0
+cat /proc/sys/net/ipv6/conf/br0/accept_ra              # 2
+cat /proc/sys/net/ipv6/conf/br0/accept_ra_rt_info_max_plen   # 64
+ip -6 route | grep '^fd'                               # fd4a:ad96:cdb9::/64 via fe80::14e9:7353:c34e:52f5 dev br0 proto ra …
+ip -6 neigh show fe80::14e9:7353:c34e:52f5             # the next hop's lladdr (MAC) …
+```
+
+The route needs a router advertisement to arrive (they come every few minutes), so give it a moment. The
+last line's MAC should be your border router's (Apple TV: *Settings → General → About*, Ethernet or Wi-Fi
+address). Newman's Matter connection shows the same thing in its status: *Thread network reachable*, or
+*Thread devices can't be reached:* and what's missing (e.g. `br0 ignores router advertisements (accept_ra is
+1 while forwarding is on; it needs to be 2)`).
+
+#### Unraid
+
+1. *Settings → Docker → Enable Docker: **No*** → Apply. Unraid only lets you change the network while
+   Docker is stopped.
+2. *Settings → Network Settings*: **Network protocol: IPv4 + IPv6**, **IPv6 address assignment: Automatic**
+   → Apply.
+3. *Settings → Docker → Enable Docker: **Yes*** → Apply.
+4. Make the two settings stick across reboots: add them to `/boot/config/go`. Edit it with `nano
+   /boot/config/go` (pasting a here-document or a long `echo` into the web terminal can mangle quotes and
+   line breaks) and add at the end:
+
+   ```bash
+   # Matter / Thread: listen to router advertisements and the routes in them on br0
+   sysctl -w net.ipv6.conf.br0.accept_ra=2
+   sysctl -w net.ipv6.conf.br0.accept_ra_rt_info_max_plen=64
+   ```
+
+5. Run the same two `sysctl -w` lines once now (or reboot). **Changing Network Settings again re-creates
+   `br0` and drops them** — run them again after any network change, then check.
+
+#### Debian / Ubuntu
+
+1. IPv6 is on by default. If your interface is set up in `/etc/network/interfaces`, make sure it isn't
+   disabled (no `net.ipv6.conf.*.disable_ipv6 = 1` anywhere in `/etc/sysctl.conf` or `/etc/sysctl.d/`), and
+   `iface br0 inet6 auto` is fine to add. NetworkManager / netplan: leave IPv6 on "automatic".
+2. Create `/etc/sysctl.d/60-matter-thread.conf`:
+
+   ```
+   net.ipv6.conf.br0.accept_ra = 2
+   net.ipv6.conf.br0.accept_ra_rt_info_max_plen = 64
+   ```
+
+3. `sudo sysctl --system`, then check. If the interface is a bridge made after boot (systemd-sysctl runs
+   before it exists), also add to its `iface` block in `/etc/network/interfaces`:
+   `post-up sysctl -w net.ipv6.conf.br0.accept_ra=2 net.ipv6.conf.br0.accept_ra_rt_info_max_plen=64`.
+
+#### TrueNAS SCALE
+
+1. *Network → Interfaces →* your interface *→ Edit*: tick **Autoconfigure IPv6** → Save, then **Test
+   Changes** and **Save Changes**.
+2. *System → Advanced Settings → Sysctl → Add*, twice (both *Enabled*):
+   - Variable `net.ipv6.conf.br0.accept_ra`, Value `2`
+   - Variable `net.ipv6.conf.br0.accept_ra_rt_info_max_plen`, Value `64`
+3. They apply at once and at every boot. Check from *System → Shell*.
+
+Run the Matter server as a Custom App (*Apps → Discover Apps → Custom App*) with **Host Network** on, or with
+`docker compose` from the shell, as below.
+
+#### Synology DSM
+
+1. *Control Panel → Network → Network Interface →* your LAN *→ Edit → IPv6*: **IPv6 setup: Auto** → OK.
+2. *Control Panel → Task Scheduler → Create → Triggered Task → User-defined script*: user **root**, event
+   **Boot-up**; under *Task Settings → Run command*:
+
+   ```bash
+   sleep 30
+   sysctl -w net.ipv6.conf.eth0.accept_ra=2
+   sysctl -w net.ipv6.conf.eth0.accept_ra_rt_info_max_plen=64
+   ```
+
+3. Select the task → **Run** once, then check (*Control Panel → Terminal & SNMP* → enable SSH, `sudo -i`).
+
+Some models run an older kernel built without advertised-route support: there
+`/proc/sys/net/ipv6/conf/eth0/accept_ra_rt_info_max_plen` doesn't exist and the second `sysctl` fails. The
+fallback is a static route in the same boot task — `ip -6 route add fd4a:ad96:cdb9::/64 via
+fe80::14e9:7353:c34e:52f5 dev eth0`, with *your* prefix and border router address from another machine's
+`ip -6 route` — but it silently breaks when the Thread network's prefix or the border router changes (a
+reset, a new Apple TV, Apple handing the job to a HomePod), so check again after any such change.
+
+### The Matter server container
+
+Newman uses the **Open Home Foundation Matter Server** —
+[matterjs-server](https://github.com/matter-js/matterjs-server), built on matter.js and maintained by the
+matter.js team for the Open Home Foundation (Apache-2.0). It's the official successor of python-matter-server
+(archived in June 2026; 8.1.2 was its last release) with the same websocket API. It's a standalone container:
+no Home Assistant needed. It must use **host networking** (mDNS discovery and IPv6 to Thread devices).
+
+```bash
+mkdir -p /mnt/cache/appdata/newman-matter && chown -R 1000:1000 /mnt/cache/appdata/newman-matter
+docker run -d --name newman-matter --restart unless-stopped --network host \
+  -e LISTEN_ADDRESS=127.0.0.1 -e DEFAULT_FABRIC_LABEL=Newman -e PRIMARY_INTERFACE=br0 \
+  -v /mnt/cache/appdata/newman-matter:/data \
+  ghcr.io/matter-js/matterjs-server:stable
+```
+
+- `LISTEN_ADDRESS=127.0.0.1` — its websocket (port 5580) and its small web dashboard only answer on the
+  server itself; Newman (host networking too) reaches it at `ws://127.0.0.1:5580/ws`. Matter traffic to the
+  devices is unaffected.
+- `DEFAULT_FABRIC_LABEL=Newman` — how Newman's fabric is named on devices (other apps may show it in a
+  device's list of connected services).
+- `PRIMARY_INTERFACE` — the LAN interface from above (it picks one itself if left out).
+- It runs as user 1000, hence the `chown`. Its data folder **is Newman's fabric** — back it up with Newman's
+  data. Lose it and every Matter device has to be shared to Newman again.
+- `docker-compose.yml` has it as the `matter` profile: `docker compose --profile matter up -d newman-matter`.
+
+### Adding the connection
+
+*Connections → Add → Matter*; the address is already `ws://127.0.0.1:5580/ws` → **Connect**. Its status
+reads e.g. *no devices yet · Thread network reachable*.
+
+### Adding a device
+
+On the Matter connection's page, **Add a Matter device**, then paste a setup code and **Add**. Adding takes
+a few seconds to a minute or two; the dialog shows what it's doing and for how long, and **Cancel adding**
+stops waiting so you can try another code. It carries on if you close the dialog, and the next time you open
+it, it shows how that went.
+
+**From Apple Home** (iPhone / iPad): open the device → scroll down → **Settings** (the gear) → **Turn On
+Pairing Mode** → **Copy Code**. Paste it into Newman within **about 15 minutes**; each code works once.
+
+**From Google Home**: the device → **Settings** (gear) → **Linked Matter apps & services** → **Link apps &
+services**; it shows a pairing code. Use it while Google Home still shows it.
+
+**A device that's in no app yet**: only one that's already on your network (Ethernet, or Wi-Fi set up some
+other way) can be added with its own code (the 11 digits under its QR code). Anything that needs Bluetooth
+for its first setup — all Thread devices, most Wi-Fi ones — goes into Apple Home or Google Home first, then
+is shared as above.
+
+What it becomes is read from the device itself (its Matter device type and what it reports), whatever the
+brand: a plug is a *switch* (with power W, energy kWh, voltage, current when it measures them), an occupancy
+sensor *motion*, a water leak detector a *leak sensor* (wet / dry), a contact sensor a *door sensor*,
+temperature and humidity sensors their readings, a bulb a *light*. Battery devices show their **battery
+%**, what battery they take, and a *Battery low* health warning when the device says so (or ≤ 20 %) —
+usable in automations like any other device.
+
+**One device per physical device** for its readings: a temperature + humidity sensor is one *temperature
+sensor* that also reports humidity and battery; a motion sensor that measures light is one *motion* sensor
+with a light level (lx); a leak or door sensor keeps its battery and any temperature on itself. Each device
+behind a bridge is its own device. Things you switch or move stay separate — each outlet of a power strip is
+its own *switch*, with its own power reading. Every reading can start automations (*humidity goes above
+60 %*) and shows on the device page and in *Readings* tiles. Devices an older Newman split into one per
+reading are merged when Newman starts: the merged device keeps the main reading's id, and automations,
+dashboards and a name given to the old reading devices move to it.
+
+### Removing a device
+
+The **Paired** tab lists what's on Newman's fabric → **Remove**. It leaves Newman's fabric only: Apple Home,
+Google Home and any other app that controls it keep it. The other way round, removing it in Apple Home
+normally takes only Apple's fabric off it and Newman keeps working; if it shows *not answering* in Newman
+afterwards, the other app reset it — share it to Newman again.
+
+### When it doesn't work
+
+- ***No device waiting to be added answered … pairing window may have closed*** — the code expired (Apple
+  Home's lasts about 15 minutes) or was already used. Turn on pairing mode again for a new code.
+- ***The device turned that code down*** — a mistyped or old code. Make a new one.
+- ***Thread devices can't be reached: this computer has no IPv6 route to a Thread network …*** — the host
+  settings above; the status says which part is missing. Run the *check it* block.
+- **A device shows *not answering*** — no power, out of range, or (Thread) its border router is off. The
+  route can also vanish after a network change on the host (Unraid: re-run the two `sysctl` lines).
+- ***As many controllers as it can*** — the device already has its 5 (or more) fabrics in use: remove it
+  from an app you no longer use.
+- **Battery sensors answer late** — they sleep between reports; that's normal.
+- A firewall on the host must not time out UDP "connections" quickly (sleepy devices answer minutes later).
+
+**Example — charge a wall tablet only between 20 and 80 %** with a Matter plug (see
+[Wall tablet battery](#wall-tablet-battery)):
+
+- **When** *Kitchen tablet's battery goes below 20%* → **Then** turn on *GRILLPLATS plug*.
+- **When** *Kitchen tablet's battery goes above 80%* → **Then** turn off *GRILLPLATS plug*.
+
+## Companion containers
+
+Some connections need a small helper next to Newman. None of these are part of Newman's image.
+
+### Docker socket proxy
+
+Needed for the **Docker** connection. Newman *could* read Docker's socket directly
+(`-v /var/run/docker.sock:/var/run/docker.sock`, address `unix:///var/run/docker.sock`), but that
+socket gives full control of the host — anything that can talk to it can start any container or read
+any file. Since Newman is reachable from the internet, put a proxy in between that only lets through
+what Newman needs:
+
+```bash
+docker run -d --name docker-socket-proxy --restart unless-stopped \
+  --read-only --tmpfs /run -p 127.0.0.1:2375:2375 \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -e CONTAINERS=1 -e EVENTS=1 -e PING=1 -e VERSION=1 \
+  -e POST=1 \
+  lscr.io/linuxserver/socket-proxy:latest
+```
+
+- `-p 127.0.0.1:2375:2375` keeps it on the server itself (Newman uses host networking, so it reaches
+  it at `http://127.0.0.1:2375`). Nothing else on your network can use it.
+- `CONTAINERS=1 EVENTS=1` — list containers, their stats and live events. Images, exec, volumes,
+  networks and everything else stay blocked.
+- `POST=1` — lets Newman **start / stop / restart** containers. Leave it out for a watch-only
+  connection (Newman then says the connection is read-only if you try). Note `POST=1` also permits
+  other container changes (e.g. creating one) through the proxy; the proxy still only listens on
+  `127.0.0.1`.
+- On Unraid it's also available from Community Apps as **socket-proxy**.
+
+Then in Newman: *Connections → Add → Docker*, address `http://127.0.0.1:2375`. Every container
+appears, including ones created later; tick any under *Leave out these containers* to keep them out.
+A container shows up once it has existed for two minutes. Throwaway ones never do, however long they
+run: anything started with `docker run --rm`, or with the label `newman.ignore=true` (add it to build or
+test containers you remove yourself). One deleted from Docker (gone from `docker ps -a`, not just stopped) is removed from Newman after
+10 minutes - straight away when the connection starts - unless an automation, dashboard, phone layout
+or widget still uses it: then it stays, unavailable, shown as *Removed*. While Docker can't be reached
+nothing is removed.
+
+### Speech: Whisper and Piper
+
+For **voice on the wall tablets** ([Voice on the wall tablet](#voice-on-the-wall-tablet)): the standard
+Wyoming speech containers (the same ones Home Assistant uses), CPU only. Newman talks to them over
+the Wyoming protocol; they only listen on the server itself.
+
+```bash
+docker run -d --name newman-whisper --restart unless-stopped -p 127.0.0.1:10300:10300 \
+  -v /mnt/cache/appdata/newman-voice/whisper:/data \
+  -v /mnt/cache/appdata/newman/voice:/hint:ro -e WYO_WHISPER_INITIAL_PROMPT_FILE=/hint/whisper_prompt.txt \
+  rhasspy/wyoming-whisper --model base.en --language en --compute-type int8 --beam-size 1 --cpu-threads 4
+
+docker run -d --name newman-piper --restart unless-stopped -p 127.0.0.1:10200:10200 \
+  -v /mnt/cache/appdata/newman-voice/piper:/data \
+  rhasspy/wyoming-piper --voice en_US-lessac-medium
+```
+
+- Whisper `base.en` (~150 MB download, ~350 MB of RAM) is the accuracy / speed balance on a 6-core
+  CPU: about 0.6 s for a short command. Piper downloads its voice (~60 MB) the first time; the
+  voices offered in a tablet's settings are fetched when first used.
+- Then for Newman: `VOICE_STT=127.0.0.1:10300`, `VOICE_TTS=127.0.0.1:10200` (and `VOICE_NAME` for
+  the default reply voice). Either one unset turns that half off.
+- The `/hint` mount and `WYO_WHISPER_INITIAL_PROMPT_FILE` give Whisper the home's names to expect — the
+  list Newman writes to its data folder's `voice/whisper_prompt.txt` ([The Whisper hint](#voice-on-the-wall-tablet)).
+  Whisper reads it only when it starts, so Newman restarts the container itself when the list changes —
+  through the [Docker connection](#docker-socket-proxy), which needs restarts allowed on the socket proxy
+  (`POST=1`, or just `ALLOW_RESTARTS=1`). No Docker connection: `docker restart newman-whisper` after big changes. The
+  file must exist before Whisper starts (Newman writes it as soon as it runs;
+  Whisper retries until then). `small.en` instead of `base.en` hears better (~1.5 s a command).
+- `docker-compose.yml` has both as the `voice` profile: `docker compose --profile voice up -d`.
+- **Kokoro** (optional, a more natural voice): run
+  [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) (CPU image, ~0.5-1.5 s per reply on a
+  6-core CPU, ~2-3 GB of RAM) and set `VOICE_TTS_KIND=openai`, `VOICE_TTS_URL=http://127.0.0.1:8880`,
+  `VOICE_NAME=af_heart`. Any OpenAI-compatible speech service (`POST /v1/audio/speech`) works the same way.
+  ```bash
+  docker run -d --name newman-kokoro --restart unless-stopped -p 127.0.0.1:8880:8880 --memory 3g \
+    ghcr.io/remsky/kokoro-fastapi-cpu:latest
+  ```
+  The tablets' voice choices are then Kokoro's English voices (American / British, women and men).
+  Keep `VOICE_TTS` set too: when Kokoro fails or is down, Piper speaks the reply instead (logged once).
+- The third voice companion, **`newman-wakeword-trainer`**, retrains “Hey Newman” with your household's
+  voices when asked from the dashboard — see [Teaching and training “Hey Newman”](#teaching-and-training-hey-newman).
+
+### Matter server
+
+For the **Matter** connection: the Open Home Foundation's
+[matterjs-server](https://github.com/matter-js/matterjs-server), with host networking, as container
+`newman-matter` — how to run it, and the host's IPv6 settings Thread devices need, are in
+[Matter and Thread](#the-matter-server-container).
+
+### Mosquitto
+
+For **MQTT devices** (ring-mqtt, Zigbee2MQTT…): any MQTT broker. Newman publishes `online` on
+`homeassistant/status` when it connects, so bridges like ring-mqtt re-send their devices exactly as
+they do for Home Assistant.
+
+## Where people are
+
+Each person's phone can share its location with the hub (Household → **Map** on the dashboard, the
+People tab in the phone app). Only the newest fix is kept, on the hub only — no history. Inside
+Home a person shows **Home**; inside a named place, its name (**School**); otherwise how far they are
+from home. Phones report on their own about every 5 minutes (and when they arrive somewhere or leave).
+
+**Battery first: there's no live following.** Tapping someone (on the wall's Family map, Household →
+Map or the phone app) asks for **one** fresh fix: the hub sends their phone a single locate push and
+the phone answers once. That's at most **once every 2 minutes per person**, whoever asks (a second tap
+meanwhile just waits for the answer). **iPhones answer even when the Newman app has been closed
+(swiped away)**: with sharing on and location access *Always*, the app's location push extension is
+woken and sends the fix; Android phones (and iPhones without *Always*) get the silent push. Nothing is
+shown to the person beyond the phone's own location indicator.
+
+**Photos and colours.** Everyone has a colour (a distinct one from a palette is picked for anyone who
+hasn't chosen, and kept) and can add a photo: Household → People → the person (admins, for anyone) or
+your Profile → *On the family map*. Any JPEG, PNG or WebP up to 3 MB is cropped to its centre square
+and kept as a small 256 px JPEG in the data folder (`people/`, included in backups). Maps and lists show
+the photo, or the first initial on their colour.
+
+- **Sharing is set per account** (Household → Accounts → *Location*): **Their choice** (the default —
+  they switch it on in their app, off until they do; the household sees them), **Required** (always on,
+  they can't turn it off — the app shows "Required by Chris"; *Seen by* picks the people and wall
+  tablets who can see them, everyone by default) or **Off** (not shared, no switch in the app).
+  Switching it off deletes what was kept.
+- **Places** (Household → Places, admins): Home is built in — it starts at the weather connection's spot
+  with a 150 m radius; move it or resize it there. Add others by clicking the map. The radius slider
+  runs smoothly from 25 m to 5 km (finer at the small end) and the circle follows as you drag. When
+  someone is inside more than one place, the smallest wins.
+- **Who sees it**: household members (admin and family accounts). Guests never see anyone's location,
+  and guests aren't on People at all.
+- **Wall tablets** see people only with their account's **Can see where people are** (Household →
+  Accounts → the tablet; on by default). With it on, a tablet sees everyone sharing by *their choice*,
+  and *Required* people whose *Seen by* is everyone or ticks that tablet. Turned off, its Family tile
+  shows everyone as *Not sharing*. Tablets never share a location themselves, and a household member
+  signed in on a wall tablet doesn't bring their own view to the wall.
+- **The map** (Household → Map and Places, and the wall's People map) is **Apple Maps** when the hub
+  has a MapKit JS key, and OpenFreeMap otherwise (or whenever Apple's map can't load — blocked, offline,
+  key refused — the page switches to it by itself). The wall's Family tile has a **Map look** setting:
+  *Light* (the default) or *Dark*.
+  - **Apple Maps** (MapKit JS): brighter, with easy-to-read street names. The browser loads MapKit JS
+    and the map imagery straight from Apple (`cdn.apple-mapkit.com` and Apple's map servers); the hub
+    only hands signed-in maps a short-lived token (`GET /api/map/token`, signed with your key, 30
+    minutes, renewed as it runs out — the key itself never leaves the hub). Apple sees which map areas
+    are viewed (as with any map service), not where anyone is: people's locations and your places are
+    drawn on top in the browser and never sent to Apple. The token isn't tied to one web address
+    (no `origin` claim), because the hub is reached at several (its LAN address and port, and the
+    public name behind the proxy) — so anyone who gets hold of a token could use it for up to 30
+    minutes; only signed-in accounts get one.
+    **Setting it up** (Apple Developer account → Certificates, Identifiers & Profiles):
+    1. *Identifiers* → **+** → *Maps IDs* → e.g. `maps.ca.nimaste.newman`.
+    2. *Keys* → a key with **MapKit JS** enabled, set to that Maps ID (an existing key can have it
+       added — the APNs push key works, so one `.p8` does both). Download the `.p8` and note its Key ID.
+    3. Give the hub `MAPKIT_KEY_ID` (the Key ID). The team is `MAPKIT_TEAM_ID`, which defaults to
+       `APNS_TEAM_ID`. The key file is `MAPKIT_KEY_PATH`; when it isn't set it is the APNs key file
+       (`APNS_KEY_PATH`) if `MAPKIT_KEY_ID` is the same as `APNS_KEY_ID`, else
+       `/app/keys/mapkit.p8` (the mounted keys folder, `/mnt/cache/appdata/newman/keys/`).
+    4. Restart. `GET /api/map/token` now answers `"provider": "apple"`. If the key can't be read the
+       hub logs one line (“Apple Maps off: can't use the MapKit key …”) and the maps use OpenFreeMap.
+  - **OpenFreeMap** (no key needed): a vector map drawn in the browser with MapLibre — OpenFreeMap's
+    *Positron* style when light and its dark-blue *Fiord* when dark, from
+    [OpenFreeMap](https://openfreemap.org) (OpenStreetMap data; free, no key). The hub fetches the
+    styles, tiles, fonts and icons from `tiles.openfreemap.org` — the only server it asks — names itself
+    when it does, and keeps copies in `map-tiles/` in the data folder (tiles, fonts and icons 30 days;
+    styles 6 hours, refreshed in the background while the old copy is served). The browser or wall
+    tablet only ever talks to the hub, so this map works the same away from home behind the
+    client-certificate proxy, and an area already seen still shows when the internet is down.
+## Automations
+
+Built in the dashboard as **When → Only if → Then**, read back as a plain sentence
+("When Side Door stays unlocked for 10 minutes, lock Side Door and notify Chris").
+
+- **When** — any mix of: a time, or sunrise / sunset (± minutes: “30 min before sunset”); a device changing state (optionally *staying* that way for a while);
+  a device event (doorbell pressed, person detected, vacuum finished, container crashed, printer
+  needs attention…); any reading a device reports going above / below / to a value (optionally for a
+  while). *Any* of them, or *all* of them within a time window.
+- **Only if** — device states and readings (any / all / none), between times, on certain days, only when
+  it's dark (sunset to sunrise, each ± minutes, across midnight) or only during daylight, and
+  between dates — every year (“December 1 to January 6” wraps over New Year; February 29 counts as
+  the 28th in other years) or just once in a given year. Dates use the hub's own date.
+- **Then** — commands on any number of devices, optionally *for* a while (then put back —
+  devices that keep more than an on/off state, like a music player's queue and spot in a song, are put
+  back exactly, unless someone changed them meanwhile; see [Music](#music-navidrome));
+  notifications with action buttons and, for camera events, a snapshot; showing it on wall tablets;
+  and a **live status** on phones (below) of any devices — until they're no longer in a state, for a
+  while, or until something else happens (a device changes, an event, a time).
+
+Every reading a device reports is available — not just the ones Newman has a friendly name for.
+
+## Upkeep and Today
+
+**Upkeep** (dashboard → Upkeep) holds things that come due again and again: the furnace filter,
+softener salt, an oil change, smoke-alarm tests. Each item repeats every N days / weeks / months
+and/or after N hours a device has run (the furnace and AC, counted from the thermostat's own
+heating / cooling). Optional: who it belongs to, how many days ahead it shows as *coming up*,
+a heads-up the evening before, and whether the wall tablet asks *who did it*. Items live in the
+Upkeep connection's data folder (so backups carry them). Each item is also a device (*Upkeep item*:
+up to date / coming up / due today / overdue), so automations can notify when one comes due.
+
+**Today** is one briefing the hub works out for the wall tile, the phone and (later) voice:
+- **To do** — upkeep items due or overdue, devices needing a hand (offline, low battery, no power,
+  jammed) and appliance needs ("rinse aid low"), most urgent first. **Done** on the wall asks *who*
+  for everyone's items (skip allowed); an item with an owner credits them; a phone always records
+  its person. **Undo** takes back a mis-tap.
+- **On today** — today's calendar events.
+- **Heads-up** — weather warnings, rain above a threshold (default 50%), and from the evening on
+  (default 17:00) tomorrow's events from calendars marked *"the evening before"* (e.g. garbage day)
+  and upkeep items so marked. Calendar links from Google and most others don't include your own
+  reminders, so this is set per calendar in Newman.
+
+## Dashboards and the wall tablet
+
+Dashboards are grids of tiles (devices, groups, cameras, the round thermostat dial, weather,
+calendar agenda, alerts, people…), with per-tile text size and per-dashboard display names. Each account
+picks its dashboard; the wall tablet (`/wall`) shows it full screen with tabs you swipe between,
+live camera video, and the weather and calendar details a tap away.
+
+**Family map tile** (tile type `people`). A row of name chips — photo or coloured initial, first name,
+and where they are with how old that is (*Home · 4 min*, *School · 9 min*, *6.4 km · 1 min*); anyone
+not sharing (or not visible to this tablet) is dimmed as *Not sharing* — above a map (the tile's *Map
+look*: Light, the default, or Dark; Apple Maps or OpenFreeMap as above). Optionally only some people
+(*Only these people*; none ticked = everyone).
+- **The home view** fits everyone within about 50 km of Home (never less than ~3 km across). Anyone
+  farther away isn't squeezed onto it: their chip says how far (*353 km*) with an arrow pointing their
+  way from home, and a label sits at that edge of the map. **Everyone** fits all of them.
+- **People at the same place** (the same named place, or within ~150 m) share one bubble of stacked
+  avatars tagged *Home · everyone* / *Home · 3*. Tap it for a card of who's there, *since* when (their
+  latest update), with a refresh button each; tap outside to close it. Single pins carry a first-name tag.
+- **Tap a name chip** (or a pin, or a row in the card): it asks for that person's fresh location (the
+  chip shows *Updating…* until it arrives — see *Battery first* above) and flies the map to them, about
+  1.5 km across. **Back to home view** returns, and so does a minute untouched; while it's flown away
+  the tablet counts as in use (it doesn't go back to its home page). Household → Map works the same way
+  (bubbles, the home area, *Show everyone*). "Show Dante on the map" by voice still opens him full screen.
+
+**Home page and mornings.** Each dashboard has a *home page* — where the wall tablet rests — set in
+the dashboard editor (side panel → **Home page**): the usual home page, optionally another page in
+the mornings (Mon–Fri and Sat–Sun each with their own from / to, by the tablet's own clock), and
+*go back to the home page after N minutes untouched* (default 2; 0 = never). When a morning starts
+or ends the tablet moves to the new home once nobody has touched it for 30 seconds; a full-screen
+camera, an open sheet or a person's map counts as in use. Every page stays in the tab bar either way, and wall alerts
+still appear over whatever is showing.
+
+**The top bar's page tabs.** Each tab is an icon; the dashboard editor's side panel → **Tab names**
+picks *Icons, current tab named* (the default: only the page you're on shows its name) or *Names when
+they fit* (every name while the whole row fits, otherwise the same as the default). The clock and date
+keep their room first, then the music chip and dim button; the tabs sit at the centre of the bar when
+there's space on both sides, otherwise right after the clock, and with more pages than fit even as icons
+the row scrolls sideways (the current tab kept in view) - none is ever cut off.
+
+**Themes.** Each dashboard has a look, picked in the dashboard editor's side panel → **Theme**:
+- **Midnight** (the default): the deep blue night look the wall has always had.
+- **Glass**: light, iOS-style frosted panels over a soft colour wallpaper, rounder corners, Apple's
+  system fonts on Apple devices (Nunito elsewhere). Sheets, the music player and picker, cook mode,
+  the voice card and alerts all turn light with it; a full-screen camera stays dark.
+- **Christmas**: soft winter blue with frosted tiles and red and green throughout - a thin pine
+  garland with red berries and little gold lights along the very top of the screen, a sprig of holly
+  in a free corner of each tile, cranberry-red warm and pine-green cool colours (room bars go green to
+  red), the current tab in pine green with a red edge, a red top edge and bow on the Climate glance
+  tile, a candy-cane thermostat arc, a pine-green play button with a red rim - plus a snowdrift along
+  the bottom, glowing string lights along the top of camera pictures, gentle falling snow (at most 60 flakes; paused while the
+  screen is dimmed or hidden; none with *reduce motion*), and a greeting in a script font with three
+  characters beside the clock - Newman's own drawings of Santa, a red-nosed reindeer and an elf.
+  Options: **Falling snow** on / off · **Greeting** (default *Merry Christmas*; empty = none) ·
+  **Characters**: *Built-in*, *Your pictures* (up to three PNG / WebP pictures with a see-through
+  background, 2 MB each, kept on the hub and removable) or *Off* · **Characters go**: *By the clock*,
+  *Soft, behind the tiles* (big and blurred) or *Nowhere*. The greeting and characters only get the
+  width the page tabs leave over; when the bar is too full for them (lots of tabs, a tablet held
+  upright) the characters go alone, and whatever didn't fit appears big and soft on the dimmed screen
+  instead.
+- **Christmas season**: switched on, Christmas replaces the chosen theme by itself every year between
+  two dates (December 1 to January 6 unless changed; over New Year is fine). The wall checks at its
+  local midnight, and switches straight away when the dashboard is saved.
+The fonts are part of Newman's web app, so the wall needs no internet for them.
+
+**Climate glance tile** (tile type `climate`, look only). *Climate* with the thermostat's mode and
+what it's doing (*HEAT · IDLE*), an arc showing where it's set with the room's temperature as the big
+number, *Set to 22.5°*, humidity and the outside (from a weather place, if chosen); then a box per
+chosen room - name, temperature, humidity when the device reports it, and a cool-to-warm bar - two to a
+row in a narrow tile, more when it's wide (the rest as *+N more*). Numbers are exactly what the devices
+report. Settings: **Thermostat** (anything set to a temperature), **Rooms** (devices that report a room
+temperature), **Outside** (a weather place, optional), **Opens page** (one of the dashboard's pages,
+optional). A tap opens that page, or with none chosen, the thermostat's own dial. It is for the wall
+(the phone apps don't draw it yet, so the phone layout editor doesn't offer it).
+
+**Updates reach open screens by themselves.** A wall tablet (or a browser tab) keeps running the page
+it loaded until something reloads it - for days on a tablet. So every page compares its own web build
+with the one the hub serves (`webBuild` in the live socket's hello and in `GET /api/hello`) whenever
+it reconnects, when it comes back into view and every 10 minutes, and reloads itself when they differ:
+- **the wall** once nobody is using it: not while Newman listens or speaks (cook mode's step reading
+  included) or a timer / alert sounds, not while music plays (paused is fine), not within a minute of a
+  touch, and not while a sheet or dialog opened or touched in the last 10 minutes is up. It stays
+  dimmed if it was, and keeps its page;
+- **other pages** on the next page change, or when the tab comes back after being hidden - never while
+  a field has focus or an editor has unsaved changes.
+
+If a reload didn't bring the new build (the hub mid-update), it waits 1 minute, then 5, then 30 between
+tries. The browser console says what it's doing (`[newman] web build: …`); `newmanBuild()` in DevTools
+shows this page's build, the hub's and why it's waiting. Nothing is needed in the Android / iOS wall
+apps (their web views revalidate the page as browsers do; `index.html` is sent `no-cache`).
+
+**The Today page** (layout B: *Today · Overview · Security · Lights · Climate*, Today in the mornings
+6–10 / weekends 7–12, then Overview): a greeting with today in one line ("3 things to do · 3 events
+today · rain from 3 PM"), **To do** grouped as overdue / today / coming up with Done right there —
+as many as fit, the rest behind *See all* — the 31-day agenda and the weather. New dashboards start
+with it; for an existing one, **Add a Today page** in the editor makes it (using the dashboard's own
+weather and calendar choices) and turns the mornings on.
+
+**Whose dashboard.** The Dashboards page lists *Wall & browser dashboards* with whose each one is in
+plain words — *Chris, your default*, *Wall tablet account (Kitchen), its default* — so two dashboards
+both called "Wall tablet" (yours and the wall tablet account's) are easy to tell apart.
+
+### Phone layouts
+
+The phone app has its own layouts (Dashboards → **Phone layouts**): a **household default** that
+everyone uses, and a **customized** layout for anyone who wants their own (**Customize** starts from a
+copy of the default; **Reset to default** goes back). Admins arrange the default and anyone's, and
+can **Reset everyone to the default** (asked once, inline); family and guests see only their own
+phone. Wall tablet accounts have none.
+
+The phone editor draws an actual phone (390 × 844): the page's 4-column grid of square cells with the
+real tiles, the Today card at the top of the first tab, the links to the other pages under it, and the
+bottom tabs — up to three pages, then People and Alerts. Drag a tile to move it and its corner to
+resize, in whole cells; arrows and Shift+arrows do the same. *Show as a tab* is per page (a fourth is
+refused with a note); pages that aren't tabs open from links on the first tab. Saving the default
+reaches everyone using it at once; their apps reload.
+
+The first default is laid out from the first admin's wall dashboard by the rules the apps used before
+(the Today page becomes the Today card, the next three pages are tabs; tiles flow in order, wide ones
+across the phone, small ones side by side, a big-tiles devices tile as one card per device; sizes in
+[API.md](API.md#phone-layouts)), so phones look the same until someone arranges them.
+
+### Wall tablet battery
+
+A tablet that lives on a wall mount and charges 24/7 sits at 100 % all day, and that is what makes
+its battery swell (sometimes enough to push the screen out). The Newman Wall app reports the
+tablet's battery to the hub — on start, every 5 minutes, and straight away when charging changes or
+the level moves 5 % — and each wall tablet account becomes a device (**Wall tablets** connection,
+kind *Wall tablet*: charging / on battery, with battery %, battery temperature °C and voltage V as
+readings). With its screen off it shows **Screen off**, not offline - and so does its music player: the
+Android wall keeps checking in every 15 minutes in the background, even in Android's deep sleep (Doze),
+and says when the next check-in is due (shown offline 35 minutes after the last one, or 20 minutes after
+an announced one that didn't come). If a Fire tablet still drops off overnight, its wall settings have
+an optional **Let it report while asleep** (lets the app ignore battery optimisation; or once over USB:
+`adb shell dumpsys deviceidle whitelist +ca.nimaste.newman.wall`); an iPad can't, so
+it says goodbye as it sleeps and shows *Screen off* for up to 12 hours (its battery counts as unknown
+after 15 minutes - smart charging leaves it alone until it wakes). Screen on, it's shown offline after
+15 minutes without a report.
+
+**Smart charging** keeps it between 20 and 80 % without any automations: turn it on under
+**Household → Accounts → the tablet → Charging**. The hub switches the tablet's charger plug on when
+the battery drops below *Start charging below* (20 % unless you change it) and off when it rises above
+*Stop charging above* (80 %) — only when the battery **crosses** one of those levels (and once when
+you turn it on, or after a restart, if it's already outside them), so switching the plug yourself is
+respected until the next crossing. Each switch is in the tablet's Activity ("Turned Kitchen plug on:
+battery 19%"). The charger is **learned by watching**: when one plug (any device that switches on and
+off) goes on or off and within 10 s exactly that one tablet starts or stops charging, that's its
+charger ("Learned: charges from Kitchen plug") — move the tablet to another plug and it relearns.
+Newman never switches plugs to find out; you can also pick the plug yourself. Admins get one push
+(at most hourly per tablet, again once it has charged) when a tablet with smart charging is below
+10 % and not charging, or its charger isn't responding when it should turn on - and one ("Kitchen
+tablet stopped reporting its battery", at most hourly) when it goes offline (above: 15 minutes
+without a report with the screen on, longer with it off - a sleeping tablet isn't a fault).
+Changing the charger acts at once with the new one (from the last level reported).
+If the hub turns the charger on and the tablet hasn't started charging a minute later, it asks the
+admins once ("Kitchen tablet didn't start charging from Hall plug. Which plug is it on?") with up to
+three likely plugs as buttons (same room first) and *None of these*; the same question shows in the
+tablet's Charging settings. Picking one makes it the charger and turns it on; the learning then
+confirms it ("Confirmed: charges from Kitchen plug").
+The battery temperature is the early warning: a battery that runs warm while charging is the one
+that swells — add *When Kitchen tablet's battery temperature goes above 40 °C → notify me* (and
+turn the plug off).
+## Voice on the wall tablet
+
+Say **“Hey Newman”** to a wall tablet, then what you want. Everything stays in the house: the wake
+word is heard on the tablet itself, the words are turned into text and the reply into speech on the
+server, and nothing is recorded or kept (Activity logs the words heard and what Newman did).
+
+```
+tablet (Newman Wall app)                     hub (Newman)                    speech containers
+ "Hey Newman"  ── openWakeWord, on-device
+ chime, records until you stop (≤ 8 s)
+ page ── POST /api/voice/utterance ──────▶  Whisper (wyoming-whisper) ──▶  text
+                                             intent → action → reply
+ plays the reply ◀── JSON + WAV ────────────  Piper (wyoming-piper) ◀────  reply text
+```
+
+**What it understands** — worked out from your devices' names, rooms (areas), each wall dashboard's
+“show as” names and what each kind of device can do (`kinds.py`), so new devices just work:
+
+| Say | Newman |
+|---|---|
+| “Turn off the kitchen lights” · “Lock the side door” · “Close the garage” | does it: “Okay, the Kitchen Lights are off.” (plural / “all” = every matching device) |
+| “Set the main floor to 21” · “Set the thermostat to heat” · “Dim the island to 30 percent” | sets the number / mode (checks the device's range) |
+| “Unlock the side door” · “Open the garage” · “Disarm the alarm” | **“For safety, do that from the screen.”** — anything `kinds.py` marks sensitive, unless that tablet's *Allow unlocking, opening and disarming by voice* is on |
+| “Is the garage open?” · “Is the side door locked?” · “Is anything unlocked?” | answers from the current state |
+| “What's the temperature outside / in the basement?” · “How much time is left on the dishwasher?” | reads the matching reading (“outside” = the weather) |
+| “What's the weather?” · “How's the vacuum?” | the device's state and key readings |
+| “Where's Dante?” · “Where is everyone?” | home / at a place / how far — only people this tablet may see (its *Can see where people are* and their sharing) |
+| “Run Good Night” · “Trigger the leaving automation” · “Start the movie night routine” | runs that automation now, like its *Run* button (“start” / “activate” need *automation* / *routine* said, or its whole name — “start the vacuum” stays the vacuum's). One whose actions unlock, open or disarm needs the tablet's *Allow unlocking, opening and disarming by voice* |
+| “What's on today?” | today's events, to-dos and heads-ups (the Today briefing) |
+| “What time is it?” · “What's the date?” · “What day is it?” | “It's 4:52 PM.” / “It's Tuesday, October 6th.” — in the hub's time zone (`TZ`) |
+| “Show the front porch camera” · “Show the cameras” · “Show Lights” · “Show Dante on the map” · “Show the weather” | full-screen camera, all cameras, a page of the tablet's dashboard, the person's live map, weather / calendar / to-do |
+| “Set a timer for 10 minutes” · “Set a pasta timer for 8 minutes” · “How much time is left (on the pasta timer)?” · “Cancel the timer” · “What timers do I have?” | timers kept on the hub per tablet (they survive the wall reloading), shown as countdown cards; one that ends beeps and says “Your pasta timer is done” until you tap it or say “Hey Newman, stop” |
+| “Stop” | stops a ringing timer and anything being said (with nothing ringing: pauses the music) |
+| “Play Jump by Van Halen” · “Play the album 1984” · “Shuffle my road trip playlist” · “Pause the music” · “Next song” · “Set the volume to 40” · “What's playing?” | music from Navidrome on this tablet's own speaker — see [Music](#music-navidrome) |
+| “Pull up the pancakes” · “Next step” · “How much flour?” · “Double it” · “Close the recipe” | cook mode with your Forkast recipes — see [Recipes](#recipes-forkast) |
+
+Something it can't place gets an honest answer (“Sorry, I didn't catch a device called bedroom lamp.”,
+“Which one: Main Floor or Basement?”).
+
+**Misheard names** — Whisper sometimes spells a name the way it sounds (“back yard”, “good nite”, “ma
+seemo”). When a name isn't found as heard, Newman takes a second look against every name it knows —
+devices (with your renames and the dashboards' “show as” names), rooms, people, automations, recipes,
+dashboard pages, the music library — comparing letters, words and how they sound
+(`server/newman/voice/names.py`, the same matching the music search uses). Only names of the kind the
+request needs count (a person for “where is…”, a lockable device for “lock…”, an automation for “run…”),
+a phrase said exactly as some other name is left alone, and the corrected request must then make sense:
+
+- sure → done as corrected (“turn on the back yard lights” → the Backyard's lights, “run good nite” → Good
+  Night); the reply's `action.corrected` says which name was meant;
+- fairly sure → it asks: “Did you mean Massimo?” — “yes” within a minute does it, “no” lets it go;
+- otherwise the honest “Sorry, I didn't catch …” as before.
+
+The names are kept by the hub and updated as things change (a device added, removed or renamed, an
+automation saved), so a rename is understood straight away.
+
+**The Whisper hint** — Whisper hears names better when it's told which to expect. Newman keeps a short
+list — “Newman.”, the household, rooms, devices (most used first), automations, then the most played
+artists, about 200 Whisper tokens at most — in the data folder's `voice/whisper_prompt.txt`, rewritten a
+few seconds after the names change (`GET /api/voice/hint` shows it). The Whisper container reads it when
+it starts (`WYO_WHISPER_INITIAL_PROMPT_FILE`, see [Companion containers → Speech](#speech-whisper-and-piper));
+wyoming-whisper takes no per-request prompt (its `transcribe` request only carries the language), hence
+the file.
+
+*Keeping Whisper current* — Newman restarts the Whisper container (`VOICE_STT_CONTAINER`, default
+`newman-whisper`) through the Docker connection when the file is newer than the container's last start, and
+only when it's safe: the list unchanged for 5 minutes (a burst of renames restarts once), no request being
+heard and none in the last minute — preferably none for 10 minutes, unless the change has waited 2 hours —
+never within 30 minutes of the container's last start (by Newman or anyone), and never a container that's
+stopped. It then waits for Whisper to answer again (usually 10–20 s) and logs it (“newman-whisper restarted
+with the new hint, ready in 14 s”). Something said meanwhile waits for Whisper and is heard then; if it
+isn't back within 20 s the tablet hears “One moment, I'm just getting ready…” instead of an error.
+`GET /api/voice/hint` → `whisper` shows where it stands. Needs a Docker connection that has the container
+with restarts allowed on its socket proxy (`POST=1`, or just `ALLOW_RESTARTS=1`); `VOICE_STT_RESTART=0`
+turns it off.
+
+Why not per request: wyoming-faster-whisper can fetch names on every utterance, but only by logging in to a
+Home Assistant install's websocket API (`--hass-token`) and reading its exposure, state, entity, device,
+area and floor registries — Newman would have to pose as Home Assistant and squeeze people, automations and
+artists into Home Assistant's entity tiers. A restart when nobody is talking keeps Newman's own list.
+
+**Per tablet** (Household → Accounts → the tablet → *Voice*): listen on/off, the *wake word*, wake
+sensitivity (low / normal / high), reply volume, the reply voice, and *Allow unlocking, opening and
+disarming by voice* (off). Below them: *Teach “Hey Newman”* and *Train “Hey Newman”* (see
+[Teaching and training “Hey Newman”](#teaching-and-training-hey-newman)).
+
+**Changing the wake word**: pick it in the tablet's *Voice* settings → *Wake word*. The tablet switches
+within seconds (the page tells the wall app the new model's version; it downloads the model from the
+hub) — no app restart, no new app. Offered: “Hey Newman” plus openWakeWord's pre-trained “Hey Jarvis”,
+“Hey Mycroft” and “Hey Rhasspy” (Newman downloads those into the data folder's `voice/` at startup
+when they're missing; “Alexa” is left out so the house's real Alexa devices don't answer too). Any other
+openWakeWord model works too: drop `<name>.onnx` into `voice/` with an optional `<name>.json`
+(`{"phrase": "Hey Computer", "threshold": 0.5}`; the phrase defaults to the file name, “hey_computer” →
+“Hey Computer”). A tablet whose chosen model is removed goes back to the default (`VOICE_WAKEWORD`).
+The wall's hints (“say Hey Jarvis and try again”) use the chosen phrase.
+
+**On the tablet** the app asks for the microphone once (a device-owner kiosk grants it itself) and
+listens only while the wall is on screen. It lets go of the microphone while it answers. Android lets
+the tablet's own assistant keep its hotword while another app records with the voice-recognition
+source, so “Hey Google” should keep working — see [`android/README.md`](android/README.md#voice) for
+what to check on a new tablet. The iPad wall app listens the same way: the same models through ONNX
+Runtime's iOS package, the same endpointing and the same page events, while the wall is on screen
+(iPadOS doesn't allow listening in the background) — see [`ios/README.md`](ios/README.md).
+
+### Setting voice up
+
+1. Start the two speech containers (see [Companion containers → Speech](#speech-whisper-and-piper)) and
+   set `VOICE_STT=127.0.0.1:10300` and `VOICE_TTS=127.0.0.1:10200` for Newman.
+2. Put the wake-word model in the data folder's `voice/` (e.g. `/mnt/cache/appdata/newman/voice/`):
+   `hey_newman.onnx`, openWakeWord's `melspectrogram.onnx` and `embedding_model.onnx`, and optionally
+   `hey_newman.json` (`{"threshold": 0.5}`). The wall app downloads them from the hub (and again
+   whenever they change), so a retrained model needs no new app. The pre-trained wake words
+   (`hey_jarvis.onnx`, `hey_mycroft.onnx`, `hey_rhasspy.onnx` + `.json`) are fetched by Newman itself
+   from openWakeWord's v0.5.1 release (`…/releases/download/v0.5.1/hey_jarvis_v0.1.onnx` etc.).
+3. Restart Newman. Each wall tablet then listens (its *Voice* settings decide).
+
+Measured on the NAS (i5-10400, CPU only): Whisper `base.en` (int8, beam 1) transcribes a 2–3 s command
+in about 0.6 s (≈ 1 s while the CPU is busy), Piper `en_US-lessac-medium` speaks a reply in 0.1–0.2 s;
+end of speech → reply playing ≈ 0.8 s (the tablet waits for 0.8 s of quiet) + 0.8–1.2 s ≈ **1.6–2 s**.
+`tiny.en` is faster (0.35 s) but mishears (“main board”, “positive timer”); `small.en` takes 1.5 s.
+
+### Teaching and training “Hey Newman”
+
+The first “Hey Newman” was trained on computer voices only, so it misses real people more than it
+should (it catches about 4 in 10 computer-voice tries, with ~2.5 false wake-ups per hour of everyday
+sound). Newman can retrain it with **your household's own voices**, recorded on the wall tablet's own
+microphone — no Claude, no cloud, nothing leaves the NAS.
+
+**1. Teach (record each person, ~3 minutes each).**
+
+1. On the dashboard: *Household → Accounts →* the wall tablet *→ Voice → Teach “Hey Newman”*.
+2. Pick who's recording (anyone in *Household → People*, or *Someone else…* and type a name) and press
+   **Start on this tablet**.
+3. At the tablet a full-screen card appears: “Say “Hey Newman” (1 of 30)”. Say it, pause, say it again
+   — each one is picked up automatically (the bar shows it hears you). Follow the tips: the first ten
+   in your normal voice where you usually stand, the next ten from across the room / quieter / louder
+   / faster, the last ten with the TV or music on. **Redo last** throws away the last one, **Skip
+   ahead** goes to the next step, **Done** stops.
+4. Then “Now just talk normally for 30 seconds”: press **Start** and read the paragraph on screen. This
+   teaches it what *isn't* “Hey Newman”.
+5. Repeat for everyone in the house (kids too — their voices are the hardest for the computer-voice
+   model). The tablet doesn't listen for the wake word while teaching, and stays on the card (it
+   counts as in use).
+
+A clip that's silent, too short or too long is turned away with a reason on the card (“That was too
+quiet - move closer or speak up”). The list under *Teach* shows how many each person has recorded,
+with **Delete** to remove all of someone's recordings.
+
+**2. Train (about half an hour, runs on its own).** Under *Train “Hey Newman”* press **Train** (at least 20
+“Hey Newman” recordings are needed). The `newman-wakeword-trainer` container (below) picks it up and
+shows its progress there; you can close the page. It keeps the 20k computer-voice clips it already
+has and adds yours: every recording is copied ~60 times with room echo, background noise and
+different loudness, the talking is cut into short pieces as “not the wake word”, and about one in five
+of each person's recordings is held back to test the result.
+
+**3. Compare and use it.** When it's done the section shows the new version next to the one in use:
+
+| | In use now | New version |
+|---|---|---|
+| Catches your voices | e.g. 30% | e.g. 90% |
+| False wake-ups per hour | 2.5 | 0.6 |
+
+“Catches your voices” is measured on the held-back recordings it never trained on (per person below
+the table); false wake-ups on ~11 hours of everyday sound (TV, music, talking). **Use it** installs it
+on every tablet within seconds (they download the new model; no app update). **Keep current** throws
+the new version away. **Undo** puts the previous version back (and Undo again re-installs the newer
+one). Train again any time after recording more.
+
+**Where things live** (the data folder, e.g. `/mnt/cache/appdata/newman/`):
+
+- `voice/teach/<person>/positive/*.wav` — the “Hey Newman” recordings (16 kHz WAV), `negative/*.wav`
+  the talking, `person.json` the name. Delete from the dashboard, or delete the folder.
+- `voice/train/requests/` — a training request from the dashboard; `voice/train/status.json` — the
+  trainer's progress; `voice/train/candidates/hey_newman-<date>.onnx` + `.metrics.json` — a finished
+  new version waiting for *Use it*; `voice/train/last-run.log` — the last run's output.
+- `voice/hey_newman.onnx` / `.json` (threshold) / `.metrics.json` — the version in use;
+  `voice/hey_newman.previous.*` — the one before (for Undo).
+
+**The trainer container** — `newman-wakeword-trainer`, CPU only, idle (and using no CPU) until asked.
+It uses the training setup in `/mnt/cache/appdata/newman-build-cache/voice/` (openWakeWord, the
+Python environment, the computer-voice clips and background audio — made once by
+`scripts/pipeline.sh`, see below). Build and start it:
+
+```bash
+docker build -t newman-wakeword-trainer /mnt/cache/appdata/newman-build-cache/voice
+docker run -d --name newman-wakeword-trainer --restart unless-stopped --network none \
+  --shm-size 8g --cpus 8 \
+  -v /mnt/cache/appdata/newman-build-cache/voice:/work \
+  -v /mnt/cache/appdata/newman/voice:/voice \
+  newman-wakeword-trainer
+```
+
+(or `docker compose --profile voice up -d newman-wakeword-trainer`). `--shm-size 8g` matters (Docker's
+64 MB default crashes training); `--cpus 8` leaves the NAS some room. It needs no network. A full run
+with the default settings takes about **20–30 minutes** on the i5-10400 (measured: a 10 000-step run
+with three voices took 8 minutes, most of it fixed checking work; the default 50 000 steps add ~7 more)
+and uses up to ~8 GB of RAM while it trains; the dashboard shows the progress. If the dashboard says “The trainer isn't running”, start
+the container; `docker logs newman-wakeword-trainer` and `voice/train/last-run.log` show what happened.
+
+**Settings** are in `/mnt/cache/appdata/newman-build-cache/voice/scripts/hey_newman.yml`: `steps`
+(50000), `layer_size` (32), `max_negative_weight` (1500 — higher = fewer false wake-ups but more
+misses), `real_augmentation_rounds` (60 copies per recording), `real_holdout` (0.2) and
+`max_false_wakes_per_hour` (1.0 — the threshold chosen is the lowest that stays under it).
+
+**The computer-voice baseline** (once, already done on this NAS): openWakeWord's automatic pipeline
+(synthetic “hey newman” clips from Piper's LibriTTS generator, look-alike phrases such as “hey norman”,
+“hey google” and “new man” as negatives, room echo and AudioSet background noise, ~530 h of
+openWakeWord's precomputed negative features) — `scripts/pipeline.sh` in a `python:3.10-slim`
+container with `--shm-size 8g` (each stage leaves a `train/.done-*` marker so a re-run resumes; it
+saves only the ONNX model, the tablets don't use tflite). `scripts/train_real.py` is one run with the
+real recordings (what the trainer runs), `scripts/trainer.py` the container's loop.
+
+## Apps
+
+Native apps for iOS and Android, specified once in [`docs/apps.md`](docs/apps.md):
+
+- **Newman** (phone, `ca.nimaste.newman`) — your phone layout's pages as tabs, every device and reading,
+  Face ID / fingerprint before unlock-type commands, camera view, alerts, push notifications with
+  action buttons and snapshots.
+- **Newman Wall** (tablet, `ca.nimaste.newman.wall`) — the `/wall` screen in a kiosk shell: full
+  screen, starts at boot, dims when idle, wakes on touch, client certificate built in. Runs without
+  Google services, so Amazon Fire tablets work.
+
+Both carry the client certificate (`.p12`) themselves and present it on every connection.
+
+| | Build | Details |
+|---|---|---|
+| Android | On any Docker host (`android/README.md` has the command); sideload the APKs | [`android/README.md`](android/README.md) — Fire tablet setup, device-owner kiosk, Firebase |
+| iOS | GitHub Actions on macOS (`.github/workflows/`), Ad Hoc IPAs on each `v*` tag | [`ios/README.md`](ios/README.md) — Apple Developer setup, GitHub secrets, Guided Access |
+
+### Connecting the apps
+
+No app is tied to one house. The first time it opens, an app shows **Connect to your Newman** — before
+anyone signs in — and the sign-in screen's **Server** button comes back to it:
+
+- **On this network**: Newman announces itself over mDNS (`_newman._tcp`, on its HTTP port, named after
+  the home), so phones and tablets at home list it; tap it.
+- **Scan QR code**: Household → Accounts → an account's ⋯ → **Connect a device** (a wall tablet's account
+  has the button right on it) shows a QR code of the connect link
+  `newman://connect?v=1&id=…&name=…&local=…&outside=…` — the hub's id, name, home address and outside
+  address, nothing secret. Opening that link on a phone works too.
+- **Address**: typed in, then **Test connection** (`GET /api/hello`, which needs no sign-in). It says
+  what's wrong in plain words: can't reach it, it needs a client certificate, it needs a Cloudflare
+  Access token, its certificate isn't trusted, or it isn't a Newman hub.
+- **Connection security** (same screen): the client certificate (`.p12` + password) and the Cloudflare
+  Access service token (client id + secret).
+
+The app keeps both addresses. It uses the home one while `/api/hello` there answers as the same hub (a
+quick check on every network change and when the app comes back to the front), else the outside one.
+The wall tablet keeps the address it's on while it answers (its sign-in belongs to that address).
+Apps that were set up before this keep their saved address and stay signed in.
+
+The hub's **name** and **outside address** (e.g. `https://home.example.com/`) are set under
+**Sign-in settings → This Newman**; they go into `/api/hello`, the mDNS announcement and the QR code.
+Without an outside address set there, `PUBLIC_URL` is used.
+
+### Home-screen widgets and quick tiles
+
+The phone apps put devices on the home screen. Any device a widget can show is offered — anything with
+a one-tap command, a reading, or more than one state (not cameras) — and a widget shows each one's icon,
+name and state (or its reading, exactly as reported). Tapping a device does what tapping its tile in the
+app does (toggles a light, unlocks a locked lock, starts a docked vacuum); tapping a sensor refreshes.
+What a tap does comes from the hub (`GET /api/widgets/state`, worked out from the kind of device), so
+every app agrees and a new kind of device needs nothing in the apps.
+
+- **Android**: add the **Newman devices** widget (any size), pick its devices — search, by room or by
+  type, in the order you want — and choose whether sensitive actions (unlock, open, disarm) ask first
+  (off by default). Long-press the widget to change it. Three **Quick Settings tiles** (Newman 1, 2, 3):
+  add them to the shade, long-press one to pick its device; it shows on / off and runs the action (a
+  sensitive one when the phone is locked asks you to unlock first). Widgets refresh on a tap, while the
+  app is open (its live connection), and every 15 minutes.
+- **iOS**: see [`ios/README.md`](ios/README.md).
+
+When something a widget shows changes, the hub sends the phone a reload push — at most one every 30 s per
+phone, and only for the devices that phone's widgets show: an APNs widget push to iPhones (needs the
+APNs settings), an FCM message to Android phones when FCM is set up (it isn't required). Signing out
+stops them. Details: [API.md → Phone widgets](API.md#phone-widgets-and-quick-tiles).
+
+### Live statuses (Live Activities and ongoing notifications)
+
+Any device can show a **live status** on phones while it matters — on an iPhone a Live Activity (Lock
+Screen and Dynamic Island), on Android an ongoing, silent notification — with its state, how long it's
+been that way, and buttons from the device itself (Close, Lock…; sensitive ones like Open or Unlock ask
+for Face ID / the fingerprint or screen lock first). Tapping it opens the device.
+
+- On a device's page (admins), **Live status**: turn on *Show a live status on phones*, tick the states
+  that count (from the device's kind: open, unlocked, on, triggered…) and who sees it (everyone, or
+  chosen people). It shows while the device is in one of those states and ends when it leaves them,
+  staying two minutes with its final state (
+## Deploying behind Caddy
+
+Newman is meant to sit behind Caddy with client-certificate (mTLS) checks for family phones. Example
+block (register `newman` in MTLSAuthManager first):
+
+```caddy
+home.{$MY_DOMAIN} {
+  import mtls newman
+  import secure_headers
+  reverse_proxy http://10.1.1.2:8093 {
+    header_up X-Client-Cert-Fingerprint {http.request.tls.client.fingerprint}
+    header_up X-Client-Cert-Subject {http.request.tls.client.subject}
+  }
+}
+```
+
+Without a client certificate, the away policy decides (by default: password + 2FA code).
+
+## Settings (environment variables)
+
+Almost everything is configured in the dashboard. The environment only holds secrets and
+first-boot defaults — see [`.env.example`](.env.example).
+
+| Variable | Default | |
+|---|---|---|
+| `TOKEN_SECRET` | — (required) | Signs notification links/tokens. `openssl rand -hex 32` |
+| `PUBLIC_URL` | — | Address phones use to reach Newman (links in notifications) |
+| `PUBLIC_TOKEN_URL` | `PUBLIC_URL` | Optional separate no-mTLS host for `/api/public/*` token links |
+| `PORT` | `8093` | |
+| `NEWMAN_MDNS` | `1` | `0` = don't announce the hub on the home network (`_newman._tcp`; the apps then connect by address or QR code) |
+| `MDNS_INTERFACE` | — | Network interfaces to announce on and list as home addresses, e.g. `br0` (default: every one except Docker's and VPNs') |
+| `DATA_DIR` | `/data` | Database, keys, connection data |
+| `TZ` | — | Your time zone, e.g. `America/Toronto` (times and schedules use it) |
+| `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_PRODUCTION` | | iOS push |
+| `FCM_SERVICE_ACCOUNT_PATH` | | Android push |
+| `MAPKIT_KEY_ID` | — | Apple Maps (MapKit JS) key id; unset = OpenFreeMap maps (see People → The map) |
+| `MAPKIT_TEAM_ID` | `APNS_TEAM_ID` | Apple Developer team of that key |
+| `MAPKIT_KEY_PATH` | the APNs key file if `MAPKIT_KEY_ID` = `APNS_KEY_ID`, else `/app/keys/mapkit.p8` | MapKit key (`.p8`) |
+| `VOICE_STT` | — | Speech-to-text for voice: a Wyoming service, e.g. `127.0.0.1:10300` (wyoming-whisper); unset = no voice |
+| `VOICE_TTS` | — | Text-to-speech: e.g. `127.0.0.1:10200` (wyoming-piper); unset = replies shown, not spoken |
+| `VOICE_TTS_KIND` | `wyoming` | `wyoming` = Piper at `VOICE_TTS`; `openai` = an OpenAI-compatible speech service at `VOICE_TTS_URL` (Kokoro), with Piper as the fallback |
+| `VOICE_TTS_URL` | — | The HTTP speech service for `VOICE_TTS_KIND=openai`, e.g. `http://127.0.0.1:8880` (Kokoro-FastAPI) |
+| `VOICE_NAME` | `en_US-lessac-medium` (`af_heart` with `openai`) | The hub's default reply voice (each tablet can pick another) |
+| `VOICE_LANGUAGE`, `VOICE_WAKEWORD` | `en`, `hey_newman` | Language sent to Whisper; the default wake word (a model's name in `DATA_DIR/voice/`; each tablet can pick another) |
+| `VOICE_STT_CONTAINER`, `VOICE_STT_RESTART` | `newman-whisper`, `1` | The Whisper container Newman restarts (Docker connection) when the hint changes; `0` = never (see Voice → The Whisper hint) |
+| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD` | `10.1.1.2`, `1883` | First-boot MQTT connection |
+| `MQTT_BIRTH`, `MQTT_BIRTH_TOPIC`, `MQTT_DISCOVERY_PREFIX` | `true`, `homeassistant/status`, `homeassistant` | |
+| `REOLINK_HOST`, `REOLINK_USERNAME`, `REOLINK_PASSWORD`, … | | First-boot doorbell connection only |
+
+## Data and backups
+
+Everything lives in the data folder (`/data` in the container):
+
+| Path | |
+|---|---|
+| `newman.db` | accounts, sessions, connections and their settings, automations, dashboards, phone layouts, activity |
+| `integrations/<id>/` | per-connection data: Roborock / Home Connect sessions, LG client id, caches (files are `0600`) |
+| `snapshots/` | notification snapshots |
+| `map-tiles/` | the hub's copies of map data (OpenFreeMap); safe to delete, fetched again when needed. Not in backups |
+| `logs/newman.log` | the hub's log - the same lines as `docker logs newman`, but kept when the container is replaced on a deploy. Rotates at 5 MB, keeping 5 older files (`newman.log.1` … `.5`). Every notification / alert button press is logged on arrival with its outcome (accepted, or refused with 401 / 409 and why). Not in backups |
+| `.token_secret`, `.local_token`, `.install_id` | generated on first start |
+| `keys/` | push keys, mounted read-only at `/app/keys`: `apns-key.p8` (the team's APNs key, Key ID `CGF89L7S4R`), `firebase-service-account.json`. Not included in Newman's backups — keep the originals in your keys folder |
+
+Back up the whole folder (stop the container, or copy `newman.db` with `sqlite3 .backup`).
+
+## Development
+
+```bash
+docker build -t newman:dev .
+docker run --rm --network none -v "$PWD/server/tests:/app/tests" newman:dev \
+  python -m unittest discover -s tests
+```
+
+The tests fake every device and service (MQTT, Home Connect, LG, Docker, printers, Roborock…), so they
+need no network or credentials. API reference: [`API.md`](API.md). The web page's own rules (when a
+page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
+
+The web dashboard lives in `web/` (React + Vite); the image builds it in its first stage.
