@@ -1,10 +1,12 @@
 """Backups: what goes in, passphrase locking, checks before restoring, the swap at start-up, the API."""
 import io
 import os
+import shutil
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import aiohttp
 
@@ -80,6 +82,101 @@ class BackupFileTests(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual((kept[0] / "integrations" / "roborock" / "session.json").read_text(), '{"token": "newer"}')
         self.assertEqual((self.data / ".local_token").read_text(), "not in backups")  # untouched
+
+    def _companions(self, tag):
+        """voice/, matter/ and zigbee/ the way the hub and its companion containers leave them."""
+        files = {
+            "voice/hey_newman.onnx": f"model {tag}", "voice/hey_newman.json": "{}",
+            "voice/teach/chris/positive/1.wav": f"wav {tag}",
+            "voice/train/candidates/hey_newman-1.onnx": f"candidate {tag}",
+            "voice/train/status.json": '{"state": "done"}',
+            "voice/train/requests/20261010.json": "{}",            # out: would start a run
+            "matter/server-1-fff1/snapshot.json.gz": f"fabric {tag}",
+            "matter/server-1-fff1/wal/0001": f"wal {tag}",
+            "matter/server-1-fff1/matter.lock": "", "matter/config/matter.pid": "42",   # out
+            "zigbee/configuration.yaml": f"network_key: {tag}", "zigbee/database.db": f"devices {tag}",
+            "zigbee/coordinator_backup.json": f"coordinator {tag}",
+            "zigbee/log/2026-10-10/log.log": "noise",               # out
+        }
+        for name, text in files.items():
+            (self.data / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.data / name).write_text(text)
+        for top in ("matter", "zigbee", "whisper", "piper", "training", "clips", "snapshots", "logs", "map-tiles"):
+            (self.data / top).mkdir(exist_ok=True)
+        for name in ("whisper/model.bin", "piper/voice.onnx", "training/venv.txt", "clips/1.mp4",
+                     "snapshots/1.jpg", "logs/newman.log", "map-tiles/1.pbf"):
+            (self.data / name).write_text("not in backups")
+        return files
+
+    def test_companion_folders_in_and_out(self):
+        self._companions("a")
+        names = set(zipfile.ZipFile(io.BytesIO(B.create(self.store._db, self.data, "test"))).namelist())
+        for name in ("voice/hey_newman.onnx", "voice/teach/chris/positive/1.wav",
+                     "voice/train/candidates/hey_newman-1.onnx", "matter/server-1-fff1/snapshot.json.gz",
+                     "matter/server-1-fff1/wal/0001", "zigbee/configuration.yaml", "zigbee/database.db",
+                     "zigbee/coordinator_backup.json"):
+            self.assertIn(name, names)
+        for name in names:
+            self.assertFalse(name.startswith(("voice/train/requests/", "zigbee/log/", "whisper/", "piper/",
+                                              "training/", "clips/", "snapshots/", "logs/", "map-tiles/")), name)
+            self.assertFalse(name.endswith((".lock", ".pid")), name)
+
+    def test_companion_folders_round_trip(self):
+        files = self._companions("backed-up")
+        if os.geteuid() == 0:  # the Matter server's folder belongs to uid 1000
+            for p in (self.data / "matter", *(self.data / "matter").rglob("*")):
+                os.chown(p, 1000, 1000)
+        blob = B.create(self.store._db, self.data, "test")
+        # Afterwards everything is gone (a fresh install) or redone - and then the restore.
+        for top in ("voice", "matter", "zigbee"):
+            shutil.rmtree(self.data / top)
+            (self.data / top).mkdir()
+        (self.data / "voice" / "new.onnx").write_text("made after")
+        (self.data / "zigbee" / "configuration.yaml").write_text("network_key: different")
+        voice_inode = (self.data / "voice").stat().st_ino
+        self.store._db.close()
+        B.stage(blob, self.data)
+        self.assertTrue(B.apply_pending(self.data))
+        for name, text in files.items():
+            if B.skipped(name):
+                continue
+            self.assertEqual((self.data / name).read_text(), text, name)
+        self.assertFalse((self.data / "voice" / "new.onnx").exists())
+        self.assertEqual((self.data / "voice").stat().st_ino, voice_inode)   # same folder: mounts keep working
+        kept = next(self.data.glob(".pre-restore-*"))
+        self.assertEqual((kept / "zigbee" / "configuration.yaml").read_text(), "network_key: different")
+        self.assertEqual((kept / "voice" / "new.onnx").read_text(), "made after")
+        if os.geteuid() == 0:
+            for p in (self.data / "matter", *(self.data / "matter").rglob("*")):
+                self.assertEqual((p.stat().st_uid, p.stat().st_gid), (1000, 1000), p)
+
+    def test_older_backup_leaves_companion_folders_alone(self):
+        blob = B.create(self.store._db, self.data, "test")   # no voice/, matter/ or zigbee/ yet
+        self._companions("paired later")
+        self.store._db.close()
+        B.stage(blob, self.data)
+        self.assertTrue(B.apply_pending(self.data))
+        self.assertEqual((self.data / "matter" / "server-1-fff1" / "snapshot.json.gz").read_text(), "fabric paired later")
+        self.assertEqual((self.data / "zigbee" / "database.db").read_text(), "devices paired later")
+        self.assertEqual((self.data / "voice" / "hey_newman.onnx").read_text(), "model paired later")
+
+    def test_folder_changing_while_read_is_read_again(self):
+        self._companions("a")
+        real = B._tree
+        looks = []
+
+        def changing(folder, data_dir):
+            if folder.name == "zigbee":
+                looks.append(1)
+                if len(looks) == 2:   # Zigbee2MQTT writes between the first read's two looks
+                    (self.data / "zigbee" / "database.db").write_text("devices changed")
+            return real(folder, data_dir)
+
+        with mock.patch.object(B, "_tree", changing), mock.patch.object(B.time, "sleep"):
+            blob = B.create(self.store._db, self.data, "test")
+        z = zipfile.ZipFile(io.BytesIO(blob))
+        self.assertEqual(z.read("zigbee/database.db").decode(), "devices changed")
+        self.assertEqual(len(looks), 4)   # read twice
 
     def test_saved_keeps_the_newest(self):
         saved = B.Saved(self.data)

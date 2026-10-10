@@ -12,6 +12,11 @@ on:
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
+# Every job checks out ref: TAG, not the default checkout: a manual run (workflow_dispatch) would
+# otherwise build the default branch, and the Android build reads its versionName from
+# `git describe --exact-match` (it'd come out "dev"). Docker tags, APP_VERSION, the iOS
+# MARKETING_VERSION and the release name all come from TAG too, so both triggers match.
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -21,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.TAG }}
           fetch-depth: 0
 
       # A brand-new GHCR package's very first push isn't reliably accepted
@@ -77,6 +83,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: actions/setup-java@v4
         with:
@@ -128,6 +136,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Generate Xcode project
         working-directory: ios

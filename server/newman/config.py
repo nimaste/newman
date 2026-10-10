@@ -40,36 +40,13 @@ class Config:
     mdns: bool = field(default_factory=lambda: _bool("NEWMAN_MDNS", True))
     mdns_interface: str = field(default_factory=lambda: _env("MDNS_INTERFACE"))
 
-    # MQTT (ring-mqtt)
-    mqtt_host: str = field(default_factory=lambda: _env("MQTT_HOST", "10.1.1.2"))
-    mqtt_port: int = field(default_factory=lambda: _int("MQTT_PORT", 1883))
-    mqtt_username: str = field(default_factory=lambda: _env("MQTT_USERNAME"))
-    mqtt_password: str = field(default_factory=lambda: _env("MQTT_PASSWORD"))
-    # ring-mqtt only (re)publishes discovery + current states when it sees
-    # "online" on its HA status topic. Home Assistant does this on startup;
-    # Newman has to do the same or it would never learn the initial states.
-    mqtt_birth: bool = field(default_factory=lambda: _bool("MQTT_BIRTH", True))
-    mqtt_birth_topic: str = field(default_factory=lambda: _env("MQTT_BIRTH_TOPIC", "homeassistant/status"))
-    mqtt_discovery_prefix: str = field(default_factory=lambda: _env("MQTT_DISCOVERY_PREFIX", "homeassistant"))
-
-    # Everything below only seeds the integrations on first boot; after that
-    # they're configured in the dashboard (Integrations page).
-    # Reolink doorbell
-    reolink_host: str = field(default_factory=lambda: _env("REOLINK_HOST"))
-    reolink_port: int = field(default_factory=lambda: _int("REOLINK_PORT", 80))
-    reolink_https: bool = field(default_factory=lambda: _bool("REOLINK_HTTPS", False))
-    reolink_username: str = field(default_factory=lambda: _env("REOLINK_USERNAME", "admin"))
-    reolink_password: str = field(default_factory=lambda: _env("REOLINK_PASSWORD"))
-    reolink_channel: int = field(default_factory=lambda: _int("REOLINK_CHANNEL", 0))
-    doorbell_name: str = field(default_factory=lambda: _env("DOORBELL_NAME", "Front Door"))
-    doorbell_cooldown_s: int = field(default_factory=lambda: _int("DOORBELL_COOLDOWN_SECONDS", 15))
+    # Connections (MQTT, Reolink and the rest) are added in the dashboard, not here.
 
     # Push
     apns_key_path: str = field(default_factory=lambda: _env("APNS_KEY_PATH"))
     apns_key_id: str = field(default_factory=lambda: _env("APNS_KEY_ID"))
     apns_team_id: str = field(default_factory=lambda: _env("APNS_TEAM_ID"))
     apns_bundle_id: str = field(default_factory=lambda: _env("APNS_BUNDLE_ID", "ca.nimaste.newman"))
-    apns_production: bool = field(default_factory=lambda: _bool("APNS_PRODUCTION", True))
     fcm_service_account_path: str = field(default_factory=lambda: _env("FCM_SERVICE_ACCOUNT_PATH"))
 
     # Apple Maps (MapKit JS) for the web and wall maps; without a key they use OpenFreeMap.

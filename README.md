@@ -3,7 +3,7 @@
 <p align="center">
   A small, self-hosted home hub — locks, alarm, doorbell and cameras, lights, garage, thermostat,
   vacuum, appliances, containers and more — with a web dashboard, a wall-tablet view and
-  (coming) native iOS / Android apps. Built to replace Home Assistant without needing it for anything.
+  native iOS / Android apps (phone and wall tablet). Built to replace Home Assistant without needing it for anything.
 </p>
 
 ---
@@ -11,23 +11,25 @@
 ## Contents
 
 - [What Newman is](#what-newman-is)
-- [Quick start](#quick-start)
+- [Quick start](#quick-start) — installing (Unraid, Debian / Ubuntu, TrueNAS SCALE, Synology) and upgrading
 - [Signing in and security](#signing-in-and-security)
 - [Connections](#connections) — every device type, how it connects, what it needs (and [camera video settings](#camera-video-settings), [music from Navidrome](#music-navidrome), [recipes from Forkast](#recipes-forkast))
 - [Matter and Thread](#matter-and-thread) — the Matter server, the host's IPv6 settings (Unraid, Debian, TrueNAS, Synology), adding devices shared from Apple Home or Google Home
-- [Companion containers](#companion-containers) — Docker socket proxy, speech (Whisper, Piper), Matter server, Mosquitto
+- [Companion containers](#companion-containers) — Docker socket proxy, speech (Whisper, Piper, Kokoro), the wake-word trainer, Matter server, Zigbee (Zigbee2MQTT with an SLZB-06), Mosquitto
 - [Voice on the wall tablet](#voice-on-the-wall-tablet) — “Hey Newman”, what it understands, timers, teaching it your voices
 - [Where people are](#where-people-are) — location sharing, places, the Household map
 - [Automations](#automations)
-- [Dashboards and the wall tablet](#dashboards-and-the-wall-tablet) (and [phone layouts](#phone-layouts))
+- [Upkeep and Today](#upkeep-and-today)
+- [Dashboards and the wall tablet](#dashboards-and-the-wall-tablet) (and [phone layouts](#phone-layouts), [wall tablet battery and smart charging](#wall-tablet-battery))
+- [Apps](#apps) — the phone and wall apps, connecting them, widgets, live statuses
 - [Deploying behind Caddy](#deploying-behind-caddy)
 - [Settings (environment variables)](#settings-environment-variables)
 - [Data and backups](#data-and-backups)
-- [Development](#development)
+- [Development](#development) (and [releases](#releases))
 
 ## What Newman is
 
-One container (~270 MB image, ~80 MB of RAM in use) holding:
+One container (~280 MB image, ~100 MB of RAM in use) holding:
 
 - **The hub** (Python 3.12, asyncio + aiohttp, SQLite) — talks to every device, runs automations,
   sends push notifications, serves the API.
@@ -46,9 +48,55 @@ your password**.
 
 ## Quick start
 
-```bash
-docker compose up -d          # uses docker-compose.yml + .env (copy .env.example)
-```
+You need Docker with the Compose plugin (`docker compose version`), on a Linux machine (host networking,
+below). Then, in a folder holding this repository's `docker-compose.yml` — every setting is written out
+in it, so it's the one file to edit:
+
+1. **Pick the data folder.** `docker-compose.yml` uses Unraid's `/mnt/cache/appdata/newman` (data, mounted
+   at `/data`) and its `keys/` subfolder (push keys, mounted read-only at `/app/keys`). Elsewhere, change both
+   `volumes:` lines (and the companions' `/mnt/cache/appdata/...` folders) to a folder of yours, e.g.
+   - **Unraid**: as is. `docker compose` comes with the *Docker Compose Manager* plugin (Community Apps).
+   - **Debian / Ubuntu**: `/opt/newman` (Docker's own `docker-compose-plugin` package gives `docker compose`).
+   - **TrueNAS SCALE** (24.10+, Docker): a dataset such as `/mnt/<pool>/apps/newman`; run `docker compose`
+     from *System → Shell*, or install it as a YAML custom app (*Apps → Discover Apps*, keeping
+     `network_mode: host`).
+   - **Synology DSM 7.2+**: `/volume1/docker/newman`; *Container Manager → Project → Create* with this
+     `docker-compose.yml`, or `sudo docker compose` over SSH.
+
+   ```bash
+   mkdir -p /mnt/cache/appdata/newman/keys      # your folder from above
+   ```
+2. **Settings:** edit the `environment:` block of the `newman` service in `docker-compose.yml` directly —
+   each setting has a comment, and the lines marked `CHANGE` hold one household's own values to replace
+   with yours: at least `TZ` and `PUBLIC_URL`; comment out the `APNS_*` / `MAPKIT_KEY_ID` ids if you have
+   no Apple keys, and the `VOICE_*` lines if you don't run the voice containers (see
+   [Settings](#settings-environment-variables)). Connections — MQTT, Reolink and the rest — aren't set
+   here: they're added in the dashboard under *Connections*. No secrets go in the file: the
+   secret that signs notification links is made by Newman on first start (`.token_secret` in the data
+   folder, in its backups), and passwords are entered in the dashboard.
+3. **Push keys (optional):** the iOS APNs key as `keys/apns-key.p8` (its id and your team id are
+   `APNS_KEY_ID` / `APNS_TEAM_ID` in `docker-compose.yml`) and, for Android, Firebase's service account as
+   `keys/firebase-service-account.json` (then uncomment `FCM_SERVICE_ACCOUNT_PATH` in `docker-compose.yml` —
+   Newman doesn't start while it points at a missing file). Without them everything works except push
+   notifications.
+4. **The image:** `ghcr.io/nimaste/newman` is published by this repository's release workflow. While the
+   repository is private, so is the image: `docker login ghcr.io` once with a GitHub token that has
+   `read:packages`. Or build it yourself: swap `image:` for `build: .` in `docker-compose.yml`.
+5. **Start:** `docker compose up -d` (Newman and the Docker socket proxy; the other companions have their
+   own profiles — see [Companion containers](#companion-containers)). `docker compose logs -f newman`, or
+   the data folder's `logs/newman.log`, shows it starting.
+
+**Upgrading:** `docker compose pull newman && docker compose up -d newman` (built yourself: `git pull &&
+docker compose up -d --build newman`). The data folder carries over; take a backup first (*Backups*, see
+[Data and backups](#data-and-backups)). Open screens (browsers, wall tablets) load the new web build by
+themselves. When a new version's `docker-compose.yml` adds settings, copy them into yours (`git diff`
+shows them) — your edited values stay yours.
+
+*Coming from an install that used a `.env` file:* move each of its lines into the `environment:` block of
+`docker-compose.yml` (as `NAME: value`) and drop `env_file:`. For `TOKEN_SECRET`, either write its value
+into the data folder as `.token_secret` (`printf '%s\n' '<value>' > .token_secret && chmod 600 .token_secret`)
+or keep it as `TOKEN_SECRET:` in `docker-compose.yml` — with the same secret, links in notifications already
+sent keep working. Left out, Newman makes a new one on its next start.
 
 Open `http://<your server>:8093` from a device at home (first-time setup is refused from outside).
 The first account you create is the admin. Then go to
@@ -91,7 +139,8 @@ bridge network.
   its live connection, so it needs no push service (Fire tablets included). Whether unlock / disarm / open-garage on the tablet needs
   nothing (default), an "Are you sure?", or a PIN is an admin setting.
 - **Sensitive commands** (unlock, disarm, open the garage, sound a siren) are marked as such so the
-  phone apps can ask for Face ID / fingerprint. Notification buttons can only ever *lock*.
+  phone apps can ask for Face ID / fingerprint. A notification button can only run what its automation
+  offered (lock, lock all, snooze, dismiss…), and a sensitive one asks for Face ID / fingerprint first.
 - **Secrets in connection settings** (keys, tokens) are never sent back to the browser — forms show
   `••••`. Webhook addresses, which contain their secret, are shown to admins only.
 - **Maintenance** — `data/.local_token` lets scripts on the server itself call the API
@@ -660,10 +709,10 @@ matter.js team for the Open Home Foundation (Apache-2.0). It's the official succ
 no Home Assistant needed. It must use **host networking** (mDNS discovery and IPv6 to Thread devices).
 
 ```bash
-mkdir -p /mnt/cache/appdata/newman-matter && chown -R 1000:1000 /mnt/cache/appdata/newman-matter
+mkdir -p /mnt/cache/appdata/newman/matter && chown -R 1000:1000 /mnt/cache/appdata/newman/matter
 docker run -d --name newman-matter --restart unless-stopped --network host \
   -e LISTEN_ADDRESS=127.0.0.1 -e DEFAULT_FABRIC_LABEL=Newman -e PRIMARY_INTERFACE=br0 \
-  -v /mnt/cache/appdata/newman-matter:/data \
+  -v /mnt/cache/appdata/newman/matter:/data \
   ghcr.io/matter-js/matterjs-server:stable
 ```
 
@@ -673,8 +722,9 @@ docker run -d --name newman-matter --restart unless-stopped --network host \
 - `DEFAULT_FABRIC_LABEL=Newman` — how Newman's fabric is named on devices (other apps may show it in a
   device's list of connected services).
 - `PRIMARY_INTERFACE` — the LAN interface from above (it picks one itself if left out).
-- It runs as user 1000, hence the `chown`. Its data folder **is Newman's fabric** — back it up with Newman's
-  data. Lose it and every Matter device has to be shared to Newman again.
+- It runs as user 1000, hence the `chown`. Its data folder **is Newman's fabric** — lose it and every
+  Matter device has to be shared to Newman again. It sits inside Newman's data folder (`matter/`), so
+  Newman's backups carry it ([Data and backups](#data-and-backups)).
 - `docker-compose.yml` has it as the `matter` profile: `docker compose --profile matter up -d newman-matter`.
 
 ### Adding the connection
@@ -760,7 +810,7 @@ docker run -d --name docker-socket-proxy --restart unless-stopped \
   --read-only --tmpfs /run -p 127.0.0.1:2375:2375 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e CONTAINERS=1 -e EVENTS=1 -e PING=1 -e VERSION=1 \
-  -e POST=1 \
+  -e POST=1 -e ALLOW_START=1 -e ALLOW_STOP=1 -e ALLOW_RESTARTS=1 \
   lscr.io/linuxserver/socket-proxy:latest
 ```
 
@@ -768,11 +818,13 @@ docker run -d --name docker-socket-proxy --restart unless-stopped \
   it at `http://127.0.0.1:2375`). Nothing else on your network can use it.
 - `CONTAINERS=1 EVENTS=1` — list containers, their stats and live events. Images, exec, volumes,
   networks and everything else stay blocked.
-- `POST=1` — lets Newman **start / stop / restart** containers. Leave it out for a watch-only
-  connection (Newman then says the connection is read-only if you try). Note `POST=1` also permits
-  other container changes (e.g. creating one) through the proxy; the proxy still only listens on
-  `127.0.0.1`.
+- `ALLOW_START=1 ALLOW_STOP=1 ALLOW_RESTARTS=1` — let Newman **start / stop / restart** containers.
+  `POST=1` allows changes in general (it also permits other container changes, e.g. creating one, through
+  the proxy, which still only listens on `127.0.0.1`); set it to `0` to allow just those three. All four
+  left out = a watch-only connection (Newman then says the connection is read-only if you try).
 - On Unraid it's also available from Community Apps as **socket-proxy**.
+- `docker-compose.yml` has it (no profile: `docker compose up -d` starts it with Newman; delete it there
+  if you don't want the Docker connection).
 
 Then in Newman: *Connections → Add → Docker*, address `http://127.0.0.1:2375`. Every container
 appears, including ones created later; tick any under *Leave out these containers* to keep them out.
@@ -791,18 +843,19 @@ the Wyoming protocol; they only listen on the server itself.
 
 ```bash
 docker run -d --name newman-whisper --restart unless-stopped -p 127.0.0.1:10300:10300 \
-  -v /mnt/cache/appdata/newman-voice/whisper:/data \
+  -v /mnt/cache/appdata/newman/whisper:/data \
   -v /mnt/cache/appdata/newman/voice:/hint:ro -e WYO_WHISPER_INITIAL_PROMPT_FILE=/hint/whisper_prompt.txt \
-  rhasspy/wyoming-whisper --model base.en --language en --compute-type int8 --beam-size 1 --cpu-threads 4
+  rhasspy/wyoming-whisper --model small.en --language en --compute-type int8 --beam-size 1 --cpu-threads 4
 
-docker run -d --name newman-piper --restart unless-stopped -p 127.0.0.1:10200:10200 \
-  -v /mnt/cache/appdata/newman-voice/piper:/data \
+docker run -d --name newman-piper --restart unless-stopped -p 127.0.0.1:10200:10200 --memory 512m \
+  -v /mnt/cache/appdata/newman/piper:/data \
   rhasspy/wyoming-piper --voice en_US-lessac-medium
 ```
 
-- Whisper `base.en` (~150 MB download, ~350 MB of RAM) is the accuracy / speed balance on a 6-core
-  CPU: about 0.6 s for a short command. Piper downloads its voice (~60 MB) the first time; the
-  voices offered in a tablet's settings are fetched when first used.
+- Whisper `small.en` (what the NAS runs: ~550 MB of RAM in use) hears names best, about 1.5 s for a short
+  command on a 6-core CPU. `base.en` (~150 MB download, ~350 MB of RAM) is faster — about 0.6 s — but
+  mishears more. Piper downloads its voice (~60 MB) the first time; the voices offered in a tablet's
+  settings are fetched when first used.
 - Then for Newman: `VOICE_STT=127.0.0.1:10300`, `VOICE_TTS=127.0.0.1:10200` (and `VOICE_NAME` for
   the default reply voice). Either one unset turns that half off.
 - The `/hint` mount and `WYO_WHISPER_INITIAL_PROMPT_FILE` give Whisper the home's names to expect — the
@@ -811,16 +864,17 @@ docker run -d --name newman-piper --restart unless-stopped -p 127.0.0.1:10200:10
   through the [Docker connection](#docker-socket-proxy), which needs restarts allowed on the socket proxy
   (`POST=1`, or just `ALLOW_RESTARTS=1`). No Docker connection: `docker restart newman-whisper` after big changes. The
   file must exist before Whisper starts (Newman writes it as soon as it runs;
-  Whisper retries until then). `small.en` instead of `base.en` hears better (~1.5 s a command).
+  Whisper retries until then).
 - `docker-compose.yml` has both as the `voice` profile: `docker compose --profile voice up -d`.
-- **Kokoro** (optional, a more natural voice): run
+- **Kokoro** (optional, a more natural voice — what the NAS uses): run
   [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) (CPU image, ~0.5-1.5 s per reply on a
   6-core CPU, ~2-3 GB of RAM) and set `VOICE_TTS_KIND=openai`, `VOICE_TTS_URL=http://127.0.0.1:8880`,
   `VOICE_NAME=af_heart`. Any OpenAI-compatible speech service (`POST /v1/audio/speech`) works the same way.
   ```bash
-  docker run -d --name newman-kokoro --restart unless-stopped -p 127.0.0.1:8880:8880 --memory 3g \
+  docker run -d --name newman-kokoro --restart unless-stopped -p 127.0.0.1:8880:8880 --memory 3g --cpus 6 \
     ghcr.io/remsky/kokoro-fastapi-cpu:latest
   ```
+  (or `docker compose --profile kokoro up -d`).
   The tablets' voice choices are then Kokoro's English voices (American / British, women and men).
   Keep `VOICE_TTS` set too: when Kokoro fails or is down, Piper speaks the reply instead (logged once).
 - The third voice companion, **`newman-wakeword-trainer`**, retrains “Hey Newman” with your household's
@@ -833,11 +887,44 @@ For the **Matter** connection: the Open Home Foundation's
 `newman-matter` — how to run it, and the host's IPv6 settings Thread devices need, are in
 [Matter and Thread](#the-matter-server-container).
 
+### Zigbee (Zigbee2MQTT with an SLZB-06)
+
+For **Zigbee devices**: [Zigbee2MQTT](https://www.zigbee2mqtt.io) runs the Zigbee network through a
+network coordinator — an SMLIGHT **SLZB-06** on Ethernet (PoE or USB power) — and puts every paired
+device on MQTT with Home Assistant-style discovery. Newman's **MQTT** connection reads that, so Zigbee
+devices show up like any other MQTT device: nothing Zigbee-specific in Newman.
+
+1. **The SLZB-06:** plug it into the network, open its web page (its address is on your router's list
+   of clients) and give it a fixed IP address. Leave it in its default *Zigbee coordinator* mode, LAN
+   connection; Zigbee2MQTT reaches it on port 6638.
+2. **`docker-compose.yml`**, service `newman-zigbee` — every setting is there; change the `CHANGE` lines:
+   - `ZIGBEE2MQTT_CONFIG_SERIAL_PORT` — `tcp://<the SLZB-06's address>:6638`.
+   - `ZIGBEE2MQTT_CONFIG_SERIAL_ADAPTER` — `zstack` for the SLZB-06 (and -06P7: Texas Instruments
+     CC2652P chip); `ember` for the SLZB-06M / -06MG24 (Silicon Labs chip).
+   - `ZIGBEE2MQTT_CONFIG_MQTT_SERVER` — your MQTT broker, the one Newman's MQTT connection uses.
+   - Home Assistant discovery is on, on the `homeassistant` prefix — the MQTT connection's default
+     *Discovery prefix*; change both together or neither.
+3. **Start:** `docker compose --profile zigbee up -d newman-zigbee`. Its data goes in
+   `/mnt/cache/appdata/newman/zigbee/` (the network key it makes on first start, the paired devices, the
+   coordinator's own backup) — inside Newman's data folder, so Newman's backups carry it.
+4. **In Newman:** *Connections → Add → MQTT devices* with the same broker (if it isn't there yet).
+5. **Pairing:** open Zigbee2MQTT's own page at `http://<server>:8094`, **Permit join (All)**, then put the
+   device in pairing mode (usually a long press or a few power cycles — its manual says). It appears in
+   Zigbee2MQTT within a minute, then in Newman. Rename it in Newman as usual. Joining is closed whenever
+   Zigbee2MQTT starts and closes again by itself after a few minutes.
+
+Mains-powered Zigbee devices (plugs, bulbs) also extend the network; put a few between the SLZB-06 and
+far-away battery sensors.
+
 ### Mosquitto
 
 For **MQTT devices** (ring-mqtt, Zigbee2MQTT…): any MQTT broker. Newman publishes `online` on
 `homeassistant/status` when it connects, so bridges like ring-mqtt re-send their devices exactly as
-they do for Home Assistant.
+they do for Home Assistant. It isn't in `docker-compose.yml` — most homes already run one (the NAS: an
+`eclipse-mosquitto` container with port 1883 published). Add it in the dashboard: *Connections → Add →
+MQTT devices*.
+
+Frigate, likewise, runs on its own; Newman only needs its address (*Connections → Add → Frigate*).
 
 ## Where people are
 
@@ -1082,7 +1169,8 @@ readings). With its screen off it shows **Screen off**, not offline - and so doe
 Android wall keeps checking in every 15 minutes in the background, even in Android's deep sleep (Doze),
 and says when the next check-in is due (shown offline 35 minutes after the last one, or 20 minutes after
 an announced one that didn't come). If a Fire tablet still drops off overnight, its wall settings have
-an optional **Let it report while asleep** (lets the app ignore battery optimisation; or once over USB:
+an optional **Let it report while asleep** (section *Battery reports while asleep*: lets the app ignore
+battery optimisation; or once over USB:
 `adb shell dumpsys deviceidle whitelist +ca.nimaste.newman.wall`); an iPad can't, so
 it says goodbye as it sleeps and shows *Screen off* for up to 12 hours (its battery counts as unknown
 after 15 minutes - smart charging leaves it alone until it wakes). Screen on, it's shown offline after
@@ -1230,6 +1318,7 @@ Measured on the NAS (i5-10400, CPU only): Whisper `base.en` (int8, beam 1) trans
 in about 0.6 s (≈ 1 s while the CPU is busy), Piper `en_US-lessac-medium` speaks a reply in 0.1–0.2 s;
 end of speech → reply playing ≈ 0.8 s (the tablet waits for 0.8 s of quiet) + 0.8–1.2 s ≈ **1.6–2 s**.
 `tiny.en` is faster (0.35 s) but mishears (“main board”, “positive timer”); `small.en` takes 1.5 s.
+The NAS now runs `small.en` with Kokoro (0.5–1.5 s a reply), trading some speed for hearing names right.
 
 ### Teaching and training “Hey Newman”
 
@@ -1289,27 +1378,28 @@ one). Train again any time after recording more.
   `voice/hey_newman.previous.*` — the one before (for Undo).
 
 **The trainer container** — `newman-wakeword-trainer`, CPU only, idle (and using no CPU) until asked.
-It uses the training setup in `/mnt/cache/appdata/newman-build-cache/voice/` (openWakeWord, the
+It uses the training setup in `/mnt/cache/appdata/newman/training/` (openWakeWord, the
 Python environment, the computer-voice clips and background audio — made once by
-`scripts/pipeline.sh`, see below). Build and start it:
+`scripts/pipeline.sh`, see below; that folder lives on the NAS and isn't part of this repository or of
+Newman's backups: ~10 GB, all of it made again by the pipeline). Build and start it:
 
 ```bash
-docker build -t newman-wakeword-trainer /mnt/cache/appdata/newman-build-cache/voice
+docker build -t newman-wakeword-trainer /mnt/cache/appdata/newman/training
 docker run -d --name newman-wakeword-trainer --restart unless-stopped --network none \
   --shm-size 8g --cpus 8 \
-  -v /mnt/cache/appdata/newman-build-cache/voice:/work \
+  -v /mnt/cache/appdata/newman/training:/work \
   -v /mnt/cache/appdata/newman/voice:/voice \
   newman-wakeword-trainer
 ```
 
-(or `docker compose --profile voice up -d newman-wakeword-trainer`). `--shm-size 8g` matters (Docker's
+(or `docker compose --profile trainer up -d`, after the `docker build` above). `--shm-size 8g` matters (Docker's
 64 MB default crashes training); `--cpus 8` leaves the NAS some room. It needs no network. A full run
 with the default settings takes about **20–30 minutes** on the i5-10400 (measured: a 10 000-step run
 with three voices took 8 minutes, most of it fixed checking work; the default 50 000 steps add ~7 more)
 and uses up to ~8 GB of RAM while it trains; the dashboard shows the progress. If the dashboard says “The trainer isn't running”, start
 the container; `docker logs newman-wakeword-trainer` and `voice/train/last-run.log` show what happened.
 
-**Settings** are in `/mnt/cache/appdata/newman-build-cache/voice/scripts/hey_newman.yml`: `steps`
+**Settings** are in `/mnt/cache/appdata/newman/training/scripts/hey_newman.yml`: `steps`
 (50000), `layer_size` (32), `max_negative_weight` (1500 — higher = fewer false wake-ups but more
 misses), `real_augmentation_rounds` (60 copies per recording), `real_holdout` (0.2) and
 `max_false_wakes_per_hour` (1.0 — the threshold chosen is the lowest that stays under it).
@@ -1337,8 +1427,8 @@ Both carry the client certificate (`.p12`) themselves and present it on every co
 
 | | Build | Details |
 |---|---|---|
-| Android | On any Docker host (`android/README.md` has the command); sideload the APKs | [`android/README.md`](android/README.md) — Fire tablet setup, device-owner kiosk, Firebase |
-| iOS | GitHub Actions on macOS (`.github/workflows/`), Ad Hoc IPAs on each `v*` tag | [`ios/README.md`](ios/README.md) — Apple Developer setup, GitHub secrets, Guided Access |
+| Android | GitHub Actions (`release.yml`): signed `Newman_<tag>.apk` and `NewmanWall_<tag>.apk` on each `v*` release; or on any Docker host (`android/README.md` has the command). Sideload the APKs | [`android/README.md`](android/README.md) — Fire tablet setup, device-owner kiosk, Firebase, release signing |
+| iOS | GitHub Actions on macOS (`release.yml`): Ad Hoc `Newman_<tag>.ipa` and `NewmanWall_<tag>.ipa` on each `v*` release | [`ios/README.md`](ios/README.md) — Apple Developer setup, GitHub secrets, Guided Access |
 
 ### Connecting the apps
 
@@ -1358,7 +1448,9 @@ anyone signs in — and the sign-in screen's **Server** button comes back to it:
   Access service token (client id + secret).
 
 The app keeps both addresses. It uses the home one while `/api/hello` there answers as the same hub (a
-quick check on every network change and when the app comes back to the front), else the outside one.
+quick check on every network change and when the app comes back to the front), and moves to the outside
+one only when home has failed for 2 minutes in a row or the phone's network changed — so a hub restart
+never sends it outside — and only if the outside one answers as the same hub.
 The wall tablet keeps the address it's on while it answers (its sign-in belongs to that address).
 Apps that were set up before this keep their saved address and stay signed in.
 
@@ -1398,7 +1490,17 @@ for Face ID / the fingerprint or screen lock first). Tapping it opens the device
 - On a device's page (admins), **Live status**: turn on *Show a live status on phones*, tick the states
   that count (from the device's kind: open, unlocked, on, triggered…) and who sees it (everyone, or
   chosen people). It shows while the device is in one of those states and ends when it leaves them,
-  staying two minutes with its final state (
+  staying two minutes with its final state ("Garage Door closed", no buttons), then going.
+- In an automation's **Then**, **Show a live status on phones** of any devices, to chosen people — until
+  they're no longer in a state, for a while, or until something else happens (see [Automations](#automations)).
+- Each person sees at most 5: beyond that the newest 4 stay their own and the rest share one "N more".
+- **iPhone**: needs the APNs settings (the hub starts, updates and ends them by push; it never pushes just
+  for the clock). Live Activities are drawn by the iOS 26 widget extension, so an older iPhone shows none;
+  *Settings → Newman → Live Activities* turns them off. **Android**: the *Live status* notification
+  channel (silent); they follow along while the app runs, and with the app closed too when FCM is set up.
+- Details: [API.md → Live statuses](API.md#live-statuses), [`ios/README.md`](ios/README.md#live-status-live-activities-phone),
+  [`android/README.md`](android/README.md#live-statuses-phone).
+
 ## Deploying behind Caddy
 
 Newman is meant to sit behind Caddy with client-certificate (mTLS) checks for family phones. Example
@@ -1419,21 +1521,28 @@ Without a client certificate, the away policy decides (by default: password + 2F
 
 ## Settings (environment variables)
 
-Almost everything is configured in the dashboard. The environment only holds secrets and
-first-boot defaults — see [`.env.example`](.env.example).
+Almost everything is configured in the dashboard — every connection (MQTT, Reolink and the rest) is
+added there, under *Connections*. The few settings below are written out directly in
+the `environment:` block of the `newman` service in [`docker-compose.yml`](docker-compose.yml) — edit
+them there. Each has a comment; the ones you can leave alone are commented out with the value Newman uses
+when it's unset. None of them is a secret: Newman keeps its own in the data folder, and passwords for
+connections are entered in the dashboard.
 
 | Variable | Default | |
 |---|---|---|
-| `TOKEN_SECRET` | — (required) | Signs notification links/tokens. `openssl rand -hex 32` |
+| `TOKEN_SECRET` | the data folder's `.token_secret` | Signs notification links/tokens (snapshot links, buttons). Optional: unset, Newman uses `.token_secret` from the data folder, making it (random, `0600`, logged once) on first start; it's in backups, so a restore keeps every phone and tablet working. Set it (`openssl rand -hex 32`) only to pin your own — it then wins over the file and over restores |
 | `PUBLIC_URL` | — | Address phones use to reach Newman (links in notifications) |
 | `PUBLIC_TOKEN_URL` | `PUBLIC_URL` | Optional separate no-mTLS host for `/api/public/*` token links |
 | `PORT` | `8093` | |
 | `NEWMAN_MDNS` | `1` | `0` = don't announce the hub on the home network (`_newman._tcp`; the apps then connect by address or QR code) |
 | `MDNS_INTERFACE` | — | Network interfaces to announce on and list as home addresses, e.g. `br0` (default: every one except Docker's and VPNs') |
-| `DATA_DIR` | `/data` | Database, keys, connection data |
+| `DATA_DIR` | `/data` | Database, connection data, logs (set by the image; mount your folder there) |
+| `APP_VERSION`, `WEB_DIR` | the release tag (`dev` for local builds), `/app/web` | Set by the image; nothing to change |
 | `TZ` | — | Your time zone, e.g. `America/Toronto` (times and schedules use it) |
-| `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_PRODUCTION` | | iOS push |
-| `FCM_SERVICE_ACCOUNT_PATH` | | Android push |
+| `APNS_KEY_PATH` | — (compose: `/app/keys/apns-key.p8`) | iOS push: the APNs `.p8` key. Push is on when this, `APNS_KEY_ID` and `APNS_TEAM_ID` are all set |
+| `APNS_KEY_ID`, `APNS_TEAM_ID` | — | The key's id and your Apple Developer team id |
+| `APNS_BUNDLE_ID` | `ca.nimaste.newman` | The phone app's bundle id (push topics are made from it) |
+| `FCM_SERVICE_ACCOUNT_PATH` | — (compose, commented out: `/app/keys/firebase-service-account.json`) | Android push: Firebase's service-account JSON. Set it only once the file is there — a missing file stops Newman from starting |
 | `MAPKIT_KEY_ID` | — | Apple Maps (MapKit JS) key id; unset = OpenFreeMap maps (see People → The map) |
 | `MAPKIT_TEAM_ID` | `APNS_TEAM_ID` | Apple Developer team of that key |
 | `MAPKIT_KEY_PATH` | the APNs key file if `MAPKIT_KEY_ID` = `APNS_KEY_ID`, else `/app/keys/mapkit.p8` | MapKit key (`.p8`) |
@@ -1444,25 +1553,79 @@ first-boot defaults — see [`.env.example`](.env.example).
 | `VOICE_NAME` | `en_US-lessac-medium` (`af_heart` with `openai`) | The hub's default reply voice (each tablet can pick another) |
 | `VOICE_LANGUAGE`, `VOICE_WAKEWORD` | `en`, `hey_newman` | Language sent to Whisper; the default wake word (a model's name in `DATA_DIR/voice/`; each tablet can pick another) |
 | `VOICE_STT_CONTAINER`, `VOICE_STT_RESTART` | `newman-whisper`, `1` | The Whisper container Newman restarts (Docker connection) when the hint changes; `0` = never (see Voice → The Whisper hint) |
-| `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`, `MQTT_PASSWORD` | `10.1.1.2`, `1883` | First-boot MQTT connection |
-| `MQTT_BIRTH`, `MQTT_BIRTH_TOPIC`, `MQTT_DISCOVERY_PREFIX` | `true`, `homeassistant/status`, `homeassistant` | |
-| `REOLINK_HOST`, `REOLINK_USERNAME`, `REOLINK_PASSWORD`, … | | First-boot doorbell connection only |
 
 ## Data and backups
 
-Everything lives in the data folder (`/data` in the container):
+Everything Newman and its companion containers keep lives in one folder, `/mnt/cache/appdata/newman/`
+on Unraid (`/data` in Newman's container; each companion mounts its own subfolder of it):
 
-| Path | |
-|---|---|
-| `newman.db` | accounts, sessions, connections and their settings, automations, dashboards, phone layouts, activity |
-| `integrations/<id>/` | per-connection data: Roborock / Home Connect sessions, LG client id, caches (files are `0600`) |
-| `snapshots/` | notification snapshots |
-| `map-tiles/` | the hub's copies of map data (OpenFreeMap); safe to delete, fetched again when needed. Not in backups |
-| `logs/newman.log` | the hub's log - the same lines as `docker logs newman`, but kept when the container is replaced on a deploy. Rotates at 5 MB, keeping 5 older files (`newman.log.1` … `.5`). Every notification / alert button press is logged on arrival with its outcome (accepted, or refused with 401 / 409 and why). Not in backups |
-| `.token_secret`, `.local_token`, `.install_id` | generated on first start |
-| `keys/` | push keys, mounted read-only at `/app/keys`: `apns-key.p8` (the team's APNs key, Key ID `CGF89L7S4R`), `firebase-service-account.json`. Not included in Newman's backups — keep the originals in your keys folder |
+| Path | | In backups |
+|---|---|---|
+| `newman.db` | accounts, sessions, connections and their settings, automations, dashboards, phone layouts, activity | yes |
+| `integrations/<id>/` | per-connection data: Roborock / Home Connect sessions, LG client id, caches (files are `0600`) | yes |
+| `people/`, `wall-pictures/` | people's photos; the Christmas theme's own pictures | yes |
+| `voice/` | wake-word models (the trained “Hey Newman” and the one before it, the stock ones), Teach recordings, training results, the Whisper hint (see [Voice](#teaching-and-training-hey-newman)). Also mounted by `newman-whisper` (`/hint`, read-only) and `newman-wakeword-trainer` (`/voice`) | yes, except a waiting training request |
+| `matter/` | the `newman-matter` container's data: **Newman's Matter fabric** and every device paired to it (owned by uid 1000) | yes, except its lock and process-id files |
+| `zigbee/` | the `newman-zigbee` container's data (Zigbee2MQTT): the network key and settings (`configuration.yaml`), the paired devices (`database.db`), the coordinator's own backup (`coordinator_backup.json`) | yes, except `log/` |
+| `whisper/`, `piper/` | the speech containers' downloaded models and voices (`newman-whisper`, `newman-piper`) | no — downloaded again when missing |
+| `training/` | the wake-word trainer's setup (openWakeWord, its Python environment, ~10 GB of generated clips and background audio; `newman-wakeword-trainer`'s `/work`) | no — made again by its `scripts/pipeline.sh` |
+| `snapshots/`, `clips/` | notification snapshots; camera alert videos fetched from Frigate (kept 3 days) | no |
+| `map-tiles/` | the hub's copies of map data (OpenFreeMap); safe to delete, fetched again when needed | no |
+| `logs/newman.log` | the hub's log - the same lines as `docker logs newman`, but kept when the container is replaced on a deploy. Rotates at 5 MB, keeping 5 older files (`newman.log.1` … `.5`). Every notification / alert button press is logged on arrival with its outcome (accepted, or refused with 401 / 409 and why) | no |
+| `backups/` | the nightly backups (below) | no |
+| `.token_secret` | the secret that signs notification links (unless `TOKEN_SECRET` is set); made on first start, `0600` | yes |
+| `.install_id` | generated on first start | yes |
+| `.local_token` | generated on first start; only for the hub's own loopback requests, made again when missing | no |
+| `keys/` | push keys, mounted read-only at `/app/keys`: `apns-key.p8` (the team's APNs key, Key ID `CGF89L7S4R`), `firebase-service-account.json` | no — keep the originals elsewhere too |
 
-Back up the whole folder (stop the container, or copy `newman.db` with `sqlite3 .backup`).
+**Backups** (admins: the menu at the bottom of the sidebar → *Backups*): a nightly backup (03:30 by
+default; the time, how many to keep — 7 — and on / off are set there) saved in `backups/` as a
+`.newmanbackup` file; *Back up now*; downloading one (optionally locked with a passphrase of 8+
+characters); and restoring from a downloaded file or a saved backup — the hub restarts into it, keeping
+what was there before in `.pre-restore-<time>/`. A backup is meant to put you back exactly where you were
+— every account, connection, automation and dashboard, every Matter and Zigbee device still paired, the
+trained wake word and the recordings it was trained on — so it holds `newman.db` (copied safely while
+running), `.install_id`, `.token_secret`, `integrations/`, `people/`, `wall-pictures/`, `voice/`,
+`matter/` and `zigbee/` (see the table for the few files left out). What it leaves out comes back by
+itself or isn't a setting: the speech models, the training setup, snapshots, clips, logs, map tiles,
+earlier backups, and the push keys (files you keep). `matter/` and `zigbee/` are written by their
+containers while Newman runs; Newman only reads them, and reads a folder again if it changed meanwhile,
+so the copy is never half old, half new. Keep a copy off the server too: `backups/` lives in the data
+folder.
+
+**Restoring Matter and Zigbee:** the restore swaps `matter/` and `zigbee/` in as whole folders; the
+running `newman-matter` and `newman-zigbee` containers keep writing to the old ones (set aside in
+`.pre-restore-<time>/`) until they restart. So once Newman is back up after a restore, restart them —
+`docker restart newman-matter newman-zigbee` — and they load the restored fabric and network. Restored
+folders get the owner they had when backed up (`matter/` stays uid 1000). A backup made before these
+folders were included leaves `voice/`, `matter/` and `zigbee/` as they are.
+
+**Moving to this layout** (an install from before everything lived under one folder: the speech models
+in `newman-voice/`, the Matter server's data in `newman-matter/`, the trainer's setup in
+`newman-build-cache/voice/`): stop the companions, move each folder to its new place, then start them
+with this `docker-compose.yml`:
+
+```bash
+cd /path/to/this/repository        # where docker-compose.yml is
+docker stop newman-whisper newman-piper newman-matter newman-wakeword-trainer
+A=/mnt/cache/appdata
+mv $A/newman-voice/whisper        $A/newman/whisper
+mv $A/newman-voice/piper          $A/newman/piper
+mv $A/newman-matter               $A/newman/matter     # mv keeps its owner (uid 1000)
+mv $A/newman-build-cache/voice    $A/newman/training
+docker compose --profile voice --profile matter --profile trainer up -d
+```
+
+The moved folders must not exist yet at their new places (a container started with the new file before
+the move creates them empty: remove those first). Nothing in Newman's own data moves.
+
+Because the token secret is in the backup, restoring one — even onto a fresh install with an empty data
+folder — keeps every phone and tablet working, links in notifications already sent included: the restore
+writes it back as `.token_secret` (`0600`). If `TOKEN_SECRET` is set in `docker-compose.yml`, that one wins
+and the backup's isn't written back; anyone pinning it that way keeps their own copy of it. A backup made
+before the secret was included leaves the current one alone. Saved backups are `0600`, and since a
+backup holds the connections' sessions, this secret, the Matter fabric's keys and the Zigbee network
+key, lock downloads with a passphrase.
 
 ## Development
 
@@ -1472,8 +1635,35 @@ docker run --rm --network none -v "$PWD/server/tests:/app/tests" newman:dev \
   python -m unittest discover -s tests
 ```
 
-The tests fake every device and service (MQTT, Home Connect, LG, Docker, printers, Roborock…), so they
-need no network or credentials. API reference: [`API.md`](API.md). The web page's own rules (when a
-page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
+The tests (582 of them, a little over 2 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
+printers, Roborock…), so they need no network or credentials. API reference: [`API.md`](API.md). The web
+page's own rules (when a page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
+App tests: [`android/README.md`](android/README.md#tests), [`ios/README.md`](ios/README.md#build-on-a-mac).
 
 The web dashboard lives in `web/` (React + Vite); the image builds it in its first stage.
+
+### Releases
+
+Pushing a `v*` tag (e.g. `v1.2.0` — this project's releases are pushed with Hotwire) runs
+`.github/workflows/release.yml` on GitHub:
+
+- **build-and-push** — the hub's image to `ghcr.io/nimaste/newman` as `:1.2.0`, `:1.2` and `:latest`
+  (`APP_VERSION` = the tag), and the GitHub Release with the tag's message as its notes.
+- **android** — release-signed `Newman_<tag>.apk` and `NewmanWall_<tag>.apk` (version from the tag), attached
+  to the Release.
+- **ios** — Ad Hoc `Newman_<tag>.ipa` and `NewmanWall_<tag>.ipa`, attached to the Release.
+- **sync-to-gcloud** — once all three are done, copies the Release's files to the NAS over WebDAV and emails
+  the notes; skipped without its secrets.
+
+It can also be run by hand (*Actions → Release → Run workflow*, with a tag). `ios-build.yml` builds both
+iOS apps unsigned on every push that touches `ios/`.
+
+Repository secrets (*Settings → Secrets and variables → Actions*; names only — never commit the values):
+
+| Secret | For |
+|---|---|
+| `GHCR_PAT` | a token with `write:packages`, to push the image |
+| `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` | the shared release keystore (base64) and its password; key alias `newman` — see [`android/README.md`](android/README.md#release-signing) |
+| `GOOGLE_SERVICES_JSON` | `android/phone/google-services.json`, base64 — phone push (FCM); without it the phone APK builds without push |
+| `IOS_DISTRIBUTION_CERT_BASE64`, `IOS_CERT_PASSWORD`, `IOS_KEYCHAIN_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`, `IOS_PROVISIONING_PROFILE_NOTIFICATION_BASE64`, `IOS_PROVISIONING_PROFILE_LOCATION_BASE64`, `IOS_PROVISIONING_PROFILE_WIDGETS_BASE64`, `IOS_PROVISIONING_PROFILE_WALL_BASE64` | iOS signing — see [`ios/README.md`](ios/README.md#github-actions) |
+| `GCLOUD_WEBDAV_USERNAME`, `GCLOUD_WEBDAV_PASSWORD`, `GCLOUD_BASE_URL`, `GCLOUD_SHARE_TOKEN`, `RELEASE_NOTIFY_EMAILS`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | optional: the copy to the NAS and the release email (set from Hotwire) |

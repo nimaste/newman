@@ -233,7 +233,7 @@ class NavidromeIntegration(Integration):
                    "speakers - on screen, by voice (“play Jump by Van Halen”) and from automations. The password "
                    "is used once to make a token; Newman keeps only the username, token and salt.")
     fields = [
-        Field("url", "Server address", required=True, placeholder="http://10.1.1.2:4533", default="http://10.1.1.2:4533",
+        Field("url", "Server address", required=True, placeholder="http://10.1.1.2:4533",
               help="Where Newman reaches Navidrome - its address on your network is best."),
         Field("username", "Username", required=True),
         Field("password", "Password", "password",

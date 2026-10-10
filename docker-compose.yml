@@ -1,30 +1,68 @@
+# Newman and its companion containers. Every setting is written out right here - edit this file, then
+# `docker compose up -d` (README → Quick start, Settings). Lines marked "CHANGE" are this household's own
+# values: another home sets its own. A commented-out setting shows the value Newman uses when it's left out.
+# Folders are Unraid's (/mnt/cache/appdata/...): elsewhere change them to yours.
+# No secrets belong in this file: Newman makes and keeps its own (data folder: .token_secret,
+# .local_token), passwords are entered in the dashboard, and push keys are files in keys/.
 services:
   newman:
-    image: ghcr.io/nimaste/newman:latest
-    # To build locally instead, comment out `image:` and uncomment:
-    # build: .
+    image: ghcr.io/nimaste/newman:latest   # published by .github/workflows/release.yml (private repo: docker login ghcr.io)
     container_name: newman
     restart: unless-stopped
-    # Host networking: discovery (mDNS), HomeKit, Sonos, Hue, Matter and printers need multicast,
-    # which doesn't cross Docker's bridge network. Newman listens on port 8093.
     network_mode: host
-    env_file: .env
     environment:
-      APNS_KEY_PATH: /app/keys/apns-key.p8
-      APNS_PRODUCTION: "true"
-      FCM_SERVICE_ACCOUNT_PATH: /app/keys/firebase-service-account.json
-      # Apple Maps: MAPKIT_KEY_ID in .env. Its key file is the APNs one above when it's the same key,
-      # else /app/keys/mapkit.p8 - or point at it here:
-      # MAPKIT_KEY_PATH: /app/keys/mapkit.p8
-    volumes:
-      - /mnt/cache/appdata/newman:/data
-      - /mnt/cache/appdata/newman/keys:/app/keys:ro
-    mem_limit: 256m
+      TZ: America/Toronto                    # CHANGE: your time zone (times and schedules use it)
+      PUBLIC_URL: https://home.garito.ca     # CHANGE: the address phones use to reach Newman (links in notifications)
+      # PUBLIC_TOKEN_URL: https://links.example.com   # optional separate no-mTLS host for /api/public/* links (default: PUBLIC_URL)
+      # PORT: "8093"                         # the port Newman listens on (set by the image)
+      # DATA_DIR: /data                      # where the data folder is mounted (set by the image; see volumes)
+      # --- Signing secret for notification links ---
+      # Not needed: Newman makes one on first start and keeps it in the data folder as .token_secret
+      # (and in its backups). Only to pin your own - this then wins over the file and over restores:
+      # TOKEN_SECRET: <your own: openssl rand -hex 32>
 
-  # Optional - only for the Docker connection (address http://127.0.0.1:2375 in Newman).
-  # Lets Newman see containers and their events, and start / stop / restart them (POST=1;
-  # remove that line for watch-only). Everything else in Docker's API stays blocked, and it only
-  # listens on the server itself. See README → Companion containers.
+      # --- Announcing the hub on the home network (_newman._tcp, for the apps' "Connect to your Newman") ---
+      # NEWMAN_MDNS: "1"                     # "0" = don't announce (the apps then connect by address or QR code)
+      # MDNS_INTERFACE: br0                  # interfaces to announce on (default: every one except Docker's and VPNs')
+
+      # --- iOS push (APNs) and Apple Maps --- the key file goes in keys/ (volumes below)
+      # Push is on once APNS_KEY_PATH, APNS_KEY_ID and APNS_TEAM_ID are all set and the file is there.
+      APNS_KEY_PATH: /app/keys/apns-key.p8
+      APNS_KEY_ID: CGF89L7S4R                # CHANGE: your APNs key's id (or comment out: no iOS push)
+      APNS_TEAM_ID: T342YL2VCE               # CHANGE: your Apple Developer team id
+      APNS_BUNDLE_ID: ca.nimaste.newman      # the iPhone app's bundle id (change only for your own build of the app)
+      # Apple Maps (MapKit JS) on the web and wall maps; leave MAPKIT_KEY_ID out for OpenFreeMap (no key needed).
+      MAPKIT_KEY_ID: CGF89L7S4R              # CHANGE: your MapKit key's id (here the APNs key, which has both services)
+      # MAPKIT_TEAM_ID: T342YL2VCE           # default: APNS_TEAM_ID
+      # MAPKIT_KEY_PATH: /app/keys/mapkit.p8 # default: the APNs key file when MAPKIT_KEY_ID = APNS_KEY_ID, else this
+
+      # --- Android push (Firebase) ---
+      FCM_SERVICE_ACCOUNT_PATH: /app/keys/firebase-service-account.json   # Android push; a missing file just turns it off
+
+      # --- Voice on the wall tablets (needs: docker compose --profile voice --profile kokoro up -d) ---
+      # Without those containers, comment these out: no voice (VOICE_STT) / replies shown, not spoken (VOICE_TTS).
+      VOICE_STT: 127.0.0.1:10300             # speech to text: newman-whisper below
+      VOICE_TTS: 127.0.0.1:10200             # text to speech: newman-piper below (the fallback when Kokoro fails)
+      VOICE_TTS_KIND: openai                 # "openai" = Kokoro at VOICE_TTS_URL; "wyoming" (default) = Piper only
+      VOICE_TTS_URL: http://127.0.0.1:8880   # newman-kokoro below
+      VOICE_NAME: af_heart                   # default reply voice (default: af_heart with openai, en_US-lessac-medium with wyoming)
+      # VOICE_LANGUAGE: en                   # language sent to Whisper
+      # VOICE_WAKEWORD: hey_newman           # default wake word (a model in the data folder's voice/)
+      # VOICE_STT_CONTAINER: newman-whisper  # the Whisper container Newman restarts when the names it expects change
+      # VOICE_STT_RESTART: "1"               # "0" = never restart it
+
+    volumes:
+      # Everything Newman and its companions keep is under this one folder (README → The data folder);
+      # the companions below each mount their own subfolder of it.
+      - /mnt/cache/appdata/newman:/data                # database, connections, .token_secret, logs/newman.log, backups/
+      - /mnt/cache/appdata/newman/keys:/app/keys:ro    # push keys (not in Newman's backups)
+    mem_limit: 512m
+
+  # Optional - only for the Docker connection (address http://127.0.0.1:2375 in Newman). No profile, so it
+  # starts with `docker compose up -d`; delete this service if you don't want that connection.
+  # Lets Newman see containers and their events, and start / stop / restart them. Everything else in
+  # Docker's API stays blocked (the image's default for every other setting is 0), and it only listens on
+  # the server itself. See README → Companion containers.
   docker-socket-proxy:
     image: lscr.io/linuxserver/socket-proxy:latest
     container_name: docker-socket-proxy
@@ -37,17 +75,21 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      CONTAINERS: 1
-      EVENTS: 1
-      PING: 1
-      VERSION: 1
-      POST: 1
+      CONTAINERS: "1"       # list containers and their stats
+      EVENTS: "1"           # live container events
+      PING: "1"
+      VERSION: "1"
+      POST: "1"             # changes through the proxy; "0" with the three below still allows start / stop / restart
+      ALLOW_START: "1"      # start containers   } all three "0" (and POST "0") = a watch-only
+      ALLOW_STOP: "1"       # stop containers    } Docker connection
+      ALLOW_RESTARTS: "1"   # restart containers }
+      # LOG_LEVEL: info
 
   # Optional - only for the Matter connection (README → Matter and Thread): the Open Home Foundation's
   # Matter server (matterjs-server), holding Newman's Matter fabric. Host networking for mDNS and IPv6 to
   # Thread devices; its websocket only on the server itself (Newman: ws://127.0.0.1:5580/ws).
   # Start with: docker compose --profile matter up -d newman-matter
-  # Its data folder must belong to uid 1000: chown -R 1000:1000 /mnt/cache/appdata/newman-matter
+  # Its data folder must belong to uid 1000: chown -R 1000:1000 /mnt/cache/appdata/newman/matter
   newman-matter:
     image: ghcr.io/matter-js/matterjs-server:stable
     container_name: newman-matter
@@ -55,43 +97,36 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      LISTEN_ADDRESS: 127.0.0.1
-      DEFAULT_FABRIC_LABEL: Newman
-      PRIMARY_INTERFACE: br0   # the LAN interface (Unraid: br0)
+      LISTEN_ADDRESS: 127.0.0.1         # only Newman, on the same server, talks to it
+      DEFAULT_FABRIC_LABEL: Newman      # the name phones show for this Matter "home"
+      PRIMARY_INTERFACE: br0            # CHANGE: the LAN interface (Unraid: br0)
+      # LOG_LEVEL: info
+      # STORAGE_PATH: /data             # the image's default; matches the volume below
     volumes:
-      - /mnt/cache/appdata/newman-matter:/data
+      - /mnt/cache/appdata/newman/matter:/data   # the Matter fabric and pairings (in Newman's backups)
 
   # Optional companions - voice on the wall tablets (README → Companion containers → Speech).
   # Only started with: docker compose --profile voice up -d
-  # Then set for Newman: VOICE_STT=127.0.0.1:10300 and VOICE_TTS=127.0.0.1:10200 (in .env).
+  # Newman's VOICE_STT and VOICE_TTS above point at them.
   newman-whisper:
     image: rhasspy/wyoming-whisper:latest
     container_name: newman-whisper
     profiles: ["voice"]
     restart: unless-stopped
-    command: --model base.en --language en --compute-type int8 --beam-size 1 --cpu-threads 4
+    # small.en hears names best (~1.5 s a command); base.en is faster (~0.6 s) but mishears more.
+    command: --model small.en --language en --compute-type int8 --beam-size 1 --cpu-threads 4
     ports:
       - "127.0.0.1:10300:10300"
     volumes:
-      - /mnt/cache/appdata/newman-voice/whisper:/data
-      # The home's names for Whisper to expect, kept current by Newman (README → Voice → The Whisper hint).
-      # Whisper reads them at start; Newman restarts this container through its Docker connection when they
-      # change and nobody is talking (VOICE_STT_CONTAINER names it; VOICE_STT_RESTART=0 turns that off).
+      - /mnt/cache/appdata/newman/whisper:/data   # its downloaded model
+      # The home's names for Whisper to expect, kept current by Newman in its data folder's voice/
+      # (README → Voice → The Whisper hint). Whisper reads them at start; Newman restarts this container
+      # through its Docker connection when they change and nobody is talking (VOICE_STT_CONTAINER names it;
+      # VOICE_STT_RESTART "0" turns that off).
       - /mnt/cache/appdata/newman/voice:/hint:ro
     environment:
-      - WYO_WHISPER_INITIAL_PROMPT_FILE=/hint/whisper_prompt.txt
-    mem_limit: 1g
-
-  # Optional: the Kokoro voice (more natural than Piper). Uncomment, then set for Newman:
-  # VOICE_TTS_KIND=openai, VOICE_TTS_URL=http://127.0.0.1:8880 and VOICE_NAME=af_heart (Piper stays the fallback).
-  # newman-kokoro:
-  #   image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
-  #   container_name: newman-kokoro
-  #   profiles: ["voice"]
-  #   restart: unless-stopped
-  #   ports:
-  #     - "127.0.0.1:8880:8880"
-  #   mem_limit: 3g
+      WYO_WHISPER_INITIAL_PROMPT_FILE: /hint/whisper_prompt.txt
+    # No memory limit (small.en uses ~0.6 GB).
 
   newman-piper:
     image: rhasspy/wyoming-piper:latest
@@ -102,21 +137,65 @@ services:
     ports:
       - "127.0.0.1:10200:10200"
     volumes:
-      - /mnt/cache/appdata/newman-voice/piper:/data
+      - /mnt/cache/appdata/newman/piper:/data    # its downloaded voices
     mem_limit: 512m
+
+  # Optional: the Kokoro voice (more natural than Piper; ~2-3 GB of RAM, a 3 GB image).
+  # Start with: docker compose --profile kokoro up -d
+  # Newman's VOICE_TTS_KIND, VOICE_TTS_URL and VOICE_NAME above use it (Piper stays the fallback).
+  # Nothing to set: the voice is picked by Newman (VOICE_NAME, or each tablet's choice).
+  newman-kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: newman-kokoro
+    profiles: ["kokoro"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8880:8880"
+    mem_limit: 3g
+    cpus: 6
 
   # Retrains "Hey Newman" with the household's own voices when asked from the dashboard (README →
   # Voice on the wall tablet → Teaching and training "Hey Newman"). Idle until then. Uses the training
-  # setup in newman-build-cache/voice (made once by its scripts/pipeline.sh); build the image first:
-  #   docker build -t newman-wakeword-trainer /mnt/cache/appdata/newman-build-cache/voice
+  # setup in /mnt/cache/appdata/newman/training (made once by its scripts/pipeline.sh; not part of this
+  # repository); build the image first, then: docker compose --profile trainer up -d
+  #   docker build -t newman-wakeword-trainer /mnt/cache/appdata/newman/training
+  # Nothing to set: its image already points it at /voice and /work.
   newman-wakeword-trainer:
     image: newman-wakeword-trainer
     container_name: newman-wakeword-trainer
-    profiles: ["voice"]
+    profiles: ["trainer"]
     restart: unless-stopped
     network_mode: none
     shm_size: 8g      # Docker's 64 MB default crashes training
     cpus: 8
     volumes:
-      - /mnt/cache/appdata/newman-build-cache/voice:/work
-      - /mnt/cache/appdata/newman/voice:/voice   # Newman's data folder's voice/
+      - /mnt/cache/appdata/newman/training:/work   # the training setup
+      - /mnt/cache/appdata/newman/voice:/voice     # Newman's data folder's voice/ (recordings in, models out)
+
+  # Optional - Zigbee devices through an SLZB-06 network coordinator (README → Zigbee). Zigbee2MQTT talks
+  # to the coordinator over the network and puts every paired device on MQTT with Home Assistant-style
+  # discovery, which Newman's MQTT connection reads (add it in the dashboard under Connections).
+  # Start with: docker compose --profile zigbee up -d newman-zigbee
+  # Pair devices in its own page, http://<server>:8094 (Permit join, then reset the device); joining is
+  # always off when it starts. Its data folder (network key, paired devices, coordinator backup) is in
+  # Newman's backups.
+  newman-zigbee:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: newman-zigbee
+    profiles: ["zigbee"]
+    restart: unless-stopped
+    ports:
+      - "8094:8080"                   # its pairing page, on the home network
+    environment:
+      TZ: America/Toronto                                         # CHANGE: your time zone
+      Z2M_ONBOARD_NO_SERVER: "1"                                  # no first-start setup page: the settings below are all it needs
+      ZIGBEE2MQTT_CONFIG_SERIAL_PORT: tcp://10.1.1.60:6638        # CHANGE: your SLZB-06's IP address (give it a fixed one; port 6638)
+      ZIGBEE2MQTT_CONFIG_SERIAL_ADAPTER: zstack                   # SLZB-06 / SLZB-06P7 (TI CC2652P); an SLZB-06M or -06MG24 (Silicon Labs): ember
+      ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtt://10.1.1.2:1883        # CHANGE: your MQTT broker (the one Newman's MQTT connection uses)
+      ZIGBEE2MQTT_CONFIG_HOMEASSISTANT_ENABLED: "true"            # discovery messages for Newman's MQTT connection
+      # ZIGBEE2MQTT_CONFIG_HOMEASSISTANT_DISCOVERY_TOPIC: homeassistant   # must match the connection's discovery prefix (both default to this)
+      ZIGBEE2MQTT_CONFIG_FRONTEND_ENABLED: "true"                 # the pairing page
+      ZIGBEE2MQTT_CONFIG_FRONTEND_PORT: "8080"                    # inside the container; published as 8094 above
+      # Joining (permit join) isn't a setting: it is off at every start and opened from the pairing page for a few minutes.
+    volumes:
+      - /mnt/cache/appdata/newman/zigbee:/app/data

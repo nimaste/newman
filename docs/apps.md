@@ -15,7 +15,8 @@ new kind of device appears in the apps with no app update.
 | Phone app | `ca.nimaste.newman` | `ca.nimaste.newman` |
 | Phone notification extension | `ca.nimaste.newman.NotificationServiceExtension` | — |
 | Phone location push extension (answers a tap-to-refresh while the app is closed) | `ca.nimaste.newman.LocationPushExtension` | — (an FCM data message reaches the app) |
-| Phone widgets (home screen, Lock Screen, Control Center controls) | `ca.nimaste.newman.NewmanWidgets` | in the phone app itself: home-screen widget, Quick Settings tiles and device controls (being added) |
+| Phone widgets (home screen, Lock Screen, Control Center controls) | `ca.nimaste.newman.NewmanWidgets` | in the phone app itself: home-screen widget, Quick Settings tiles, Device Controls and shortcuts |
+| Phone live statuses | Live Activities, drawn by `NewmanWidgets` (iOS 26) | ongoing notifications from the phone app |
 | Wall app | `ca.nimaste.newman.wall` | `ca.nimaste.newman.wall` |
 | App Group / shared Keychain | `group.ca.nimaste.newman` | — |
 | Display names | "Newman", "Newman Wall" | same |
@@ -25,7 +26,7 @@ Apple team `T342YL2VCE`. Debug Android builds add `.dev`. The app's earlier work
 ## Project layout (in the repository root)
 
 ```
-ios/        XcodeGen project.yml (iOS 17, Swift 5.9): targets Newman, NotificationServiceExtension, LocationPushExtension, NewmanWidgets, NewmanWall
+ios/        XcodeGen project.yml (iOS 17; NewmanWidgets iOS 26; Swift 5.9): targets Newman, NotificationServiceExtension, LocationPushExtension, NewmanWidgets, NewmanWall
             Shared/  code both apps use (API client, mTLS, auth, models, live connection)
 android/    Gradle version catalog; modules :core (shared), :phone, :wall. compileSdk 35, minSdk 26, JVM 17
 ```
@@ -241,23 +242,29 @@ page as it does in a browser.
 - **JavaScript bridge** `window.NewmanWall` (Android answers only while the hub's own page is
   showing; iOS injects it into the main frame and takes the voice calls only from the hub's page), with
   `native: true` (a real shell, not a page stand-in) and a `newmanwall` window event once it's there:
-  - both shells: `version`, `setBrightness(0..1)`, `wake()`, `keepAwake(bool)`,
+  - both shells: `version`, `setBrightness(0..1)`, `wake()`, `dim()` (dim now), `isDimmed()`,
+    `keepAwake(bool)`, `openSettings()` (this app's settings, after the PIN / Face ID), `openServer()`
+    ("Connect to your Newman"), `setTheme({background, scheme})` (the shell's colour while loading),
     `voiceConfig(json)` (`{"enabled", "threshold", "version"}`: listen for "Hey Newman" or not),
     `voiceDone()` (the spoken reply finished: listen again), `recordClip(ms, fixed)` / `stopClip()`
-    ("Teach Hey Newman": one clip, answered through `window.NewmanVoice.event`);
-  - Android only: `dim()` (dim now), `isDimmed()`, `openSettings()` (this app's settings, after the
-    PIN), `openServer()` ("Connect to your Newman"); the app tells the page with a cancelable
-    `newmanwall-dim` event (`detail.dimmed`) and darkens the screen itself unless the page cancels it;
+    ("Teach Hey Newman": one clip, answered through `window.NewmanVoice.event`); on dimming and waking
+    the app tells the page with a cancelable `newmanwall-dim` event (`detail.dimmed`) and darkens the
+    screen itself unless the page cancels it;
   - iOS only: `platform: "ios"`.
 
-  Later the hub will use it to wake the screen and show a camera when the doorbell rings.
-- **Battery reports.** `POST /api/tablet/battery {level, charging, plugged, temperatureC, voltageMv}`
-  (204) with the wall page's own session (its cookies for the hub, read from the web view) and the
-  usual certificate / Cloudflare headers: when the wall starts and is signed in, every 5 minutes, and
-  at once when charging starts or stops or the level moves 5 points. Signed out, 401, 404 (older hub)
-  or no network: skipped quietly, tried again 5 minutes later; never shown. Android reads
-  `ACTION_BATTERY_CHANGED` (plugged ac/usb/wireless, temperature, voltage); iOS has only level and
-  state, so `plugged` is `"ac"` while charging/full and temperature/voltage are `null`.
+  The hub's wall alerts use `wake()` (e.g. the doorbell's camera full screen).
+- **Battery reports.** `POST /api/tablet/battery {level, charging, plugged, temperatureC, voltageMv,
+  screen, background?, nextReportIn?, dozeExempt?}` (204) with the wall page's own session (its cookies
+  for the hub, read from the web view, else the tablet's token) and the usual certificate / Cloudflare
+  headers: when the wall starts and is signed in, every 5 minutes while the screen is on, and at once when
+  charging starts or stops or the level moves 5 points. Signed out, 401, 404 (older hub) or no network:
+  skipped quietly, tried again 5 minutes later; never shown. Android reads `ACTION_BATTERY_CHANGED`
+  (plugged ac/usb/wireless, temperature, voltage) and keeps reporting with the screen off — a while-idle
+  alarm every 15 minutes, even in Doze, with `background: true` and `nextReportIn`, plus WorkManager —
+  and its settings' *Battery reports while asleep* section can ask to ignore battery optimisation. iOS
+  has only level and state, so `plugged` is `"ac"` while charging/full and temperature/voltage are
+  `null`; it sends `screen: "off"` as it goes to sleep and nothing more until woken. The hub shows a
+  sleeping tablet (and its music player) as *Screen off*, not offline (API.md → Phone layouts → tablet battery).
 
 - **Voice (Android and the iPad wall).** Listens for “Hey Newman” on the tablet while the wall is on
   screen (openWakeWord models from `GET /api/voice/wakeword`, ONNX Runtime — `onnxruntime-android`,
@@ -271,6 +278,8 @@ page as it does in a browser.
 
 - **Android:** builds on the NAS in Docker (`./gradlew :phone:assembleDebug :wall:assembleDebug`,
   plus unit tests for `:core`). Release signing comes from env/`keystore.properties` (not in the
-  repository).
+  repository); release APKs are built and signed (shared keystore, alias `newman`) by
+  `.github/workflows/release.yml` on each `v*` tag, with `google-services.json` from a secret.
 - **iOS:** generated with XcodeGen and built on GitHub Actions (`macos-latest`) as Ad Hoc IPAs, like
-  the user's other apps (`.github/workflows/release.yml`). Locally only syntax can be checked.
+  the user's other apps (`.github/workflows/release.yml`, five Ad Hoc profiles). Locally only syntax
+  can be checked.

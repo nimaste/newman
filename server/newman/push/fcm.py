@@ -25,9 +25,20 @@ class FcmSender:
         if not self.enabled:
             log.warning("FCM disabled - set FCM_SERVICE_ACCOUNT_PATH")
             return
-        with open(config.fcm_service_account_path) as fh:
-            self._sa = json.load(fh)
-        self._project = self._sa["project_id"]
+        # A missing or broken key file turns FCM off instead of stopping the hub.
+        path = config.fcm_service_account_path
+        try:
+            with open(path) as fh:
+                self._sa = json.load(fh)
+            self._project = self._sa["project_id"]
+        except FileNotFoundError:
+            self.enabled = False
+            log.warning("FCM disabled - %s not found", path)
+            return
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            self.enabled = False
+            log.warning("FCM disabled - can't read %s (%s)", path, type(e).__name__)
+            return
         self._access_token = ""
         self._access_exp = 0.0
         self._client = httpx.AsyncClient(timeout=15)

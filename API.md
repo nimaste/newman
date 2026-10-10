@@ -18,7 +18,7 @@ into push notifications (and webhook secrets).
 
 ```json
 {
-  "version": "2026.10.0",
+  "version": "v1.2.0",
   "categories": [
     {"id": "security", "name": "Security"}, {"id": "garage", "name": "Garage"},
     {"id": "lighting", "name": "Lighting"}, {"id": "climate", "name": "Climate"},
@@ -36,6 +36,7 @@ into push notifications (and webhook secrets).
 }
 ```
 
+* `version` — the hub's `APP_VERSION`: the release tag the image was built from (`dev` for a local build).
 * `activeState` — the state an automation condition means by "is on" (unlocked, open, motion…).
 * `sensitive` commands (unlock, disarm, open garage) need Face ID / fingerprint on a phone.
 
@@ -44,7 +45,7 @@ into push notifications (and webhook secrets).
 `GET /api/hello` — no sign-in. Which hub this is, for an app's "Connect to your Newman" (`Cache-Control: no-store`):
 
 ```json
-{"app": "newman", "id": "3f9c0a1b2c3d4e5f", "name": "The Garitos", "version": "2026.10.0",
+{"app": "newman", "id": "3f9c0a1b2c3d4e5f", "name": "The Garitos", "version": "v1.2.0",
  "outsideUrl": "https://home.example.com/", "localUrls": ["http://10.1.1.2:8093/"],
  "webBuild": "index-Cg0z-opQ.js index-CpiC5FsT.css"}
 ```
@@ -1107,6 +1108,22 @@ Containers younger than two minutes get no device yet. A container Docker no lon
 used by an automation, dashboard, phone layout or widget stays instead with `available: false`,
 `attrs.removed: true` and `stateLabel` "Removed".
 
+## Backups
+
+Admins only. `GET /api/backups` → `{"backups": [{"name", "size", "created"}], "auto", "time", "keep"}` (the saved
+ones in `data/backups/`, newest first; nightly at `time` "HH:MM" (default "03:30") while `auto`, the newest `keep`
+(default 7) kept) · `PATCH /api/backups/settings` `{"auto"?, "time"?, "keep"? (1–90)}` → the settings; 400 with the
+problem · `POST /api/backups` → the new saved backup · `POST /api/backups/download` `{"name"?: a saved one (default:
+a fresh one), "passphrase"?: ≥ 8 characters, locks the file}` → the `.newmanbackup` file · `DELETE
+/api/backups/{name}` · `POST /api/backups/restore` — multipart `file` (+ `passphrase`) or JSON `{"name"}`, with
+`check: true` only reporting what's inside; otherwise the hub restarts into it, keeping what was there in
+`data/.pre-restore-<time>/`. A backup is a zip: `manifest.json`, a consistent copy of `newman.db`, `.install_id`,
+`.token_secret` (restored as `0600` unless `TOKEN_SECRET` is set in the environment), `integrations/`, `people/`,
+`wall-pictures/`, `voice/` (without `train/requests/`), `matter/` (without `*.lock` / `*.pid`) and `zigbee/`
+(without `log/`) - not the push keys, `whisper/`, `piper/`, `training/`, snapshots, clips, map tiles or logs. The
+manifest also records each folder's owner (`"owners": {"matter": [1000, 1000], …}`), given back on restore. A
+backup without `voice/`, `matter/` or `zigbee/` leaves those folders as they are.
+
 ## Snapshots
 
 `GET /api/snapshots/{id}` (jpeg) · public: `GET /api/public/snapshots/{id}?device=&exp=&token=`
@@ -1146,7 +1163,7 @@ a command the automation didn't offer.
 
 Common fields (APNs custom keys / FCM data, all strings):
 `kind` (`automation | followup | test`), `run_id`, `automation_id`, `title`, `body`,
-`buttons` (JSON `[{"id","label","icon","sensitive"}]`), `snapshot_url?`, `action_url`, `action_subject`,
+`buttons` (JSON `[{"id","label","icon","sensitive"}]`), `snapshot_id?`, `snapshot_url?`, `action_url`, `action_subject`,
 `action_exp`, `action_token`, `time_sensitive` (`"true"|"false"`), `thread`.
 Camera alerts also carry `clip`, `clip_url`, `frigate_event_id` (the review id) and `camera`; tapping
 one opens that alert's video in the app.

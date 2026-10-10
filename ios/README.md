@@ -5,12 +5,12 @@ Two apps, built from one XcodeGen project (`project.yml`), following `docs/apps.
 | Target | Bundle id | What it is |
 |---|---|---|
 | `Newman` | `ca.nimaste.newman` | The phone app: Overview / Security / Lights / People / Alerts, Today, device controls, cameras, push, location sharing |
-| `NotificationServiceExtension` | `ca.nimaste.newman.NotificationServiceExtension` | Registers each push's own buttons as its notification category (so buttons show even for a set the app hasn't fetched yet) and attaches camera snapshots (`snapshot_url`), using the client certificate from the shared Keychain |
+| `NotificationServiceExtension` | `ca.nimaste.newman.NotificationServiceExtension` | Runs only for snapshot pushes (the only ones with `mutable-content`): attaches the camera snapshot (`snapshot_url`), using the client certificate from the shared Keychain. It never touches notification categories (on iOS 26 an extension registering a push's category stopped every later notification until the phone restarted); buttons-only pushes skip it |
 | `LocationPushExtension` | `ca.nimaste.newman.LocationPushExtension` | Apple's Location Push Service Extension: answers the hub's one-shot location push (someone tapped this person on their map) with ONE fix, even when the app was swiped away |
 | `NewmanWidgets` | `ca.nimaste.newman.NewmanWidgets` | WidgetKit extension (phone): home-screen device widgets, Lock Screen device widgets, Control Center controls, widget push updates, live status Live Activities (iOS 26 only) |
 | `NewmanWall` | `ca.nimaste.newman.wall` | The wall tablet: a full-screen kiosk around the hub's own `<server>/wall` page |
 
-iOS 17+, Swift 5.9. One Swift package, for the wall app only: ONNX Runtime (`microsoft/onnxruntime-swift-package-manager`, pinned to 1.20.0 like the Android wall's `onnxruntime-android`) for the on-device wake word. Team `T342YL2VCE`, automatic signing for local builds.
+iOS 17+ (the `NewmanWidgets` extension iOS 26+), Swift 5.9. One Swift package, for the wall app only: ONNX Runtime (`microsoft/onnxruntime-swift-package-manager`, pinned to 1.20.0 like the Android wall's `onnxruntime-android`) for the on-device wake word. Team `T342YL2VCE`, automatic signing for local builds.
 
 ```
 ios/
@@ -92,7 +92,8 @@ In [developer.apple.com](https://developer.apple.com/account) → Certificates, 
    The hub sends them with the same APNs key (token auth is required for location pushes).
 3. **APNs key for the hub** - Keys → a key with *Apple Push Notifications service*. Download the `.p8`
    and give the hub `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID=T342YL2VCE`,
-   `APNS_BUNDLE_ID=ca.nimaste.newman` (see `.env.example`). Ad Hoc builds use **production** APNs;
+   `APNS_BUNDLE_ID=ca.nimaste.newman` (all in `docker-compose.yml`'s `environment:` block; the key file
+   goes in the hub's `keys/` folder). Ad Hoc builds use **production** APNs;
    debug builds from Xcode register as `apnsEnvironment: "sandbox"`, which the hub honours per phone.
 4. **Devices** - register the UDIDs of every iPhone/iPad that will install the Ad Hoc builds.
 5. **Distribution certificate** - an *Apple Distribution* certificate; export it from Keychain Access
@@ -134,7 +135,9 @@ Each target takes its own profile: `project.yml` sets `PROVISIONING_PROFILE_SPEC
 signing) and set to the installed profiles' UUIDs by the release workflow (which also maps each
 bundle id to its profile in the export options).
 
-Release: `git tag -a v1.0.0 -m "What changed" && git push origin v1.0.0`.
+Release: push a `v*` tag — this project's releases are pushed with Hotwire; by hand:
+`git tag -a v1.0.0 -m "What changed" && git push origin v1.0.0`. The same workflow also publishes the hub's
+image and the Android APKs (README → Development → Releases has every secret it uses).
 
 ## How the apps reach the hub
 
@@ -241,9 +244,16 @@ Release: `git tag -a v1.0.0 -m "What changed" && git push origin v1.0.0`.
   opens the Alerts tab and that alert's video (looked up in `GET /api/alerts`).
 - Sensitive commands (`sensitive: true`) ask for Face ID / Touch ID with passcode fallback first;
   the switch is in Me. Notification buttons marked sensitive use `.authenticationRequired`.
-- Notification buttons are posted to the push's own `action_url` (`/api/public/actions`) with
-  `{button, subject, deviceId, exp, token}`; a refusal comes back as a local notification with the
-  hub's words.
+- Notification buttons (`PushManager.perform`) post `{button, subject, deviceId, exp, token}` to
+  `/api/public/actions` at the hub address in use, then the hub's other address, and the push's own
+  `action_url` last (each try up to 8 s, with the client certificate and Cloudflare headers). The hub
+  answers at once (a device button's commands run after the reply); a refusal comes back as a local
+  notification with the hub's words, and a command that fails later arrives as a push from the hub
+  ("Couldn't lock Side Door").
+- Notification categories (which buttons a push shows) are registered by the app only
+  (`PushCategories`): every set from `GET /api/push/categories` at launch, on coming to the foreground
+  and on background wakes (a silent push, a location event; at most every 15 minutes). A set the app
+  hasn't fetched yet shows without buttons until it has.
 - **People**: everyone `GET /api/people` returns ("Home", a named place or "3.2 km away", "updated
   4 min ago"), each with their **colour** (`color`, "#RRGGBB") and **photo** (`photo`,
   `/api/people/<id>/photo?v=<hash>` or null) - `PersonAvatar` everywhere they appear (rows, People

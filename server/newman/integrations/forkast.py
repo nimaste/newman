@@ -131,7 +131,7 @@ class ForkastIntegration(Integration):
                    "then step by step, the ingredients, scaled amounts and timers - by voice or touch. The password "
                    "is used once to sign in; Newman keeps only Forkast's sign-in token.")
     fields = [
-        Field("url", "Server address", required=True, placeholder="http://10.1.1.2:9700", default="http://10.1.1.2:9700",
+        Field("url", "Server address", required=True, placeholder="http://10.1.1.2:9700",
               help="Where Newman reaches Forkast - its address on your network is best."),
         Field("username", "Email", required=True, help="The email you sign in to Forkast with."),
         Field("password", "Password", "password",

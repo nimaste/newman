@@ -30,7 +30,18 @@ class ApnsSender:
         if not self.enabled:
             log.warning("APNs disabled - set APNS_KEY_PATH, APNS_KEY_ID and APNS_TEAM_ID")
             return
-        self._key = Path(config.apns_key_path).read_text()
+        # A missing or unreadable key file turns APNs off instead of stopping the hub.
+        path = config.apns_key_path
+        try:
+            self._key = Path(path).read_text()
+        except FileNotFoundError:
+            self.enabled = False
+            log.warning("APNs disabled - %s not found", path)
+            return
+        except (OSError, ValueError) as e:
+            self.enabled = False
+            log.warning("APNs disabled - can't read %s (%s)", path, type(e).__name__)
+            return
         self._jwt = ""
         self._jwt_at = 0.0
         self._client = httpx.AsyncClient(http2=True, timeout=15)

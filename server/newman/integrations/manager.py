@@ -8,7 +8,6 @@ import shutil
 from typing import Any
 
 from ..state import RESTART_GRACE_S
-from ..config import config
 from ..store import Store, new_id, slug
 from . import REGISTRY
 from .base import CommandError, Context, Integration, mask_config, merge_config
@@ -34,22 +33,6 @@ class IntegrationManager:
         self._settling: dict[str, asyncio.Task] = {}  # reconnects waiting to release their held devices
 
     # -- lifecycle -------------------------------------------------------------------
-
-    def seed_from_env(self) -> None:
-        """First boot: turn the phase-1 env settings into integration records."""
-        if self._store.integrations():
-            return
-        if config.mqtt_host:
-            self._store.save_integration({"id": "mqtt", "type": "mqtt", "name": "MQTT devices", "config": {
-                "host": config.mqtt_host, "port": config.mqtt_port, "username": config.mqtt_username,
-                "password": config.mqtt_password, "birth": config.mqtt_birth,
-                "discovery_prefix": config.mqtt_discovery_prefix}})
-        if config.reolink_host and config.reolink_password:
-            self._store.save_integration({"id": "reolink", "type": "reolink", "name": "Reolink", "config": {
-                "devices": [{"host": config.reolink_host, "name": config.doorbell_name, "use": "everything"}],
-                "username": config.reolink_username, "password": config.reolink_password,
-                "port": config.reolink_port, "https": config.reolink_https,
-                "cooldown": config.doorbell_cooldown_s}})
 
     def migrate_types(self) -> None:
         for rec in self._store.integrations():

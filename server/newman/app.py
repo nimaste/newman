@@ -13,7 +13,7 @@ from aiohttp import web
 from zeroconf import IPVersion
 from zeroconf.asyncio import AsyncZeroconf
 
-from . import backup, connect
+from . import backup, connect, tokens
 from .api import build_app
 from .automations.engine import Engine
 from .config import config
@@ -33,6 +33,7 @@ class Newman:
         self.clip_dir = config.data_dir / "clips"
         # A restore uploaded before the last restart is swapped in before the database opens.
         restored = backup.apply_pending(config.data_dir)
+        tokens.init()  # after the restore: it may have brought back .token_secret
         self.store = Store(config.data_dir)
         if restored:
             self.store.log_event("system", "Restored from a backup", "Everything was replaced by the backup's contents.")
@@ -57,7 +58,6 @@ class Newman:
         await web.TCPSite(runner, "0.0.0.0", config.port).start()
         log.info("Newman %s listening on :%s", config.app_version, config.port)
 
-        self.integrations.seed_from_env()
         self.integrations.start_all()
         scheduler = asyncio.create_task(self.engine.run_scheduler(), name="scheduler")
         discovery = asyncio.create_task(self._discover(), name="discovery")

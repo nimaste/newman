@@ -83,7 +83,8 @@ chown -R chris:users /mnt/user/projects/Newman/android
 ```
 
 APKs land in `phone/build/outputs/apk/debug/phone-debug.apk` and `wall/build/outputs/apk/debug/wall-debug.apk`
-(`assembleRelease` for release builds, see signing below).
+(`assembleRelease` for release builds, see signing below). Signed release APKs are also built by GitHub
+Actions on every `v*` tag ([Release signing](#release-signing)).
 
 ### Tests
 
@@ -133,13 +134,19 @@ just without notifications (the Me screen says so). To turn it on:
    `ca.nimaste.newman.dev` for debug builds) to the project whose service account the hub uses
    (`FCM_SERVICE_ACCOUNT_PATH`).
 2. Download `google-services.json` and put it at `android/phone/google-services.json`
-   (it is in `.gitignore`; never commit it).
-3. Rebuild. The app registers with `POST /api/devices/register` after sign-in and whenever FCM
+   (it is in `.gitignore`; never commit it). For the release workflow, store it base64-encoded as the
+   GitHub secret `GOOGLE_SERVICES_JSON` (`base64 -w0 google-services.json`); without it the release's
+   phone APK is built without push (the workflow warns).
+3. The hub sends with that project's service account: `keys/firebase-service-account.json`, with
+   `FCM_SERVICE_ACCOUNT_PATH` set (README → Settings).
+4. Rebuild. The app registers with `POST /api/devices/register` after sign-in and whenever FCM
    rotates its token, and shows the hub's data-only messages itself: the snapshot picture, the
    channel (time-sensitive / doorbell / normal) and the action buttons from the payload (or from
-   `GET /api/push/categories`). Plain buttons post to the payload's `action_url` straight from the
-   notification shade; sensitive ones (unlock, open, disarm) open the app and ask for the
-   fingerprint / screen lock first.
+   `GET /api/push/categories`). Plain buttons run straight from the notification shade: posted to
+   `/api/public/actions` at the hub address in use, then the other address, and the payload's
+   `action_url` last (`ActionRoutes`, up to 8 s each); the hub answers at once and pushes back a
+   command that fails later ("Couldn't lock Side Door"). Sensitive ones (unlock, open, disarm) open
+   the app and ask for the fingerprint / screen lock first.
    Tapping a camera alert's notification (it carries `clip` / `frigate_event_id`) finds that alert in
    `GET /api/alerts` (`CameraClip.matchAlert`) and opens its camera on it, over the Alerts tab; the
    camera screen plays an alert's video (`AlertVideo`): `api/clips/<integration>/<clip id>`
@@ -314,6 +321,13 @@ Release builds are signed only when a keystore is configured, from environment v
 
 Without them `assembleRelease` produces unsigned APKs. Don't commit keystores or passwords.
 
+**Release builds on GitHub** (`.github/workflows/release.yml`, on each `v*` tag): the shared keystore, key
+alias `newman`, from two repository secrets — `ANDROID_KEYSTORE_BASE64` (`base64 -w0` of the `.jks`,
+written to `android/release.jks`) and `ANDROID_KEYSTORE_PASSWORD` (the store password, also used for the
+key) — plus `GOOGLE_SERVICES_JSON` for push (above). The version name comes from the tag (`v1.2.3` →
+`1.2.3`, code `10203`); any other build is `dev`. The signed `Newman_<tag>.apk` and `NewmanWall_<tag>.apk`
+are attached to the GitHub Release.
+
 ## The wall tablet (Amazon Fire)
 
 Newman Wall is a full-screen WebView of `<server>/wall`; the tablet signs in inside that page.
@@ -430,7 +444,7 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
 - **`window.NewmanWall`** for the hub's page (only while the hub's own page is showing):
 
   ```js
-  NewmanWall.version            // "2026.10.0"
+  NewmanWall.version            // "1.2.3" (the release tag), "dev" / "dev-dev" for local builds
   NewmanWall.setBrightness(0.6) // 0..1, while awake
   NewmanWall.wake()             // wake the screen from dim (e.g. the doorbell rang)
   NewmanWall.dim()              // dim now (the page's dim button); the page draws the dimmed screen

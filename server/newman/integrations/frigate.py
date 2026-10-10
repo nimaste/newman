@@ -80,7 +80,7 @@ class FrigateIntegration(Integration):
                    "with a snapshot, and zones show live counts (“2 people in Driveway”). Only needs Frigate's "
                    "address - its MQTT settings are read from Frigate itself.")
     fields = [
-        Field("url", "Frigate address", required=True, placeholder="http://10.1.1.2:5000", default="http://10.1.1.2:5000"),
+        Field("url", "Frigate address", required=True, placeholder="http://10.1.1.2:5000"),
         Field("severity", "Use", "select", default="alerts",
               options=({"value": "alerts", "label": "Alerts only"},
                        {"value": "detections", "label": "Detections only"},

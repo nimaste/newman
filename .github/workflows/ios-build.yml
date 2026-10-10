@@ -24,7 +24,7 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
-      - name: Build phone app + notification and location push extensions (simulator)
+      - name: Build phone app + notification, location push and widget extensions (simulator)
         working-directory: ios
         run: |
           set -o pipefail
