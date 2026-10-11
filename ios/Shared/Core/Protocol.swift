@@ -161,9 +161,26 @@ enum PushPayload {
     }
 
     static let actionPath = "api/public/actions"
-    /// One try at one address. Short, so the fallbacks still fit in the few seconds iOS gives a
-    /// notification button in the background (the hub replies at once; commands follow).
+    /// One try at a fallback address (the hub replies at once; commands follow).
     static let actionAttemptSeconds: Double = 8
+    /// The first try - the address in use - gets longer: right after iOS wakes the app for a button
+    /// the network may take a while to be usable (the Home Assistant app waits up to 60 s per try).
+    static let actionFirstAttemptSeconds: Double = 20
+    /// All tries together, at most (iOS gives a background button about 30 s).
+    static let actionBudgetSeconds: Double = 27
+    /// Kept back from iOS's remaining background time for the failure notice and the press report.
+    static let actionReserveSeconds: Double = 3
+    /// A try shorter than this isn't started.
+    static let actionMinAttemptSeconds: Double = 2
+
+    /// How long try number `index` (0 = first) may take, after `elapsed` seconds of tries, with
+    /// `backgroundLeft` seconds of iOS background time (nil in the foreground). nil = no time left.
+    static func attemptSeconds(index: Int, elapsed: Double, backgroundLeft: Double?) -> Double? {
+        var budget = actionBudgetSeconds - elapsed
+        if let left = backgroundLeft { budget = min(budget, left - actionReserveSeconds) }
+        let t = min(index == 0 ? actionFirstAttemptSeconds : actionAttemptSeconds, budget)
+        return t >= actionMinAttemptSeconds ? t : nil
+    }
 
     /// Where to send a pressed button, in order: each of the hub's addresses as the rest of the app
     /// uses them (`addresses`: the one in use first - HubRoute's pick - then the other), and the push's
@@ -261,6 +278,205 @@ enum PushPayload {
         ]
         if sandbox { b["apnsEnvironment"] = .string("sandbox") }
         return b
+    }
+}
+
+// MARK: - Press reports (POST /api/public/press-report)
+
+/// One try at sending a notification button, as the phone saw it - so a press the hub never
+/// received can still be explained from the hub's log.
+struct PressAttempt: Codable, Equatable {
+    /// When the try started (seconds since 1970, the phone's clock).
+    var at: Double
+    /// scheme://host:port/path only - never a query or a token.
+    var url: String
+    /// How the app was running when the try started: active / inactive / background.
+    var appState: String
+    /// iOS background time left when the try started (nil in the foreground).
+    var backgroundLeft: Double?
+    /// The time this try was allowed.
+    var timeoutSeconds: Double
+    var ms: Int
+    /// HTTP status, when something answered.
+    var status: Int?
+    var error: PressError?
+    /// TLS client-certificate challenges on this try, and whether a certificate was there to answer
+    /// the last one (nil = none asked). No certificate material.
+    var certChallenges: Int = 0
+    var certAvailable: Bool?
+    /// Other challenges (server trust…), by authentication method.
+    var otherChallenges: [String]?
+    var metrics: PressMetrics?
+}
+
+struct PressError: Codable, Equatable {
+    var domain: String
+    var code: Int
+    var description: String
+    /// NSUnderlyingError, "domain code description".
+    var underlying: String?
+    /// _kCFStreamErrorCodeKey / _kCFStreamErrorDomainKey.
+    var streamCode: Int?
+    var streamDomain: Int?
+    /// The host of NSURLErrorFailingURLErrorKey.
+    var failingHost: String?
+    /// The network path when it failed (_NSURLErrorNWPathKey), e.g. "unsatisfied (Local network prohibited)".
+    var path: String?
+
+    /// The fields of any Error (an NSError underneath). Keys are spelled out so this builds on Linux.
+    static func of(_ error: Error) -> PressError {
+        let ns = error as NSError
+        var out = PressError(domain: ns.domain, code: ns.code, description: ns.localizedDescription)
+        let info = ns.userInfo
+        if let u = info["NSUnderlyingError"] as? NSError {
+            out.underlying = "\(u.domain) \(u.code) \(u.localizedDescription)"
+        }
+        out.streamCode = (info["_kCFStreamErrorCodeKey"] as? NSNumber)?.intValue ?? info["_kCFStreamErrorCodeKey"] as? Int
+        out.streamDomain = (info["_kCFStreamErrorDomainKey"] as? NSNumber)?.intValue ?? info["_kCFStreamErrorDomainKey"] as? Int
+        if let failing = info["NSErrorFailingURLKey"] as? URL {
+            out.failingHost = failing.host
+        } else if let s = info["NSErrorFailingURLStringKey"] as? String {
+            out.failingHost = URL(string: s)?.host
+        }
+        if let path = info["_NSURLErrorNWPathKey"] { out.path = String(String(describing: path).prefix(300)) }
+        return out
+    }
+
+    var line: String {
+        var s = "\(domain) \(code) \(description)"
+        var extra: [String] = []
+        if let underlying { extra.append("underlying \(underlying)") }
+        if let streamCode { extra.append("stream \(streamDomain.map { "\($0)/" } ?? "")\(streamCode)") }
+        if let failingHost { extra.append("host \(failingHost)") }
+        if let path { extra.append("path \(path)") }
+        if !extra.isEmpty { s += " [" + extra.joined(separator: "; ") + "]" }
+        return s
+    }
+}
+
+/// URLSessionTaskMetrics of a try, flattened: each step in ms after the task's fetch start (nil =
+/// it never happened - e.g. connectStart without connectEnd: the connection was never made).
+struct PressMetrics: Codable, Equatable {
+    var transactions: Int
+    var fetchStartAt: Double?
+    var dnsStart: Int?
+    var dnsEnd: Int?
+    var connectStart: Int?
+    var connectEnd: Int?
+    var secureStart: Int?
+    var secureEnd: Int?
+    var requestStart: Int?
+    var requestEnd: Int?
+    var responseStart: Int?
+    var responseEnd: Int?
+    var remoteAddress: String?
+    var remotePort: Int?
+    var localAddress: String?
+    var networkProtocol: String?
+    var reusedConnection: Bool?
+    var proxyConnection: Bool?
+    var cellular: Bool?
+    var expensive: Bool?
+    var constrained: Bool?
+
+    static func offset(_ date: Date?, from start: Date?) -> Int? {
+        guard let date, let start else { return nil }
+        return Int((date.timeIntervalSince(start) * 1000).rounded())
+    }
+
+    /// "dns 0-2 connect 2-? tls - request - response - | 10.1.1.2:8093 http/1.1 new"
+    var line: String {
+        func span(_ a: Int?, _ b: Int?) -> String {
+            guard let a else { return "-" }
+            return "\(a)-\(b.map(String.init) ?? "?")"
+        }
+        var s = "dns \(span(dnsStart, dnsEnd)) connect \(span(connectStart, connectEnd)) tls \(span(secureStart, secureEnd))"
+        s += " request \(span(requestStart, requestEnd)) response \(span(responseStart, responseEnd))"
+        var who: [String] = []
+        if let remoteAddress { who.append(remotePort.map { "\(remoteAddress):\($0)" } ?? remoteAddress) }
+        if let localAddress { who.append("from \(localAddress)") }
+        if let networkProtocol, !networkProtocol.isEmpty { who.append(networkProtocol) }
+        if let reusedConnection { who.append(reusedConnection ? "reused" : "new") }
+        if proxyConnection == true { who.append("proxy") }
+        if cellular == true { who.append("cellular") }
+        if constrained == true { who.append("low data") }
+        if transactions != 1 { who.append("\(transactions) transactions") }
+        return who.isEmpty ? s : s + " | " + who.joined(separator: " ")
+    }
+}
+
+/// What the phone sends the hub after a notification button: every try in full when the press
+/// failed, one summary line when it worked. Signed with that push's own action token.
+struct PressReport: Codable, Equatable {
+    var id: String
+    var button: String
+    var subject: String
+    var deviceId: String
+    var exp: String
+    var token: String
+    var ok: Bool
+    /// "pressed" / "refused 409: …" / "failed: The Newman hub took too long to answer."
+    var outcome: String
+    var summary: String
+    var appVersion: String
+    /// How the app was running when the button arrived, and how long it had been running.
+    var launchState: String
+    var sinceLaunchSeconds: Double?
+    /// Whether iOS ended the background time before the press was done.
+    var backgroundExpired: Bool = false
+    /// The push's own action_url (no query), where a report may go too.
+    var actionURL: String
+    var at: Double
+    var attempts: [PressAttempt]
+
+    static let path = "api/public/press-report"
+    /// Each try at sending a report (all the hub's addresses at once).
+    static let sendSeconds: Double = 4
+    static let pendingLimit = 10
+
+    /// scheme://host[:port]/path - never the query, a fragment or credentials.
+    static func redact(_ url: URL) -> String {
+        guard let c = URLComponents(url: url, resolvingAgainstBaseURL: true), let host = c.host else { return "?" }
+        let port = c.port.map { ":\($0)" } ?? ""
+        return "\(c.scheme ?? "?")://\(host)\(port)\(c.path)"
+    }
+
+    /// Where to send a report: each of the hub's addresses, then the push's action_url's hub.
+    static func urls(addresses: [URL], actionURL: URL?) -> [URL] {
+        var list: [URL] = []
+        for base in addresses {
+            if let u = ServerAddress.url(base, path), !list.contains(u) { list.append(u) }
+        }
+        if let a = actionURL, let u = URL(string: "press-report", relativeTo: a)?.absoluteURL, !list.contains(u) { list.append(u) }
+        return list
+    }
+
+    /// One line per try, for the phone's own log.
+    static func line(_ a: PressAttempt, index: Int, of count: Int) -> String {
+        var s = "try \(index + 1)/\(count) \(a.url) (\(a.appState)"
+        if let left = a.backgroundLeft { s += String(format: ", %.1f s background left", left) }
+        s += String(format: ", %.0f s allowed): ", a.timeoutSeconds) + "\(a.ms) ms, "
+        if let status = a.status { s += "HTTP \(status)" } else if let e = a.error { s += e.line } else { s += "no answer" }
+        s += "; cert challenges \(a.certChallenges)"
+        if let avail = a.certAvailable { s += avail ? " (certificate sent)" : " (no certificate stored)" }
+        if let other = a.otherChallenges, !other.isEmpty { s += "; other challenges \(other.joined(separator: ","))" }
+        if let m = a.metrics { s += "; " + m.line } else { s += "; no metrics" }
+        return s
+    }
+
+    /// "pressed at http://10.1.1.2:8093/api/public/actions on try 1 of 2 in 85 ms (background)"
+    static func summary(ok: Bool, outcome: String, attempts: [PressAttempt], tried: Int) -> String {
+        guard let last = attempts.last else { return outcome + " (no address to try)" }
+        let total = attempts.reduce(0) { $0 + $1.ms }
+        if ok { return "\(outcome) at \(last.url) on try \(attempts.count) of \(tried) in \(last.ms) ms (\(last.appState))" }
+        return "\(outcome) after \(attempts.count) of \(tried) tries, \(total) ms in all (\(last.appState))"
+    }
+
+    /// The phone's queue of reports not delivered yet: newest last, at most `limit`.
+    static func queued(_ existing: [Data], adding: Data, limit: Int = pendingLimit) -> [Data] {
+        var q = existing.filter { $0 != adding }
+        q.append(adding)
+        return Array(q.suffix(limit))
     }
 }
 

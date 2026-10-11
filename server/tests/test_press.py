@@ -16,6 +16,7 @@ os.environ.setdefault("TOKEN_SECRET", "test-secret")
 from aiohttp.test_utils import TestClient, TestServer  # noqa: E402
 
 from newman import app as app_mod  # noqa: E402
+from newman import tokens  # noqa: E402
 from newman.api import build_app  # noqa: E402
 from newman.automations import engine as engine_mod  # noqa: E402
 from newman.config import config  # noqa: E402
@@ -168,6 +169,95 @@ class PressTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.pushes("test-chris", "Couldn't lock Back Door")[0]["body"],
                          "Back Door didn't lock: Newman isn't connected to Ring right now - try again in a moment")
         self.assertEqual(self.pushes("test-marlina", "Couldn't lock Back Door"), [])
+
+
+    # -- press reports (POST /api/public/press-report) ----------------------------------------------
+
+    def report(self, note=None, **over):
+        """A failed press as the iPhone reports it: home address timed out, then the outside one."""
+        n = note or self.note
+        attempt = {
+            "at": 1790000000.5, "url": "http://10.1.1.2:8093/api/public/actions", "appState": "background",
+            "backgroundLeft": 29.4, "timeoutSeconds": 20, "ms": 20004, "status": None, "certChallenges": 0,
+            "error": {"domain": "NSURLErrorDomain", "code": -1001, "description": "The request timed out.",
+                      "underlying": "kCFErrorDomainCFNetwork -1001 timed out", "streamCode": -2102, "streamDomain": 4,
+                      "failingHost": "10.1.1.2", "path": "satisfied (Path is satisfied), interface: en0[802.11]"},
+            "metrics": {"transactions": 1, "dnsStart": None, "connectStart": 1, "connectEnd": None,
+                        "remoteAddress": "10.1.1.2", "remotePort": 8093, "networkProtocol": "", "reusedConnection": False}}
+        second = {**attempt, "url": "https://home.garito.ca/api/public/actions", "timeoutSeconds": 4, "ms": 4001,
+                  "certChallenges": 1, "certAvailable": True,
+                  "metrics": {"transactions": 1, "dnsStart": 0, "dnsEnd": 3, "connectStart": 3, "connectEnd": 9,
+                              "secureStart": 4, "secureEnd": 9, "requestStart": 9, "requestEnd": 9,
+                              "remoteAddress": "10.1.1.2", "remotePort": 443, "networkProtocol": "http/1.1",
+                              "reusedConnection": False}}
+        return {"id": "rep-1", "deviceId": n["deviceId"], "subject": n["action_subject"], "exp": n["action_exp"],
+                "token": n["action_token"], "button": "lock:fake.side", "ok": False,
+                "outcome": "failed: The Newman hub took too long to answer.",
+                "summary": "failed after 2 of 3 tries", "appVersion": "1.4 (77)", "launchState": "background",
+                "sinceLaunchSeconds": 0.8, "backgroundExpired": False,
+                "actionURL": "https://home.garito.ca/api/public/actions", "at": 1790000000.4,
+                "attempts": [attempt, second], **over}
+
+    async def test_a_failed_press_report_is_logged_per_try_and_kept_for_admins(self):
+        with self.assertLogs("newman.api", level="INFO") as logs:
+            r = await self.client.post("/api/public/press-report", json=self.report())
+            self.assertEqual((r.status, await r.json()), (200, {"ok": True}))
+            r = await self.client.post("/api/public/press-report", json=self.report())  # the other address, too
+            self.assertEqual((await r.json()).get("duplicate"), True)
+        warnings = [o for o in logs.output if o.startswith("WARNING:newman.api:Press report")]
+        self.assertEqual(len(warnings), 2, logs.output)  # one per try, the duplicate not again
+        first, second = warnings
+        self.assertIn("Press report from test-chris (test-chris phone): button 'lock:fake.side' on "
+                      f"{self.run['id']} failed: The Newman hub took too long to answer. - try 1/2 "
+                      "http://10.1.1.2:8093/api/public/actions at ", first)
+        self.assertIn("(background, 29.4 s background left, 20 s allowed): 20004 ms, NSURLErrorDomain -1001 The request "
+                      "timed out. [underlying kCFErrorDomainCFNetwork -1001 timed out; stream 4/-2102; host 10.1.1.2; "
+                      "path satisfied (Path is satisfied), interface: en0[802.11]]; cert challenges 0; "
+                      "dns - connect 1-? tls - request - response - | 10.1.1.2:8093 new "
+                      "(app 1.4 (77), background when the button arrived, running 0.8 s)", first)
+        self.assertIn("try 2/2 https://home.garito.ca/api/public/actions", second)
+        self.assertIn("cert challenges 1 (certificate sent); dns 0-3 connect 3-9 tls 4-9 request 9-9 response - | "
+                      "10.1.1.2:443 http/1.1 new", second)
+        self.assertNotIn(self.note["action_token"], "\n".join(logs.output))
+        r = await self.client.get("/api/diagnostics/press")  # the test client is signed in as the admin
+        self.assertEqual(r.status, 200)
+        kept = await r.json()
+        self.assertEqual([k["id"] for k in kept], ["rep-1"])
+        self.assertNotIn("token", kept[0])
+        self.assertEqual(kept[0]["attempts"][0]["error"]["code"], -1001)
+        self.assertEqual(kept[0]["phone"], "test-chris phone")
+
+    async def test_a_press_that_worked_is_one_info_line(self):
+        rep = self.report(id="rep-ok", ok=True, outcome="pressed", attempts=[],
+                          summary="pressed at http://10.1.1.2:8093/api/public/actions on try 1 of 2 in 85 ms (background)")
+        with self.assertLogs("newman.api", level="INFO") as logs:
+            r = await self.client.post("/api/public/press-report", json=rep)
+            self.assertEqual(r.status, 200)
+        lines = [o for o in logs.output if "Press report" in o]
+        self.assertEqual(len(lines), 1, logs.output)
+        self.assertTrue(lines[0].startswith("INFO:newman.api:Press report from test-chris"), lines[0])
+        self.assertIn(": pressed at http://10.1.1.2:8093/api/public/actions on try 1 of 2 in 85 ms (background) (app 1.4",
+                      lines[0])
+
+    async def test_press_reports_need_the_pushs_token_or_a_session(self):
+        self.client.session.cookie_jar.clear()  # not signed in
+        r = await self.client.post("/api/public/press-report", json=self.report(token="forged"))
+        self.assertEqual(r.status, 401)
+        r = await self.client.get("/api/diagnostics/press")
+        self.assertEqual(r.status, 401)
+        # A queued report may arrive after its push's token expired: accepted for a week.
+        did, subject = self.note["deviceId"], self.note["action_subject"]
+        old = int(time.time()) - 3 * 86400
+        tok = tokens._mac("action", subject, did, old)
+        r = await self.client.post("/api/public/press-report", json=self.report(id="late", exp=str(old), token=tok))
+        self.assertEqual(r.status, 200)
+        older = int(time.time()) - 8 * 86400
+        r = await self.client.post("/api/public/press-report",
+                                   json=self.report(id="too-late", exp=str(older), token=tokens._mac("action", subject, did, older)))
+        self.assertEqual(r.status, 401)
+        # The press itself still refuses an expired token.
+        r = await self.tap("lock_all", exp=str(old), token=tok)
+        self.assertEqual(r.status, 401)
 
 
 class LogFileTests(unittest.TestCase):

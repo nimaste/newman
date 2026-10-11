@@ -29,6 +29,7 @@ from . import connect as CN
 from . import today as T
 from . import dashboards as D
 from . import phone_layouts as PL
+from . import press_reports as PRS
 from . import profiles as PF
 from . import replace as R
 from . import tokens
@@ -2321,6 +2322,36 @@ def build_app(h: "Newman") -> web.Application:
             return _err(409, str(e))
         log.info("%s: %s", what, "accepted" if result.get("accepted") else "done")
         return web.json_response(result)
+
+    press_reports = h.press_reports = getattr(h, "press_reports", None) or PRS.PressReports()
+
+    @r.post("/api/public/press-report")
+    async def press_report(req: web.Request) -> web.Response:
+        """A phone's account of one notification-button press (press_reports.py): signed with that
+        push's action token (accepted up to a week after it expired - the phone queues reports it
+        couldn't send) or by a signed-in session. Logged as one WARNING line per try of a failed press."""
+        data = await body(req)
+        device_id, subject = str(data.get("deviceId", "")), str(data.get("subject", ""))
+        signed = tokens.verify("action", subject, device_id, data.get("exp"), str(data.get("token") or ""),
+                               grace_s=PRS.GRACE_S)
+        if not signed and not find_session(req):
+            log.warning("Press report from %s refused (401 invalid or expired token)", device_id or "?")
+            return _err(401, "invalid or expired token")
+        rid = str(data.get("id", ""))[:64]
+        if press_reports.seen(rid):
+            return web.json_response({"ok": True, "duplicate": True})
+        ph = h.store.phone(device_id) if device_id else None
+        rep = PRS.clean(data, phone=ph.display_name if ph else None, remote=req.remote)
+        press_reports.add(rep)
+        for line in PRS.lines(rep):
+            (log.info if rep["ok"] else log.warning)("%s", line)
+        return web.json_response({"ok": True})
+
+    @r.get("/api/diagnostics/press")
+    async def press_diagnostics(req: web.Request) -> web.Response:
+        """The last press reports, newest first (admins)."""
+        require_admin(req)
+        return web.json_response(press_reports.to_json())
 
     @r.post("/api/runs/{rid}/press")
     async def run_press(req: web.Request) -> web.Response:

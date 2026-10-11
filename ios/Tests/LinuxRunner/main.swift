@@ -275,6 +275,65 @@ check(PushPayload.tryNextAddress(status: 502) && PushPayload.tryNextAddress(stat
 check(!PushPayload.tryNextAddress(status: 409) && !PushPayload.tryNextAddress(status: 401) && !PushPayload.tryNextAddress(status: 200),
       "the hub's own answer is final")
 check(PushPayload.actionAttemptSeconds * 3 < 30, "three tries fit in iOS's background time for a button")
+// Try times: the first longer, all within the budget and iOS's background time (minus the reserve).
+eq(PushPayload.attemptSeconds(index: 0, elapsed: 0, backgroundLeft: nil), 20, "first try: 20 s")
+eq(PushPayload.attemptSeconds(index: 1, elapsed: 20, backgroundLeft: nil), 7, "second try: what's left of 27 s")
+eq(PushPayload.attemptSeconds(index: 1, elapsed: 2, backgroundLeft: nil), 8, "a fallback try: 8 s")
+eq(PushPayload.attemptSeconds(index: 2, elapsed: 26, backgroundLeft: nil), nil, "under 2 s left: no more tries")
+eq(PushPayload.attemptSeconds(index: 0, elapsed: 0, backgroundLeft: 12), 9, "background time left caps a try (12 - 3)")
+eq(PushPayload.attemptSeconds(index: 0, elapsed: 0, backgroundLeft: 4), nil, "almost no background time: no try")
+
+// MARK: press reports
+
+eq(PressReport.redact(URL(string: "https://user:pw@home.garito.ca/api/public/actions?token=secret#x")!),
+   "https://home.garito.ca/api/public/actions", "redact: no query, credentials or fragment")
+eq(PressReport.redact(URL(string: "http://10.1.1.2:8093/api/public/actions")!), "http://10.1.1.2:8093/api/public/actions", "redact keeps the port")
+eq(PressReport.urls(addresses: [URL(string: "http://10.1.1.2:8093/")!, URL(string: "https://home.garito.ca/")!],
+                    actionURL: URL(string: "https://home.garito.ca/api/public/actions")).map(\.absoluteString),
+   ["http://10.1.1.2:8093/api/public/press-report", "https://home.garito.ca/api/public/press-report"], "report urls (action_url's hub not twice)")
+eq(PressReport.urls(addresses: [], actionURL: URL(string: "https://x.example/newman/api/public/actions")).map(\.absoluteString),
+   ["https://x.example/newman/api/public/press-report"], "report url from action_url alone")
+let pressTimeout = NSError(domain: "NSURLErrorDomain", code: -1001, userInfo: [
+    "NSLocalizedDescription": "The request timed out.",
+    "NSUnderlyingError": NSError(domain: "kCFErrorDomainCFNetwork", code: -1001, userInfo: [NSLocalizedDescriptionKey: "timed out"]),
+    "_kCFStreamErrorCodeKey": -2102, "_kCFStreamErrorDomainKey": 4,
+    "NSErrorFailingURLKey": URL(string: "http://10.1.1.2:8093/api/public/actions")!,
+    "_NSURLErrorNWPathKey": "satisfied (Path is satisfied), interface: en0[802.11]"])
+let pe = PressError.of(pressTimeout)
+eq(pe.code, -1001, "error code"); eq(pe.domain, "NSURLErrorDomain", "error domain")
+eq(pe.underlying, "kCFErrorDomainCFNetwork -1001 timed out", "underlying error")
+eq(pe.streamCode, -2102, "stream error code"); eq(pe.streamDomain, 4, "stream error domain")
+eq(pe.failingHost, "10.1.1.2", "failing host")
+check(pe.line.contains("path satisfied (Path is satisfied)") && pe.line.hasPrefix("NSURLErrorDomain -1001 The request timed out. ["), pe.line)
+let start = Date(timeIntervalSince1970: 1_000)
+eq(PressMetrics.offset(Date(timeIntervalSince1970: 1_000.0125), from: start), 13, "metrics offset in ms")
+eq(PressMetrics.offset(nil, from: start), nil, "a step that never happened")
+var pm = PressMetrics(transactions: 1)
+pm.dnsStart = 0; pm.dnsEnd = 0; pm.connectStart = 1; pm.remoteAddress = "10.1.1.2"; pm.remotePort = 8093
+pm.networkProtocol = "http/1.1"; pm.reusedConnection = false
+eq(pm.line, "dns 0-0 connect 1-? tls - request - response - | 10.1.1.2:8093 http/1.1 new", "metrics line: never connected")
+let attempt = PressAttempt(at: 1_790_000_000, url: "http://10.1.1.2:8093/api/public/actions", appState: "background",
+                           backgroundLeft: 29.5, timeoutSeconds: 20, ms: 20004, status: nil, error: pe, certChallenges: 0,
+                           certAvailable: nil, otherChallenges: nil, metrics: pm)
+let al = PressReport.line(attempt, index: 0, of: 3)
+check(al.hasPrefix("try 1/3 http://10.1.1.2:8093/api/public/actions (background, 29.5 s background left, 20 s allowed): 20004 ms, NSURLErrorDomain -1001"), al)
+check(al.contains("cert challenges 0;") && al.hasSuffix("http/1.1 new"), al)
+var okAttempt = attempt; okAttempt.status = 200; okAttempt.error = nil; okAttempt.ms = 85
+eq(PressReport.summary(ok: true, outcome: "pressed", attempts: [attempt, okAttempt], tried: 3),
+   "pressed at http://10.1.1.2:8093/api/public/actions on try 2 of 3 in 85 ms (background)", "success summary")
+eq(PressReport.summary(ok: false, outcome: "failed: slow", attempts: [attempt, attempt], tried: 3),
+   "failed: slow after 2 of 3 tries, 40008 ms in all (background)", "failure summary")
+let report = PressReport(id: "r1", button: "lock:lock.laundry", subject: "run_1", deviceId: "ios-1", exp: "1", token: "t", ok: false,
+                         outcome: "failed", summary: "s", appVersion: "1.0 (1)", launchState: "background", sinceLaunchSeconds: 0.4,
+                         backgroundExpired: false, actionURL: "https://home.garito.ca/api/public/actions", at: 1, attempts: [attempt])
+if let enc = try? JSONEncoder().encode(report), let back = try? JSONDecoder().decode(PressReport.self, from: enc) {
+    eq(back, report, "press report round trip")
+    let json = String(decoding: enc, as: UTF8.self)
+    check(json.contains("\"certChallenges\":0") && json.contains("\"connectStart\":1") && json.contains("\"launchState\":\"background\""), json)
+} else { check(false, "press report encodes") }
+let d1 = Data("1".utf8), d2 = Data("2".utf8)
+eq(PressReport.queued([d1, d2], adding: d1), [d2, d1], "queue: a report once, newest last")
+eq(PressReport.queued((0..<12).map { Data("\($0)".utf8) }, adding: d2, limit: 10).count, 10, "queue keeps the last 10")
 eq(PushPayload.snapshotURL(userInfo: userInfo)?.host, "home.example", "snapshot url")
 eq(PushPayload.hexToken(Data([0x0a, 0xff, 0x01])), "0aff01", "hex token")
 // A push's own button set, registered by the Notification Service Extension.

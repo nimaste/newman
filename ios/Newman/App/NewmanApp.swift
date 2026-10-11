@@ -29,7 +29,10 @@ struct NewmanApp: App {
         .onChange(of: scenePhase) { _, phase in
             // Re-probes of the hub's home address (while it fails, or while outside) run only in the foreground.
             HubRoute.shared.setActive(phase == .active)
-            if phase == .active { model.foreground() }
+            if phase == .active {
+                model.foreground()
+                Task { await PushManager.shared.resendPressReports() } // reports a background press couldn't send
+            }
             if phase == .background { WidgetRefresh.reloadAll() } // the widgets show what the app last changed
         }
     }
@@ -40,8 +43,12 @@ extension AppModel {
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    /// When this process started (press reports: launched for the button, or already running).
+    static var launchedAt: Date?
+
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        AppDelegate.launchedAt = Date()
         LocalNetworkProbe.run()
         UNUserNotificationCenter.current().delegate = self
         let background = application.applicationState == .background // a location event or a silent push woke us
@@ -111,8 +118,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             return
         }
         Task { @MainActor in
-            await PushManager.shared.perform(button: action, userInfo: info)
+            // Not a .foreground button: iOS runs (or launches) the app in the background for it and
+            // may suspend it mid-request unless it asks for background time - as the Home Assistant
+            // app does around its button webhooks. Held until the press and its report are done.
+            let state = PushManager.appStateName()
+            let work = BackgroundWork("newman.press")
+            await PushManager.shared.perform(button: action, userInfo: info, launchState: state, work: work)
             completionHandler()
+            work.end()
         }
     }
 }

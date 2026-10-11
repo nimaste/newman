@@ -9,12 +9,10 @@ import ca.nimaste.newman.core.api.LoginResult
 import ca.nimaste.newman.core.api.NewmanApi
 import ca.nimaste.newman.core.api.hubCall
 import ca.nimaste.newman.core.hub.HubRepository
-import ca.nimaste.newman.core.model.ActionRequest
 import ca.nimaste.newman.core.model.LoginRequest
 import ca.nimaste.newman.core.model.NewmanJson
 import ca.nimaste.newman.core.model.PushCategory
 import ca.nimaste.newman.core.model.RegisterRequest
-import ca.nimaste.newman.core.push.ActionRoutes
 import ca.nimaste.newman.core.settings.ConnectionStore
 import ca.nimaste.newman.core.widgets.WidgetPushToken
 import ca.nimaste.newman.location.LocationSharing
@@ -23,12 +21,9 @@ import ca.nimaste.newman.widgets.LauncherShortcuts
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.builtins.ListSerializer
 import okhttp3.OkHttpClient
 import javax.inject.Inject
@@ -135,34 +130,7 @@ class Account @Inject constructor(
         }
     }
 
-    /**
-     * Press a notification button: POST {button, subject, deviceId, exp, token} to the hub's address in
-     * use, then its other address, and the push's [actionUrl] last ([ActionRoutes]) - through the
-     * same client as every call (client certificate, Cloudflare headers), each try up to 8 s. The
-     * first answer from the hub itself (done, or refused with its reason) is final.
-     */
-    suspend fun pressAction(actionUrl: String?, request: ActionRequest): Result<Unit> {
-        var last: Result<Unit> = Result.failure(IllegalStateException("Choose your Newman address first"))
-        for (url in ActionRoutes.urls(store.snapshot, actionUrl)) {
-            val status: Int? = try {
-                val res = withTimeout(ActionRoutes.ATTEMPT_MS) { api.pressAction(url, request) }
-                if (res.isSuccessful) return Result.success(Unit)
-                last = Result.failure(IllegalStateException(ApiErrors.errorText(res.errorBody()?.string()) ?: ApiErrors.httpFallback(res.code())))
-                res.code()
-            } catch (e: TimeoutCancellationException) {
-                last = Result.failure(IllegalStateException("The Newman hub took too long to answer"))
-                null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                last = Result.failure(IllegalStateException(ApiErrors.message(e)))
-                null
-            }
-            Log.i(TAG, "Button ${request.button} at $url: ${status ?: "no answer"}")
-            if (!ActionRoutes.tryNext(status)) break
-        }
-        return last
-    }
+    // Notification buttons are sent by push/ButtonPress.kt (fresh connection per try, press reports).
 
     companion object {
         private const val TAG = "NewmanAccount"

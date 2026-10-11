@@ -103,11 +103,10 @@ data class PushPayload(
  * Where a pressed notification button is sent, in order: the hub's address the app uses right now
  * (HubSelector's pick, [ConnectionStore.Snapshot.serverUrl]), then the hub's other saved address, and
  * the push's own `action_url` (the hub's fixed public address) only as the last resort. Each try is
- * short ([ATTEMPT_MS]): the hub replies at once and sends device commands afterwards.
+ * short ([PressTiming]): the hub replies at once and sends device commands afterwards.
  */
 object ActionRoutes {
     const val PATH = "api/public/actions"
-    const val ATTEMPT_MS = 8_000L
 
     fun urls(snapshot: ConnectionStore.Snapshot, actionUrl: String?): List<String> {
         val out = LinkedHashSet<String>()

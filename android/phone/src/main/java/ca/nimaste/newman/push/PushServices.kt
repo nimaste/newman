@@ -3,8 +3,6 @@ package ca.nimaste.newman.push
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationManagerCompat
-import ca.nimaste.newman.core.model.ActionRequest
 import ca.nimaste.newman.core.people.LocatePush
 import ca.nimaste.newman.core.push.PushPayload
 import ca.nimaste.newman.core.settings.ConnectionStore
@@ -59,36 +57,13 @@ class NewmanMessagingService : FirebaseMessagingService() {
     }
 }
 
-/** A plain (non-sensitive) notification button: posted to the hub straight from the shade. */
-@AndroidEntryPoint
+/**
+ * A plain (non-sensitive) notification button, tapped in the shade: handed straight to expedited
+ * work ([PressWorker]) - a receiver may be stopped ~10 s after the tap, too soon for the tries.
+ */
 class ActionReceiver : BroadcastReceiver() {
-    @Inject lateinit var account: Account
-    @Inject lateinit var store: ConnectionStore
-    @Inject lateinit var scope: CoroutineScope
-
     override fun onReceive(context: Context, intent: Intent) {
         val press = Notifications.Press.from(intent) ?: return
-        val pending = goAsync()
-        scope.launch {
-            try {
-                press(context.applicationContext, account, store, press)
-            } finally {
-                pending.finish()
-            }
-        }
-    }
-
-    companion object {
-        suspend fun press(context: Context, account: Account, store: ConnectionStore, p: Notifications.Press): Result<Unit> {
-            val result = account.pressAction(p.url, ActionRequest(p.buttonId, p.subject, store.deviceId, p.exp, p.token))
-            if (result.isSuccess) {
-                if (p.buttonId == "dismiss") NotificationManagerCompat.from(context).cancel(p.notificationId)
-                else Notifications.showOutcome(context, p.notificationId, p.title, "Done: ${p.label}", ok = true)
-            } else {
-                Notifications.showOutcome(context, p.notificationId, p.title,
-                    "Couldn't ${p.label.lowercase()}: ${result.exceptionOrNull()?.message ?: "try again"}", ok = false)
-            }
-            return result
-        }
+        PressWorker.enqueue(context.applicationContext, press)
     }
 }

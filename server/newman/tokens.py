@@ -92,13 +92,15 @@ def sign(purpose: str, subject: str, device_id: str, ttl_s: int) -> tuple[int, s
     return exp, _mac(purpose, subject, device_id, exp)
 
 
-def verify(purpose: str, subject: str, device_id: str, exp: str | int | None, token: str | None) -> bool:
+def verify(purpose: str, subject: str, device_id: str, exp: str | int | None, token: str | None,
+           grace_s: int = 0) -> bool:
+    """`grace_s`: still accepted that long after it expired (a phone's queued press report)."""
     if not (device_id and exp and token):
         return False
     try:
         exp_i = int(exp)
     except (TypeError, ValueError):
         return False
-    if exp_i < time.time():
+    if exp_i + grace_s < time.time():
         return False
     return hmac.compare_digest(_mac(purpose, subject, device_id, exp_i), token)

@@ -132,6 +132,14 @@ class ConnectionStore private constructor(private val prefs: SharedPreferences) 
         get() = prefs.getString(KEY_PUSH_CATEGORIES, null)
         set(v) = edit { putString(KEY_PUSH_CATEGORIES, v) }
 
+    /**
+     * Notification-button press reports not delivered to the hub yet (a JSON list of report JSONs;
+     * each carries its push's action token, hence kept here, encrypted). Not touched by sign-out.
+     */
+    var pressReportsJson: String?
+        get() = prefs.getString(KEY_PRESS_REPORTS, null)
+        set(v) { prefs.edit().putString(KEY_PRESS_REPORTS, v).apply() }
+
     fun signOut() = edit {
         remove(KEY_TOKEN)
         remove(KEY_USER_NAME)
@@ -155,6 +163,7 @@ class ConnectionStore private constructor(private val prefs: SharedPreferences) 
         private const val KEY_LOCAL = "hub_local_url"
         private const val KEY_OUTSIDE = "hub_outside_url"
         private const val KEY_CHOSEN = "chosen_url"
+        private const val KEY_PRESS_REPORTS = "press_reports_pending"
 
         @Volatile private var instance: ConnectionStore? = null
 

@@ -4,6 +4,9 @@
 # Folders are Unraid's (/mnt/cache/appdata/...): elsewhere change them to yours.
 # No secrets belong in this file: Newman makes and keeps its own (data folder: .token_secret,
 # .local_token), passwords are entered in the dashboard, and push keys are files in keys/.
+# One project name wherever this file is run from (keeps the same containers, never duplicates).
+name: newman
+
 services:
   newman:
     image: ghcr.io/nimaste/newman:latest   # published by .github/workflows/release.yml (private repo: docker login ghcr.io)
@@ -67,9 +70,6 @@ services:
     image: lscr.io/linuxserver/socket-proxy:latest
     container_name: docker-socket-proxy
     restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /run
     ports:
       - "127.0.0.1:2375:2375"
     volumes:

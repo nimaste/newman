@@ -9,15 +9,18 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import ca.nimaste.newman.core.settings.ConnectionStore
 import ca.nimaste.newman.data.Account
-import ca.nimaste.newman.push.ActionReceiver
+import ca.nimaste.newman.push.ButtonPress
 import ca.nimaste.newman.push.LiveStatusNotifier
 import ca.nimaste.newman.push.Notifications
+import ca.nimaste.newman.push.PressReports
 import ca.nimaste.newman.security.BiometricGate
 import ca.nimaste.newman.ui.AppViewModel
 import ca.nimaste.newman.ui.NewmanRoot
 import ca.nimaste.newman.ui.OpenAlert
 import ca.nimaste.newman.ui.theme.NewmanTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -28,6 +31,9 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var account: Account
     @Inject lateinit var store: ConnectionStore
+    @Inject lateinit var buttonPress: ButtonPress
+    @Inject lateinit var pressReports: PressReports
+    @Inject lateinit var scope: CoroutineScope
 
     private val app: AppViewModel by viewModels()
 
@@ -88,9 +94,16 @@ class MainActivity : FragmentActivity() {
             lifecycleScope.launch {
                 if (press.sensitive && store.biometricsEnabled &&
                     !BiometricGate.confirm(this@MainActivity, "${press.label}?", press.title)) return@launch
-                val r = ActionReceiver.press(applicationContext, account, store, press)
+                // Sent from the app's own scope: leaving the app mid-press doesn't cut it short.
+                val r = scope.async { buttonPress.run(press, launchState = "foreground", workNote = "sent from the open app") }.await()
                 app.toast(if (r.isSuccess) "Done: ${press.label}" else (r.exceptionOrNull()?.message ?: "That didn't work"), r.isSuccess)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Press reports the hub didn't get yet (no address answered when the button was pressed).
+        scope.launch { pressReports.resend() }
     }
 }

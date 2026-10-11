@@ -807,7 +807,7 @@ what Newman needs:
 
 ```bash
 docker run -d --name docker-socket-proxy --restart unless-stopped \
-  --read-only --tmpfs /run -p 127.0.0.1:2375:2375 \
+  -p 127.0.0.1:2375:2375 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e CONTAINERS=1 -e EVENTS=1 -e PING=1 -e VERSION=1 \
   -e POST=1 -e ALLOW_START=1 -e ALLOW_STOP=1 -e ALLOW_RESTARTS=1 \

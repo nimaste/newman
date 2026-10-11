@@ -1154,7 +1154,34 @@ plug" answer is the same: checked at once, `{"ok": true, "accepted": true, "char
 Every press is logged on arrival with its outcome (accepted / done / refused 401 / refused 409 and why).
 
 The apps send a press to the hub's address in use (home or outside, with the client certificate and Cloudflare
-headers), then its other address, and the push's `action_url` only as a last resort - each try up to 8 s.
+headers), then its other address, and the push's `action_url` only as a last resort. The iPhone app sends each try
+on a fresh connection, the first up to 20 s and the others up to 8 s, all within about 27 s and the background
+time iOS gives it (it holds a background task for the press).
+
+`POST /api/public/press-report` - after every press the phone app (iPhone and Android) reports what it saw, signed like the press
+(`deviceId`, `subject`, `exp`, `token` of that push; accepted up to 7 days after the token expired, since the
+phone queues a report it couldn't send and retries when the app is next opened) or with a signed-in session:
+`{"id", "button", "subject", "deviceId", "exp", "token", "ok", "outcome", "summary", "appVersion",
+"launchState", "sinceLaunchSeconds", "backgroundExpired", "actionURL", "at", "attempts": [{"at", "url",
+"appState", "backgroundLeft", "timeoutSeconds", "ms", "status"?, "error"?: {"domain", "code", "description",
+"underlying", "streamCode", "streamDomain", "failingHost", "path"}, "certChallenges", "certAvailable",
+"otherChallenges", "metrics"?: {"transactions", "dnsStart", "dnsEnd", "connectStart", "connectEnd",
+"secureStart", "secureEnd", "requestStart", "requestEnd", "responseStart", "responseEnd" (ms after the
+fetch start), "remoteAddress", "remotePort", "localAddress", "networkProtocol", "reusedConnection",
+"proxyConnection", "cellular", "expensive", "constrained"}}]}` → `{"ok": true}` (`"duplicate": true` when
+the same `id` came already - the phone sends it to all the hub's addresses at once) · 401 bad token. URLs
+are scheme, host, port and path only. A failed press is logged as one WARNING line per try ("Press report
+from … - try 1/3 http://10.1.1.2:8093/api/public/actions at 21:00:04 (background, 29.4 s background left,
+20 s allowed): 20004 ms, NSURLErrorDomain -1001 … ; cert challenges 0; dns - connect 1-? tls - …"); a press
+that worked as one INFO line. Successful presses carry no `attempts`, only the `summary`. The Android
+app sends the same fields (`appVersion` "Android …"): `error.domain` is the exception's class, `code` the
+errno underneath (0 if none), `underlying` its causes and `path` the phone's network; `metrics` come from
+OkHttp's events; `backgroundLeft` is always absent; `certChallenges` is 1 when the client certificate was
+sent; `launchState` is the process state at the tap plus how long the work waited ("background +0.3s"),
+and `backgroundExpired` means Android stopped the work (android/README.md → Push notifications).
+
+`GET /api/diagnostics/press` (admin) - the last 50 press reports, newest first (in memory: gone after a
+restart), without their tokens.
 
 A button is only accepted if it was one of the buttons of that run, so a token can never trigger
 a command the automation didn't offer.

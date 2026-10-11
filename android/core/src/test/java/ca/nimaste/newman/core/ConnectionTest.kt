@@ -96,7 +96,7 @@ class ConnectionTest {
         assertTrue(ActionRoutes.tryNext(null))
         assertTrue(ActionRoutes.tryNext(502) && ActionRoutes.tryNext(530))
         assertFalse(ActionRoutes.tryNext(200) || ActionRoutes.tryNext(401) || ActionRoutes.tryNext(409))
-        assertTrue(ActionRoutes.ATTEMPT_MS * 3 < 30_000)
+        assertTrue(ca.nimaste.newman.core.push.PressTiming.BUDGET_SECONDS < 30)
     }
 
     @Test

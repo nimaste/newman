@@ -246,10 +246,22 @@ image and the Android APKs (README → Development → Releases has every secret
   the switch is in Me. Notification buttons marked sensitive use `.authenticationRequired`.
 - Notification buttons (`PushManager.perform`) post `{button, subject, deviceId, exp, token}` to
   `/api/public/actions` at the hub address in use, then the hub's other address, and the push's own
-  `action_url` last (each try up to 8 s, with the client certificate and Cloudflare headers). The hub
-  answers at once (a device button's commands run after the reply); a refusal comes back as a local
-  notification with the hub's words, and a command that fails later arrives as a push from the hub
-  ("Couldn't lock Side Door").
+  `action_url` last, with the client certificate and Cloudflare headers. Each try runs on its own
+  short-lived ephemeral session (`PressProbe`: a fresh connection, never one of the shared session's),
+  the first up to 20 s and the others up to 8 s, all within about 27 s and iOS's remaining background
+  time; the app holds a background task (`BackgroundWork`) until the press and its report are done.
+  The hub answers at once (a device button's commands run after the reply); a refusal comes back as a
+  local notification with the hub's words, and a command that fails later arrives as a push from the
+  hub ("Couldn't lock Side Door").
+- Every press is reported to the hub (`POST /api/public/press-report`, signed with the push's token):
+  for a failed press each try's address (no query), app state, background time left, duration, HTTP
+  status or error (domain/code, underlying error, CFStream code, failing host, network path), client
+  certificate challenges and whether a certificate was stored, and the URLSessionTaskMetrics timings
+  (DNS, connect, TLS, request, response, remote address, protocol, reused/proxy); a press that worked
+  sends one summary line. The hub logs it (WARNING per failed try) and keeps the last 50 for
+  `GET /api/diagnostics/press`. A report is queued in UserDefaults first and sent to all of the hub's
+  addresses at once; one that doesn't get through is sent again when the app next comes to the
+  foreground. The same lines go to the unified log (subsystem `ca.nimaste.newman`, category `press`).
 - Notification categories (which buttons a push shows) are registered by the app only
   (`PushCategories`): every set from `GET /api/push/categories` at launch, on coming to the foreground
   and on background wakes (a silent push, a location event; at most every 15 minutes). A set the app

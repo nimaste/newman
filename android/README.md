@@ -45,6 +45,7 @@ android/
     MainActivity, NewmanApp, di/AppModule, data/Account, data/PeopleRepository, data/TodayRepository
     location/   LocationSharing (settings + reports), LocationTracker (fused / LocationManager), receivers
     push/       NewmanMessagingService (FCM, incl. the silent "locate"), ActionReceiver, Notifications,
+                ButtonPress (PressWorker, PressReports: notification buttons + press reports),
                 LiveStatusNotifier + LiveActionReceiver (live statuses as ongoing notifications)
     security/   BiometricGate
     ui/         onboarding, home (tabs + 4-column grid), today (Today card), people (list + osmdroid map),
@@ -108,7 +109,10 @@ only for sensitive taps, the most-used ranking, spoken labels, the font-size cap
 same-hub check); live statuses (`LiveStatusesTest`: the socket's list as notifications - title, state,
 counting time, buttons named per device and at most three, "N more" = listed devices + `more`, tapping
 opens the one device; ended ones staying until `dismissAt`, moved ones and unlisted ones cancelled; FCM
-changes).
+changes); notification-button presses (`PressReportTest`: the per-try times and budget, the press
+report's JSON against the hub's schema, redacted URLs, where reports go, the queue limit, and against
+MockWebServer the route order, a refused / 502 / answered try, a fresh connection per try and the
+hub's own answer being final).
 
 `./gradlew :phone:testDebugUnitTest` runs Compose semantics spot checks on the JVM (Robolectric,
 `phone/src/test`): icon-only buttons have a label and a 48dp touch area, switches say what they switch and
@@ -142,11 +146,38 @@ just without notifications (the Me screen says so). To turn it on:
 4. Rebuild. The app registers with `POST /api/devices/register` after sign-in and whenever FCM
    rotates its token, and shows the hub's data-only messages itself: the snapshot picture, the
    channel (time-sensitive / doorbell / normal) and the action buttons from the payload (or from
-   `GET /api/push/categories`). Plain buttons run straight from the notification shade: posted to
+   `GET /api/push/categories`). Plain buttons run straight from the notification shade: the
+   receiver (`ActionReceiver`) only hands the press to **expedited WorkManager work** (`PressWorker`,
+   `push/ButtonPress.kt`; a receiver may be stopped ~10 s after the tap, too soon for three tries).
+   Out of expedited quota it runs as ordinary work; on Android 11 and older it runs as a short
+   foreground service with a silent "Sending “Lock Laundry”…" notice on the Live status channel. The
+   same button tapped twice while the first is still going runs once. The press is posted to
    `/api/public/actions` at the hub address in use, then the other address, and the payload's
-   `action_url` last (`ActionRoutes`, up to 8 s each); the hub answers at once and pushes back a
-   command that fails later ("Couldn't lock Side Door"). Sensitive ones (unlock, open, disarm) open
-   the app and ask for the fingerprint / screen lock first.
+   `action_url` last (`ActionRoutes`), the same way as the iPhone app: **each try on a fresh
+   connection** (`PressProbe`: a client from the hub client's `newBuilder()` - same certificate,
+   trust and Cloudflare headers - with its own empty `ConnectionPool(0, 1 s)` and dispatcher, so a
+   press never waits behind the live socket, video or pictures), the first try up to 20 s, the others
+   up to 8 s, 27 s in all (`PressTiming`, = iOS `PushPayload.attemptSeconds`). The hub answers at once
+   and pushes back a command that fails later ("Couldn't lock Side Door"); its first own answer
+   (done, or refused with its reason) is final. The notification shows the outcome. Sensitive ones
+   (unlock, open, disarm) open the app and ask for the fingerprint / screen lock first, then run
+   the same press from the app.
+
+   **Press reports.** After every press the app sends `POST /api/public/press-report` (API.md; the
+   iPhone app's field names, so the hub logs both phones alike): each try's start, URL (scheme, host,
+   port, path only), process state (`appState`: foreground / fg service / visible / perceptible /
+   service / background), time allowed, ms, HTTP status or the exception (`domain` = its class,
+   `code` = the errno underneath, `underlying` = its causes, `path` = the network: "wifi validated",
+   "cellular", "… blocked"), whether the client certificate was sent (`certChallenges` 1 /
+   `certAvailable` true; `false` = TLS without a stored certificate) and OkHttp's event timings
+   (`metrics`: dns, connect, TLS, request, response in ms after the call started, remote / local
+   address, protocol, reused connection, proxy, cellular, metered, Data Saver). `launchState` is the
+   process state at the tap ("cold" when Android started the app for the button) plus how long the
+   work waited ("background +0.3s"); `sinceLaunchSeconds` the process's uptime; `backgroundExpired`
+   that Android stopped the work; the summary says whether it ran as a foreground service or
+   expedited. Successful presses carry the summary only. Reports are queued first (encrypted, at
+   most 10), sent to all the hub's addresses at once (4 s each) and re-sent when the app comes to
+   the foreground; the hub keeps a report once by its `id`.
    Tapping a camera alert's notification (it carries `clip` / `frigate_event_id`) finds that alert in
    `GET /api/alerts` (`CameraClip.matchAlert`) and opens its camera on it, over the Alerts tab; the
    camera screen plays an alert's video (`AlertVideo`): `api/clips/<integration>/<clip id>`
