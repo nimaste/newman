@@ -1014,6 +1014,27 @@ Built in the dashboard as **When → Only if → Then**, read back as a plain se
   and a **live status** on phones (below) of any devices — until they're no longer in a state, for a
   while, or until something else happens (a device changes, an event, a time).
 
+**Follow-ups, one per change.** A notification waiting on devices tells you about each one as it's
+taken care of: with Side Door and Laundry both unlocked, locking Laundry (the *Lock* button, by hand, or
+at the keypad) gets you “Chris locked Laundry.” right then, and Side Door later gets its own. Doors
+locked together — *Lock all*, or two within about 10 seconds — share one (“Chris locked Side Door and
+Laundry.”). A door that's been locked is always told, even if the alert is then dismissed or runs out;
+reminders only name the doors still open.
+
+**Reminders.** *If nobody does, remind again after* 15 minutes, 30 minutes, 1 hour or 2 hours, *up to*
+1–5 times (3 unless you pick otherwise; automations made before the choice existed remind 3 times).
+Snoozing replaces the reminders still to come: when the snooze ends you get one reminder, then the usual
+ones start over (up to the same number again). A run never outlives 12 hours.
+
+**One notification per person per change.** When a device change answers a notification that's still
+open with you — the nightly lock check is waiting for Laundry, and you tap *Lock* (or lock it by hand, or
+at the keypad) — that conversation's follow-up (“Chris locked Laundry.”) is the one you get. Any other
+automation notifying about that same change (say, a *tell me whenever a lock changes* one) still runs —
+its actions, its Activity entry, its run log (“Not sent to Chris: covered by Nightly lock check's
+follow-up”) — but doesn't push to the people the follow-up is for; anyone it notifies who wasn't in that
+conversation still gets it. Two ordinary automations about the same change, with no conversation open,
+both notify as usual. Wall-tablet alerts are unaffected (follow-ups only go to phones).
+
 Every reading a device reports is available — not just the ones Newman has a friendly name for.
 
 ## Upkeep and Today

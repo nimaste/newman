@@ -4362,6 +4362,44 @@ select.blank:hover {
 .nsub-title .input {
   width: 220px;
 }
+/* "If nobody does, remind again after [30 minutes] up to [3] times": the words stay outside the
+   selects, each select is as wide as its value (never clipped) and the line wraps between pieces. */
+.remind-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.remind-times {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.remind-line .remind-select {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+/* Phone width: the notification's options use the row's full width, each label above its options. */
+@media (max-width: 640px) {
+  .brow-sub:has(> .notify-sub) {
+    padding-left: 0;
+  }
+  .nsub {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .nsub-label {
+    width: auto;
+    padding-top: 0;
+  }
+  .nsub-checks .inline-form {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+}
 .people-inline {
   display: inline-flex;
   flex-wrap: wrap;

@@ -78,6 +78,9 @@ targets:
         # Location Push Service Extension (granted by Apple, enabled on the App ID). It belongs to the
         # app: the app calls startMonitoringLocationPushes and owns the token; the extension needs none.
         com.apple.developer.location.push: true
+        # Lets pushes marked time-sensitive (an automation's "Time Sensitive" option, the lock check)
+        # break through Focus. Without it iOS silently treats them as ordinary notifications.
+        com.apple.developer.usernotifications.time-sensitive: true
         com.apple.security.application-groups:
           - group.ca.nimaste.newman
         keychain-access-groups:

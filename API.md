@@ -787,7 +787,7 @@ else is 404; OpenFreeMap unreachable with nothing kept → 502.
   },
   "autoCommand": {"enabled": false, "command": "lock"},
   "recipients": ["p_chris", "p_marlina"],
-  "followUp": {"enabled": true, "message": "{person} locked {devices}.", "remindMinutes": 30}
+  "followUp": {"enabled": true, "message": "{person} locked {devices}.", "remindMinutes": 30, "remindTimes": 3}
 }
 ```
 
@@ -849,15 +849,33 @@ automation ends it. See [Live statuses](#live-statuses).
 | `<command>:<entityId>` | "Lock Side Door" | runs that command on that entity |
 | `<command>_all` | "Lock all" | runs it on every *pending* entity of the run |
 | `snooze:<minutes>` | "Snooze 1 hour" | re-evaluates after N minutes; re-sends if still pending |
-| `dismiss` | "Dismiss" | ends the run, no follow-up reminder |
+| `dismiss` | "Dismiss" | ends the run, no more reminders (an entity already confirmed still gets its follow-up) |
 | `open` | "Open Newman" | opens the app (no server call) |
 
 With `onlyPending`, a run only shows buttons for entities that were pending (e.g. unlocked) when it fired;
 `*_all` is dropped when fewer than two are pending.
 
-**Follow-up** — once every pending entity reaches the state its command confirms to (e.g. LOCKED),
-send `message` to all recipients. `{person}` = who tapped (or "Someone at the door" when done by hand),
-`{devices}` = "Side Door and Laundry". `remindMinutes` re-sends the alert if still pending (null = never).
+**Follow-up** — sent to all recipients per pending entity as each reaches the state its command
+confirms to (e.g. LOCKED): `{person}` = who tapped (or "Someone at the door" when done by hand),
+`{devices}` = the entity just confirmed ("Laundry"). Entities confirmed within 10 s of each other (Lock
+all, or two by hand) share one follow-up (`{devices}` = "Side Door and Laundry"); when the last pending
+one is confirmed, whatever is waiting goes out at once and the run resolves. A confirmed entity is
+always told: if the run is dismissed or expires before its follow-up went out, it's sent then.
+Reminders (`remindMinutes`, a whole number of minutes, null = never; the editor offers 15, 30, 60 and
+120) name and offer buttons only for the entities still pending. `remindTimes` (1-5; null or missing = 3,
+which is what older automations get) caps how many a run sends; saving anything else is a 400
+(`Remind again 1 to 5 times`). A snooze (`snooze:N`) replaces the reminders still to come: one reminder
+when it ends (not counted), then up to `remindTimes` more every `remindMinutes`. Runs expire after 12 h.
+The summary says it: "If not, remind again every 30 minutes, up to 3 times." ("remind once more after
+an hour" for 1).
+
+**One notification per person per change** — another automation started by the same state change (same
+entity, same new state, within 15 s) doesn't push to the people a follow-up tells about it (sent, or
+queued to go out); it still runs (actions, Activity event, wall alert) and its run log says `Not sent to
+Chris: covered by Nightly lock check's follow-up`; its other recipients are notified as usual. If it
+gets the change before the run has (the run is still waiting for that entity), it's held for those
+people (`Held for Chris: …`) and, 15 s later, sent to any of them no follow-up told after all (`Sent late
+to Chris …`). Two automations with no run waiting both notify.
 
 **Endpoints**
 

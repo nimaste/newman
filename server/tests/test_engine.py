@@ -10,8 +10,10 @@ import asyncio
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ.setdefault("TOKEN_SECRET", "test-secret")
 
@@ -200,6 +202,317 @@ class NightlyTests(Base):
         self.assertEqual(self.store.runs(auto["id"])[0]["status"], "dismissed")
 
 
+def lock_watcher(name="Lock Notification", recipients=("p_chris", "p_marlina")):
+    """A plain "tell me every time a lock changes" automation (the user's own setup)."""
+    return {"name": name, "trigger": {"type": "state", "entities": [LAUNDRY_ID, SIDE_ID], "to": "any"},
+            "condition": {"mode": "always"}, "notify": {"enabled": True}, "recipients": list(recipients)}
+
+
+class OneNotificationPerChangeTests(Base):
+    """A device change that answers an open conversation (a run with a follow-up) is told by that
+    run's follow-up - one per device as each is confirmed, one combined when they're confirmed
+    together - and other automations about the same change stay quiet for those people. A change
+    is never left untold: queued follow-ups go out on dismiss/expiry, and a notification held for a
+    follow-up that doesn't come is sent late."""
+
+    def patch(self, name, value):
+        self.addCleanup(setattr, engine_mod, name, getattr(engine_mod, name))
+        setattr(engine_mod, name, value)
+
+    def kinds_bodies(self, mark, device="test-p_chris"):
+        return [(m["kind"], m["body"]) for m in self.since(mark, device)]
+
+    def since(self, mark, device="test-p_chris"):
+        """What `device` got after the outbox held `mark` items (the outbox is newest first), in order."""
+        new = list(self.notifier.outbox)[:len(self.notifier.outbox) - mark]
+        return [m for m in reversed(new) if m["deviceId"] == device]
+
+    def watcher_log(self, auto):
+        return [line["text"] for r in self.store.runs(auto["id"]) for line in r["log"]]
+
+    async def lock(self, dev):
+        await self.msg(f"ring/{LOC}/alarm/{dev}/lock/state", "LOCKED")
+        await asyncio.sleep(0.05)
+
+    async def test_pressing_lock_gives_each_person_one_notification(self):
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        watcher = self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.tap(note, f"lock:{LAUNDRY_ID}")
+        await self.lock(LAUNDRY)
+        for device in ("test-p_chris", "test-p_marlina"):
+            got = self.since(mark, device)
+            self.assertEqual([(m["kind"], m["body"]) for m in got], [("followup", "Chris locked Laundry.")], device)
+        # The watcher still ran: its run log and Activity entry are there, only the push was skipped.
+        self.assertIn("Not sent to Chris and Marlina: covered by Nightly lock check's follow-up",
+                      self.watcher_log(watcher))
+        self.assertTrue(any(e["title"] == "Laundry locked" for e in self.store.events(kind="automation")))
+
+    async def test_lock_all_on_two_locks_one_follow_up_and_no_watcher_pushes(self):
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.tap(note, "lock_all")
+        await self.lock(SIDE)
+        await self.lock(LAUNDRY)
+        for device in ("test-p_chris", "test-p_marlina"):
+            got = self.since(mark, device)
+            self.assertEqual([(m["kind"], m["body"]) for m in got],
+                             [("followup", "Chris locked Side Door and Laundry.")], device)
+
+    async def test_locked_by_hand_while_pending_gives_one(self):
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        mark = len(self.notifier.outbox)
+        await self.lock(LAUNDRY)  # the thumb-turn
+        got = self.since(mark)
+        self.assertEqual([(m["kind"], m["body"]) for m in got], [("followup", "Someone at the door locked Laundry.")])
+
+    async def test_no_open_conversation_watcher_sends(self):
+        await self.boot(laundry="UNLOCKED")
+        self.engine.save(nightly())  # saved but not run tonight
+        watcher = self.engine.save(lock_watcher())
+        await self.lock(LAUNDRY)
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual([m["title"] for m in self.outbox(device)], ["Laundry locked"])
+        self.assertFalse(any(t.startswith("Not sent") for t in self.watcher_log(watcher)))
+
+    async def test_watcher_only_recipient_still_gets_it(self):
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly(recipients=["p_chris"]))
+        watcher = self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.tap(note, f"lock:{LAUNDRY_ID}")
+        await self.lock(LAUNDRY)
+        self.assertEqual([m["kind"] for m in self.since(mark)], ["followup"])
+        self.assertEqual([(m["kind"], m["title"]) for m in self.since(mark, "test-p_marlina")],
+                         [("automation", "Laundry locked")])
+        log = self.watcher_log(watcher)
+        self.assertIn("Not sent to Chris: covered by Nightly lock check's follow-up", log)
+        self.assertTrue(any(t.startswith("Notified Marlina (1 phone)") for t in log))
+
+    async def test_watcher_before_the_follow_up(self):
+        # The watcher gets to the change before the run has seen it: the run still waits for Laundry.
+        # Its notification is held; the follow-up then covers it, so it's never sent.
+        self.patch("ANSWERED_WINDOW_S", 0.3)
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        watcher = self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        mark = len(self.notifier.outbox)
+        await self.engine.trigger(watcher, {"type": "state", "entity": LAUNDRY_ID, "from": "UNLOCKED",
+                                            "to": "LOCKED", "changedAt": time.time()})
+        self.assertEqual(self.since(mark), [])
+        self.assertIn("Held for Chris and Marlina: Nightly lock check's follow-up should cover it",
+                      self.watcher_log(watcher))
+        await self.lock(LAUNDRY)
+        await asyncio.sleep(0.4)  # past the hold
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual(self.kinds_bodies(mark, device), [("followup", "Someone at the door locked Laundry.")])
+        self.assertIn("Held notification covered by the follow-up", self.watcher_log(watcher))
+
+    async def test_held_watcher_sent_late_when_the_run_is_dismissed_first(self):
+        # Held for a follow-up that never comes (the run is dismissed before it sees the change):
+        # the watcher's notification goes out late instead - the change is still told, once.
+        self.patch("ANSWERED_WINDOW_S", 0.3)
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        watcher = self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.engine.trigger(watcher, {"type": "state", "entity": LAUNDRY_ID, "from": "UNLOCKED",
+                                            "to": "LOCKED", "changedAt": time.time()})
+        await self.tap(note, "dismiss")
+        await asyncio.sleep(0.4)
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual([m["kind"] for m in self.since(mark, device)], ["automation"], device)
+        self.assertTrue(any(t.startswith("Sent late to Chris and Marlina (2 phones)") for t in self.watcher_log(watcher)))
+
+    async def test_partial_lock_then_dismiss_reports_it_once(self):
+        # Two doors pending, only Laundry locked, then the alert is dismissed: Laundry is still told.
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        watcher = self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.tap(note, f"lock:{LAUNDRY_ID}")
+        await self.lock(LAUNDRY)
+        self.assertEqual(self.since(mark), [])  # waiting a moment in case Side Door follows
+        await self.tap(note, "dismiss")
+        await asyncio.sleep(0.05)
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual(self.kinds_bodies(mark, device), [("followup", "Chris locked Laundry.")], device)
+        self.assertIn("Not sent to Chris and Marlina: covered by Nightly lock check's follow-up",
+                      self.watcher_log(watcher))
+        self.assertEqual(self.store.runs(nightly_auto["id"])[0]["status"], "dismissed")
+
+    async def test_partial_lock_then_the_other_later_gives_one_follow_up_each(self):
+        self.patch("FOLLOW_UP_COMBINE_S", 0.1)
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        watcher = self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.tap(note, f"lock:{LAUNDRY_ID}")
+        await self.lock(LAUNDRY)
+        await asyncio.sleep(0.2)
+        self.assertEqual(self.kinds_bodies(mark), [("followup", "Chris locked Laundry.")])
+        self.assertIn(note["action_subject"], self.engine.open_runs)
+        await self.tap(note, f"lock:{SIDE_ID}")
+        await self.lock(SIDE)
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual(self.kinds_bodies(mark, device),
+                             [("followup", "Chris locked Laundry."), ("followup", "Chris locked Side Door.")], device)
+        self.assertEqual(sum(t.startswith("Not sent to Chris and Marlina") for t in self.watcher_log(watcher)), 2)
+        self.assertEqual(self.store.runs(nightly_auto["id"])[0]["status"], "resolved")
+
+    async def test_locked_by_hand_while_another_is_pending_is_told_on_its_own(self):
+        self.patch("FOLLOW_UP_COMBINE_S", 0.1)
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        self.engine.save(lock_watcher())
+        run = await self.engine.trigger(nightly_auto, {"type": "time"})
+        mark = len(self.notifier.outbox)
+        await self.lock(LAUNDRY)  # the thumb-turn
+        await asyncio.sleep(0.2)
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual(self.kinds_bodies(mark, device), [("followup", "Someone at the door locked Laundry.")])
+        self.assertIn(run["id"], self.engine.open_runs)  # still waiting for Side Door
+
+    async def test_two_locked_by_hand_together_share_one_follow_up(self):
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        mark = len(self.notifier.outbox)
+        await self.lock(LAUNDRY)
+        await self.lock(SIDE)
+        for device in ("test-p_chris", "test-p_marlina"):
+            self.assertEqual(self.kinds_bodies(mark, device),
+                             [("followup", "Someone at the door locked Side Door and Laundry.")], device)
+
+    async def test_reminder_names_only_the_unconfirmed(self):
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": 30}))
+        run = await self.engine.trigger(nightly_auto, {"type": "time"})
+        await self.lock(LAUNDRY)
+        await self.engine._remind(run["id"])
+        reminder = self.outbox()[0]
+        self.assertEqual(reminder["title"], "Reminder · Nightly lock check")
+        self.assertIn("Side Door", reminder["body"])
+        self.assertNotIn("Laundry", reminder["body"])
+        self.assertEqual([b["label"] for b in json.loads(reminder["buttons"])][0], "Lock Side Door")
+
+    async def _reminders_sent(self, run_id):
+        """Let the run's reminder timers play out at once; how many reminders Chris got."""
+        real = asyncio.sleep
+
+        async def fast(_s, *a, **k):
+            await real(0)
+        with mock.patch.object(asyncio, "sleep", fast):
+            await asyncio.gather(*self.engine._timers.get(run_id, []), return_exceptions=True)
+        return len([m for m in self.outbox() if m["title"].startswith("Reminder ·")])
+
+    async def test_reminders_stop_after_remind_times(self):
+        await self.boot(side="UNLOCKED")
+        for times, sent in ((1, 1), (2, 2), (5, 5)):
+            self.notifier.outbox.clear()
+            auto = self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": 15, "remindTimes": times}))
+            self.assertEqual(auto["followUp"]["remindTimes"], times)
+            run = await self.engine.trigger(auto, {"type": "time"})
+            self.assertEqual(await self._reminders_sent(run["id"]), sent, times)
+            self.assertIn(run["id"], self.engine.open_runs)  # still pending: it just stops reminding
+            self.engine.open_runs.pop(run["id"])
+
+    async def test_older_automations_remind_three_times(self):
+        await self.boot(side="UNLOCKED")
+        saved = self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": 30}))
+        self.assertEqual(saved["followUp"]["remindTimes"], 3)
+        # One stored before remindTimes existed (not normalized again).
+        old = dict(saved, id="auto_old", followUp={"enabled": True, "message": "{person} locked {devices}.",
+                                                   "remindMinutes": 30})
+        self.engine.autos[old["id"]] = old
+        run = await self.engine.trigger(old, {"type": "time"})
+        self.assertEqual(await self._reminders_sent(run["id"]), engine_mod.MAX_REMINDERS)
+        self.assertEqual(engine_mod.MAX_REMINDERS, 3)
+
+    async def test_snooze_then_reminders_start_over(self):
+        await self.boot(side="UNLOCKED")
+        auto = self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": 15, "remindTimes": 2}))
+        run = await self.engine.trigger(auto, {"type": "time"})
+        await self.tap(self.outbox()[0], "snooze:60")
+        # The snoozed reminder, then the automation's 2.
+        self.assertEqual(await self._reminders_sent(run["id"]), 3)
+
+    async def test_remind_times_validation(self):
+        await self.boot()
+        for bad in (0, 6, -1, "three", 2.5, True):
+            with self.assertRaises(ValueError, msg=repr(bad)) as cm:
+                self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": 30, "remindTimes": bad}))
+            self.assertIn("Remind again 1 to 5 times", str(cm.exception))
+        for good, stored in ((1, 1), (5, 5), ("4", 4), (None, 3)):
+            auto = self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": 30, "remindTimes": good}))
+            self.assertEqual(auto["followUp"]["remindTimes"], stored)
+        with self.assertRaises(ValueError):
+            self.engine.save(nightly(followUp={"enabled": True, "remindMinutes": "soon"}))
+
+    async def test_expiry_still_tells_a_confirmed_device(self):
+        await self.boot(side="UNLOCKED", laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        run = await self.engine.trigger(nightly_auto, {"type": "time"})
+        mark = len(self.notifier.outbox)
+        await self.lock(LAUNDRY)
+        self.engine.open_runs[run["id"]]["startedAt"] -= engine_mod.RUN_TTL_S + 1
+        await self.engine._expire_runs()
+        self.assertEqual(self.kinds_bodies(mark), [("followup", "Someone at the door locked Laundry.")])
+        self.assertEqual(self.store.runs(nightly_auto["id"])[0]["status"], "expired")
+
+    async def test_watcher_after_the_follow_up(self):
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly())
+        watcher = self.engine.save(lock_watcher())
+        self.engine.autos[watcher["id"]]["enabled"] = False  # it gets the change by hand below, late
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        changed = time.time()
+        await self.lock(LAUNDRY)
+        self.assertEqual(self.engine.open_runs, {})  # the follow-up has gone out
+        mark = len(self.notifier.outbox)
+        trig = {"type": "state", "entity": LAUNDRY_ID, "from": "UNLOCKED", "to": "LOCKED", "changedAt": changed}
+        await self.engine.trigger(watcher, trig)
+        self.assertEqual(self.since(mark), [])
+        self.assertEqual(self.since(mark, "test-p_marlina"), [])
+        # A different change (later, or to another state) isn't covered.
+        await self.engine.trigger(watcher, dict(trig, changedAt=changed + 60))
+        await self.engine.trigger(watcher, dict(trig, to="UNLOCKED", changedAt=changed))
+        self.assertEqual(len(self.since(mark)), 2)
+
+    async def test_two_plain_watchers_both_send(self):
+        await self.boot(laundry="UNLOCKED")
+        self.engine.save(lock_watcher("Lock Notification"))
+        self.engine.save(lock_watcher("Lock log"))
+        await self.lock(LAUNDRY)
+        self.assertEqual(len(self.outbox()), 2)
+        self.assertEqual(len(self.outbox("test-p_marlina")), 2)
+
+    async def test_without_follow_up_the_watcher_sends(self):
+        # A run with buttons but no follow-up has nothing to tell them: the watcher does.
+        await self.boot(laundry="UNLOCKED")
+        nightly_auto = self.engine.save(nightly(followUp={"enabled": False}))
+        self.engine.save(lock_watcher())
+        await self.engine.trigger(nightly_auto, {"type": "time"})
+        note, mark = self.outbox()[0], len(self.notifier.outbox)
+        await self.tap(note, f"lock:{LAUNDRY_ID}")
+        await self.lock(LAUNDRY)
+        self.assertEqual([(m["kind"], m["title"]) for m in self.since(mark)], [("automation", "Laundry locked")])
+
+
 class TriggerTests(Base):
     async def test_state_trigger_lock_activity(self):
         await self.boot()
@@ -281,8 +594,20 @@ class DescribeTests(Base):
         self.assertEqual(out["summary"],
                          "At 9:00 PM every day, if any of Side Door or Laundry is unlocked, notify Chris and Marlina "
                          "with Lock Side Door, Lock Laundry, Lock all, Snooze 1 hour and Dismiss buttons. "
-                         "Once they're locked, tell everyone who did it. If not, remind again every 30 minutes.")
+                         "Once they're locked, tell everyone who did it. If not, remind again every 30 minutes, "
+                         "up to 3 times.")
         self.assertEqual(out["preview"]["followUp"], "Chris locked Side Door and Laundry.")
+
+    async def test_summary_remind_times(self):
+        await self.boot()
+        for fu, tail in (({"remindMinutes": 120, "remindTimes": 5}, "If not, remind again every 2 hours, up to 5 times."),
+                         ({"remindMinutes": 60, "remindTimes": 1}, "If not, remind once more after an hour."),
+                         ({"remindMinutes": 15, "remindTimes": 2}, "If not, remind again every 15 minutes, up to 2 times."),
+                         ({"remindMinutes": None, "remindTimes": 4}, "tell everyone who did it.")):
+            out = self.engine.describe(nightly(followUp={"enabled": True, **fu}))
+            self.assertTrue(out["summary"].endswith(tail), out["summary"])
+        out = self.engine.describe(nightly(followUp={"enabled": True, "remindMinutes": 30, "remindTimes": 6}))
+        self.assertIn("Remind again 1 to 5 times", out["errors"])
 
     async def test_errors(self):
         out = self.engine.describe({"trigger": {"type": "time", "days": []}, "condition": {"mode": "any", "entities": []}})

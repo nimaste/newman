@@ -6,6 +6,8 @@
 	<string>$(NEWMAN_APS_ENVIRONMENT)</string>
 	<key>com.apple.developer.location.push</key>
 	<true/>
+	<key>com.apple.developer.usernotifications.time-sensitive</key>
+	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.ca.nimaste.newman</string>

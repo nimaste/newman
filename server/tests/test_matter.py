@@ -367,7 +367,9 @@ class AddRemoveTests(MatterBase):
         self.assertEqual((new.kind, new.state, m.adding["deviceIds"]), ("switch", "off", [new.id]))
         self.assertEqual(m.adding["message"], "Smart plug P1: 1 switch.")
         self.assertEqual(self.saved, [])  # the code is never kept
-        self.assertNotIn("3497", repr(m.config) + repr(m.admin_details()))
+        dump = repr(m.config) + repr(m.admin_details())
+        for code in ("34970112332", "3497-011-2332"):  # the whole code, so a timestamp can't match by chance
+            self.assertNotIn(code, dump)
         paired = {d["id"]: d for d in m.admin_details()["pairedDevices"]}
         self.assertEqual((paired["12"]["name"], paired["12"]["network"], paired["12"]["entityIds"]),
                          ("Smart plug P1", "Wi-Fi", [new.id]))

@@ -105,11 +105,13 @@ function HoldBlank({ item, setItem, label }) {
   );
 }
 const REMIND = [
-  ['', "Don't remind"],
+  ['', 'never'],
   ['15', '15 minutes'],
   ['30', '30 minutes'],
   ['60', '1 hour'],
+  ['120', '2 hours'],
 ];
+const REMIND_TIMES = [1, 2, 3, 4, 5]; // the hub allows 1-5; older automations (none set) remind 3 times
 
 function daysPreset(days) {
   const d = [...(days || [])].sort().join();
@@ -1051,16 +1053,30 @@ function NotifyRow({ auto, patch, hub, people, choices }) {
                   </Check>
                   <input className="input input--sm" style={{ maxWidth: 260 }} value={f.message || ''} disabled={!f.enabled} onChange={(e) => setFollow({ message: e.target.value })} aria-label="Follow-up message" />
                 </span>
-                <label className="inline-form">
-                  <span className="muted">If nobody does,</span>
-                  <select className="select select--sm" value={f.remindMinutes ? String(f.remindMinutes) : ''} onChange={(e) => setFollow({ remindMinutes: e.target.value ? Number(e.target.value) : null })}>
-                    {REMIND.map(([v, label]) => (
+                <span className="remind-line">
+                  <span className="muted">If nobody does, remind again{f.remindMinutes ? ' after' : ''}</span>
+                  <select className="select select--sm remind-select" aria-label="Remind again after" value={f.remindMinutes ? String(f.remindMinutes) : ''} onChange={(e) => setFollow({ remindMinutes: e.target.value ? Number(e.target.value) : null })}>
+                    {/* An interval set elsewhere (the API) still shows as itself. */}
+                    {(f.remindMinutes && !REMIND.some(([v]) => v === String(f.remindMinutes)) ? [...REMIND, [String(f.remindMinutes), `${f.remindMinutes} minutes`]] : REMIND).map(([v, label]) => (
                       <option key={v} value={v}>
-                        {v ? 'remind again after ' + label : label}
+                        {label}
                       </option>
                     ))}
                   </select>
-                </label>
+                  {f.remindMinutes ? (
+                    <span className="remind-times">
+                      <span className="muted">up to</span>
+                      <select className="select select--sm remind-select" aria-label="How many times" value={String(f.remindTimes || 3)} onChange={(e) => setFollow({ remindTimes: Number(e.target.value) })}>
+                        {REMIND_TIMES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="muted">{(f.remindTimes || 3) === 1 ? 'time' : 'times'}</span>
+                    </span>
+                  ) : null}
+                </span>
               </div>
             </div>
           ) : null}
@@ -1546,7 +1562,7 @@ export default function AutomationEditor({ id, templateId, query }) {
               name: `${ent ? ent.name : 'Device'}: ${ev ? ev.label : startEvent}`,
               trigger: { type: 'event', entity: startEntity, event: startEvent },
               condition: { devices: [], between: null, days: null, dates: null },
-              followUp: { enabled: false, message: newAutomation().followUp.message, remindMinutes: null },
+              followUp: { enabled: false, message: newAutomation().followUp.message, remindMinutes: null, remindTimes: 3 },
               // A button press usually does something rather than notifying: start with one empty action.
               notify: { ...newAutomation().notify, enabled: false },
               actions: [{ entities: [], command: '' }],

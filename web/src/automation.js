@@ -21,7 +21,7 @@ export function newAutomation() {
     actions: [],
     autoCommand: { enabled: false, command: '' },
     recipients: [],
-    followUp: { enabled: false, message: DEFAULT_FOLLOW_MESSAGE, remindMinutes: null },
+    followUp: { enabled: false, message: DEFAULT_FOLLOW_MESSAGE, remindMinutes: null, remindTimes: 3 },
     // Show it on wall tablets: tablets [] = every wall tablet; style card | full | alarm.
     wall: { enabled: false, tablets: [], style: 'card', sound: true, wake: true },
     // Show a live status (iPhone Live Activity / Android ongoing notification) of devices to people
@@ -628,7 +628,12 @@ export function blockSummaries(a, hub, people, choices) {
 
   const f = a.followUp;
   let after = f.enabled ? 'Tell everyone who did it' : 'No follow-up';
-  if (f.remindMinutes) after += `${f.enabled ? '; r' : ' · R'}emind again after ${f.remindMinutes} min if still pending`;
+  if (f.remindMinutes) {
+    const times = f.remindTimes || 3;
+    const m = f.remindMinutes;
+    const every = m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} min`;
+    after += `${f.enabled ? '; r' : ' · R'}emind again after ${every} if still pending, up to ${times} time${times === 1 ? '' : 's'}`;
+  }
 
   const items = triggerItems(t);
   const whenEmpty = !items.length || items.some((i) => ((i.type === 'state' || i.type === 'property') && !i.entities.length) || (i.type === 'event' && !i.entity));

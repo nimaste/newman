@@ -32,14 +32,30 @@ ATTRIBUTION_WINDOW_S = 180   # a state change this soon after a button press is 
 WHO_WAIT_S = 8.0             # how long a notification waits for a device's "who" to be looked up
 COMMAND_CONFIRM_S = 60
 REFUSAL_SETTLE_S = 8  # how long a "reverted" state must hold before a command counts as refused
-MAX_REMINDERS = 3
+MAX_REMINDERS = d.DEFAULT_REMIND_TIMES  # reminders per run when an automation's followUp.remindTimes isn't set
 # How long a pressed button's command may take to be handed to the device's connection (the
 # connection's own limits come first, e.g. Ring's 10 s); then it counts as failed and the presser is told.
 PRESS_COMMAND_S = 20.0
+# Follow-ups go out per device as each pending one is confirmed ("Chris locked Laundry"); devices
+# confirmed this close together (Lock all, or two by hand) share one ("… locked Side Door and Laundry").
+# A device confirmed while others are still pending waits at most this long for company.
+FOLLOW_UP_COMBINE_S = 10.0
+# One notification per person per change: a device change a follow-up reports (sent, or queued and
+# certain to go out) isn't pushed again by another automation's notification about the same change
+# (same device, same new state, this close in time) to the people the follow-up is for. A notification
+# that gets there before the run has seen the change is held this long, then sent late to anyone no
+# follow-up told after all.
+ANSWERED_WINDOW_S = 15.0
 
 
 class ActionError(Exception):
     pass
+
+
+def _remind_times(auto: dict[str, Any]) -> int:
+    """How many reminders a run sends (followUp.remindTimes; older automations: MAX_REMINDERS)."""
+    n = auto["followUp"].get("remindTimes")
+    return n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= d.MAX_REMIND_TIMES else MAX_REMINDERS
 
 
 class Engine:
@@ -60,6 +76,11 @@ class Engine:
         self._holds: dict[str, dict[str, Any]] = {}   # "auto|entity" -> timed action waiting to be undone
         self._fired: set[str] = set()
         self._presses: set[asyncio.Task] = set()  # button presses whose commands are still being sent
+        # Device changes a follow-up reports (sent or queued): {entity, state, at, people, automationId, name}
+        self._answered: list[dict[str, Any]] = []
+        # Confirmed devices waiting to be reported together: run id -> {auto, devices, task}
+        self._batches: dict[str, dict[str, Any]] = {}
+        self._held: set[asyncio.Task] = set()  # notifications held for a follow-up that should cover them
         # Called with each alert an automation shows on wall tablets (the API sends it to them live).
         self.wall_listeners: list[Any] = []
         # Called (no arguments) after an automation is saved or deleted - the voice name index.
@@ -188,7 +209,7 @@ class Engine:
                     if key not in self._fired:
                         self._fired.add(key)
                         asyncio.create_task(self._item_fired(a, hits, {"type": "time"}))
-            self._expire_runs()
+            await self._expire_runs()
             if len(self._fired) > 5000:
                 self._fired.clear()
 
@@ -237,7 +258,7 @@ class Engine:
         for a in wants:
             if hits := d.state_item_hit(a, new):
                 await self._hit(a, hits, new, {"type": "state", "entity": new.id, "from": prev,
-                                               "to": new.state, "by": by, "how": how})
+                                               "to": new.state, "by": by, "how": how, "changedAt": changed_at})
 
     async def _on_values(self, old: Entity | None, new: Entity) -> None:
         """A device reported something new (temperature, humidity…): check "value" parts of triggers."""
@@ -435,9 +456,25 @@ class Engine:
             if auto["notify"].get("snapshot", True) and trig.get("type") == "event" and self.video:
                 # A device showing another camera's video: the picture comes from that camera.
                 snapshot = await self.video.snapshot(trig.get("entity") or "") or snapshot
-            sent = await self._notify(auto, run, title, body, snapshot)
-            note(f"Notified {join_names(d.people_names(self.store.people(), auto['recipients'])) or 'nobody'}"
-                 f" ({sent} phone{'s' if sent != 1 else ''})")
+            people = self.store.people()
+            # Someone already in a conversation this change answers hears it from that conversation's
+            # follow-up (sent or queued). If the run hasn't seen the change yet, hold it for them.
+            covered, expected = self._covered_by_follow_up(auto, trig)
+            to = [p for p in auto["recipients"] if p not in covered and p not in expected]
+            sent = await self._notify(auto, run, title, body, snapshot, people=to) if to else 0
+            for by in dict.fromkeys(covered.values()):
+                who = [p for p, n in covered.items() if n == by]
+                note(f"Not sent to {join_names(d.people_names(people, who)) or 'someone'}: covered by {by}'s follow-up")
+            for by in dict.fromkeys(expected.values()):
+                who = [p for p, n in expected.items() if n == by]
+                note(f"Held for {join_names(d.people_names(people, who)) or 'someone'}: {by}'s follow-up should cover it")
+            if expected:
+                t = asyncio.create_task(self._send_if_uncovered(auto, run, trig, list(expected), title, body, snapshot))
+                self._held.add(t)
+                t.add_done_callback(self._held.discard)
+            if to or not (covered or expected):
+                note(f"Notified {join_names(d.people_names(people, to)) or 'nobody'}"
+                     f" ({sent} phone{'s' if sent != 1 else ''})")
             self.store.log_event("automation", title, body, trig.get("entity"),
                                  {"runId": run["id"], "automationId": auto["id"],
                                   **({"snapshotId": snapshot} if snapshot else {}),
@@ -451,7 +488,7 @@ class Engine:
         if stays_open:
             self.open_runs[run["id"]] = run
             if (mins := auto["followUp"].get("remindMinutes")) and auto["followUp"].get("enabled"):
-                self._schedule(run["id"], self._remind_loop(run["id"], mins))
+                self._schedule(run["id"], self._remind_loop(run["id"], mins, _remind_times(auto)))
         else:
             run["status"] = "done"
         self.store.save_run(run)
@@ -565,8 +602,68 @@ class Engine:
         except ActionError as e:
             log.warning("Couldn't put %s back: %s", ent.name, e)
 
+    def _covered_by_follow_up(self, auto: dict[str, Any], trig: dict[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
+        """Which of this automation's recipients a follow-up tells about this device change, as
+        ({person: that automation's name} already covered, {person: name} expected).
+
+        Covered = the change is in a follow-up that has been sent or is queued (queued ones always
+        go out - when the combine window ends, when the rest are confirmed, or right away if the run
+        is dismissed or expires), so leaving these people out can never lose the change. Expected =
+        an open run with a follow-up is still waiting for this device to reach this state (this
+        notification got there first): those people are held, and told late if no follow-up ends up
+        reporting the change (see `_send_if_uncovered`)."""
+        if trig.get("type") != "state" or trig.get("manual") or not trig.get("entity") or trig.get("to") is None:
+            return {}, {}
+        eid, state = trig["entity"], trig["to"]
+        ent = self.hub.get(eid)
+        if ent and ent.state == state:
+            self._resolve_pending(ent)  # normally already done by the change itself; never misses one
+        covered = self._reported_to(auto, eid, state, float(trig.get("changedAt") or time.time()))
+        expected: dict[str, str] = {}
+        if ent and state != KINDS[ent.kind].active_state:  # the state that answers a pending device
+            for run in self.open_runs.values():
+                other = self.autos.get(run["automationId"])
+                if (other and other["id"] != auto["id"] and other["followUp"].get("enabled")
+                        and eid in run["pending"] and eid not in run["resolved"]):
+                    for p in run["recipients"]:
+                        if p not in covered and p in auto["recipients"]:
+                            expected.setdefault(p, other["name"])
+        return covered, expected
+
+    def _reported_to(self, auto: dict[str, Any], eid: str, state: str, at: float) -> dict[str, str]:
+        """{person: automation name} for this automation's recipients whom another automation's
+        follow-up (sent or queued) tells about `eid` reaching `state` around `at`."""
+        cutoff = time.time() - 4 * ANSWERED_WINDOW_S
+        self._answered = [r for r in self._answered if r["at"] >= cutoff]
+        covered: dict[str, str] = {}
+        for r in self._answered:
+            if (r["entity"] == eid and r["state"] == state and r["automationId"] != auto["id"]
+                    and abs(r["at"] - at) <= ANSWERED_WINDOW_S):
+                for p in r["people"]:
+                    if p in auto["recipients"]:
+                        covered.setdefault(p, r["name"])
+        return covered
+
+    async def _send_if_uncovered(self, auto: dict[str, Any], run: dict[str, Any], trig: dict[str, Any],
+                                 held: list[str], title: str, body: str, snapshot: str | None) -> None:
+        """A notification held for people an open run's follow-up should tell: once the window has
+        passed, send it to any of them no follow-up told after all (the run was dismissed or expired
+        first, or the device never got there) - a change is never left unreported."""
+        await asyncio.sleep(ANSWERED_WINDOW_S)
+        at = float(trig.get("changedAt") or time.time())
+        covered = self._reported_to(auto, trig["entity"], trig["to"], at)
+        late = [p for p in held if p not in covered]
+        names = join_names(d.people_names(self.store.people(), late)) or "someone"
+        if late:
+            sent = await self._notify(auto, run, title, body, snapshot, people=late)
+            text = f"Sent late to {names} ({sent} phone{'s' if sent != 1 else ''}): no follow-up covered it"
+        else:
+            text = "Held notification covered by the follow-up"
+        run["log"].append({"ts": time.time(), "text": text})
+        self.store.save_run(run)
+
     async def _notify(self, auto: dict[str, Any], run: dict[str, Any], title: str, body: str,
-                      snapshot: str | None = None) -> int:
+                      snapshot: str | None = None, people: list[str] | None = None) -> int:
         fired = self.hub.get(run["trigger"].get("entity") or "") if run["trigger"].get("type") == "event" else None
         # The event decides its alert sound (e.g. a doorbell press gets the distinct doorbell chime).
         sound = KINDS[fired.kind].event(run["trigger"].get("event") or "").sound if fired else ""
@@ -579,7 +676,7 @@ class Engine:
                   # Camera detections: lets the app open that exact event's clip in Optiq.
                   **{k: str(v) for k, v in run["trigger"].items() if k in ("frigate_event_id", "camera", "clip") and v}},
         )
-        return await self.notifier.send(n, people=auto["recipients"])
+        return await self.notifier.send(n, people=auto["recipients"] if people is None else people)
 
     async def _show_on_wall(self, auto: dict[str, Any], run: dict[str, Any], trig: dict[str, Any]) -> None:
         """Send the alert to wall tablets: the same words and buttons as the notification, plus the
@@ -646,31 +743,74 @@ class Engine:
         self.store.save_run(run)
         return True
 
-    async def _remind_loop(self, run_id: str, minutes: int) -> None:
-        for _ in range(MAX_REMINDERS):
+    async def _remind_loop(self, run_id: str, minutes: int, times: int = MAX_REMINDERS) -> None:
+        for _ in range(times):
             await asyncio.sleep(minutes * 60)
             if not await self._remind(run_id):
                 return
 
     async def _snoozed(self, run_id: str, minutes: int) -> None:
+        # A snooze replaces the reminders still to come: the snoozed reminder goes out when it ends
+        # (it isn't one of the `remindTimes`), then the automation's reminders start over - every
+        # `remindMinutes`, up to `remindTimes` more. Each snooze is someone asking to be reminded,
+        # so it may repeat; the run still expires after RUN_TTL_S.
         await asyncio.sleep(minutes * 60)
         if await self._remind(run_id):
             run = self.open_runs.get(run_id)
             auto = self.autos.get(run["automationId"]) if run else None
             if auto and (mins := auto["followUp"].get("remindMinutes")) and auto["followUp"].get("enabled"):
-                await self._remind_loop(run_id, mins)
+                await self._remind_loop(run_id, mins, _remind_times(auto))
 
     def _resolve_pending(self, ent: Entity) -> None:
         for run in list(self.open_runs.values()):
             if ent.id in run["pending"] and ent.id not in run["resolved"] and ent.state is not None and not ent.is_active:
                 who = self._recent_attribution(ent.id)
                 run["resolved"][ent.id] = who
+                auto = self.autos.get(run["automationId"])
+                if auto and auto["followUp"].get("enabled"):
+                    # Its follow-up tells this change: queued now, and certain to go out (see _report).
+                    self._answered.append({"entity": ent.id, "state": ent.state, "at": time.time(),
+                                           "people": list(run["recipients"]), "automationId": auto["id"],
+                                           "name": auto["name"]})
+                    batch = self._batches.setdefault(run["id"], {"auto": auto, "devices": [], "task": None})
+                    batch["devices"].append(ent.id)
                 run["log"].append({"ts": time.time(), "text": f"{ent.name} {KINDS[ent.kind].state_label(ent.state).lower()}"
                                    + (f" by {who}" if who else " at the door")})
                 if all(e in run["resolved"] for e in run["pending"]):
                     asyncio.create_task(self._finish(run))
                 else:
+                    # Others still pending: report this one on its own unless more follow shortly.
+                    if (batch := self._batches.get(run["id"])) and batch["task"] is None:
+                        batch["task"] = asyncio.create_task(self._report_later(run))
                     self.store.save_run(run)
+
+    async def _report_later(self, run: dict[str, Any]) -> None:
+        await asyncio.sleep(FOLLOW_UP_COMBINE_S)
+        await self._report(run)
+
+    async def _report(self, run: dict[str, Any], final: bool = False) -> None:
+        """Send the follow-up for the run's confirmed devices not reported yet ("Chris locked
+        Laundry"; together: "Chris locked Side Door and Laundry"). Called when the combine window
+        ends, when the run resolves (`final`), and when it's dismissed or expires - so a change the
+        follow-up was counted on to tell is always told."""
+        batch = self._batches.pop(run["id"], None)
+        if not batch or not batch["devices"]:
+            return
+        if batch["task"] is not None and batch["task"] is not asyncio.current_task():
+            batch["task"].cancel()
+        auto = batch["auto"]
+        devices = sorted(batch["devices"], key=run["pending"].index)  # in the order the alert named them
+        resolvers = [run["resolved"].get(e) for e in devices]
+        msg = d.follow_up_message(auto, self.hub, pending=devices, resolvers=resolvers)
+        # The last one replaces the alert on the phone; an earlier one leaves it (other devices still pending).
+        await self.notifier.send(Notification(
+            kind="followup", title=auto["name"], body=msg, thread=auto["id"],
+            collapse_id=auto["id"] if final else None,
+            data={"run_id": run["id"], "automation_id": auto["id"]},
+        ), people=run["recipients"])
+        run["log"].append({"ts": time.time(), "text": f"Follow-up sent: {msg}"})
+        self.store.log_event("followup", auto["name"], msg, None, {"runId": run["id"]})
+        self.store.save_run(run)
 
     async def _finish(self, run: dict[str, Any]) -> None:
         if run["id"] not in self.open_runs:
@@ -680,23 +820,16 @@ class Engine:
         run["status"] = "resolved"
         resolvers = [run["resolved"].get(e) for e in run["pending"]]
         run["resolvedBy"] = join_names([r for r in dict.fromkeys(resolvers) if r]) or None
-        auto = self.autos.get(run["automationId"])
-        if auto and auto["followUp"].get("enabled"):
-            msg = d.follow_up_message(auto, self.hub, pending=run["pending"], resolvers=resolvers)
-            await self.notifier.send(Notification(
-                kind="followup", title=auto["name"], body=msg, thread=auto["id"], collapse_id=auto["id"],
-                data={"run_id": run["id"], "automation_id": auto["id"]},
-            ), people=run["recipients"])
-            run["log"].append({"ts": time.time(), "text": f"Follow-up sent: {msg}"})
-            self.store.log_event("followup", auto["name"], msg, None, {"runId": run["id"]})
+        await self._report(run, final=True)
         self.store.save_run(run)
 
-    def _expire_runs(self) -> None:
+    async def _expire_runs(self) -> None:
         for run in list(self.open_runs.values()):
             if time.time() - run["startedAt"] > RUN_TTL_S:
                 self.open_runs.pop(run["id"], None)
                 self._cancel_timers(run["id"])
                 run["status"] = "expired"
+                await self._report(run)  # anything confirmed but not yet told
                 self.store.save_run(run)
 
     # -- buttons & commands ------------------------------------------------------------
@@ -804,6 +937,10 @@ class Engine:
                 self.open_runs.pop(run_id, None)
                 self._cancel_timers(run_id)
                 run["status"] = "dismissed"
+                # A device already confirmed is still told (not awaited: the phone isn't kept waiting).
+                t = asyncio.create_task(self._report(run))
+                self._presses.add(t)
+                t.add_done_callback(self._presses.discard)
             run["log"].append({"ts": time.time(), "text": f"Dismissed by {who}"})
             self.store.save_run(run)
             return {"ok": True}

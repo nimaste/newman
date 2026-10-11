@@ -17,6 +17,9 @@ from ..state import Entity, Hub
 DEFAULT_FOLLOWUP = "{person} {action} {devices}."
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 MATCHES = ("any", "all", "none", "always")
+# Follow-up reminders: `remindTimes` = how many reminders a run sends at most (missing/None = the default).
+DEFAULT_REMIND_TIMES = 3
+MAX_REMIND_TIMES = 5
 
 DEFAULTS: dict[str, Any] = {
     "name": "",
@@ -46,7 +49,10 @@ DEFAULTS: dict[str, Any] = {
     "live": {"enabled": False, "entities": [], "title": "", "recipients": None,
              "until": {"type": "leaves", "entities": [], "state": "active"}},
     "recipients": [],
-    "followUp": {"enabled": False, "message": DEFAULT_FOLLOWUP, "remindMinutes": None},
+    # `remindMinutes`: remind again every N minutes while devices are still pending (None = never),
+    # at most `remindTimes` times (1-5; None/missing = DEFAULT_REMIND_TIMES).
+    "followUp": {"enabled": False, "message": DEFAULT_FOLLOWUP, "remindMinutes": None,
+                 "remindTimes": DEFAULT_REMIND_TIMES},
 }
 
 
@@ -79,8 +85,21 @@ def normalize(auto: dict[str, Any]) -> dict[str, Any]:
     if not out["followUp"].get("message"):
         out["followUp"]["message"] = DEFAULT_FOLLOWUP
     rm = out["followUp"].get("remindMinutes")
-    out["followUp"]["remindMinutes"] = int(rm) if rm not in (None, "", "off", 0, "0") else None
+    out["followUp"]["remindMinutes"] = _whole(rm) if rm not in (None, "", "off", 0, "0") else None
+    rt = out["followUp"].get("remindTimes")
+    out["followUp"]["remindTimes"] = DEFAULT_REMIND_TIMES if rt in (None, "") else _whole(rt)
     return out
+
+
+def _whole(v: Any) -> Any:
+    """A whole number from a number or numeric string; anything else is kept as is (errors() names it)."""
+    if isinstance(v, bool):
+        return v
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return v
+    return int(f) if f.is_integer() else v
 
 
 ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
@@ -952,9 +971,21 @@ def summary(auto: dict[str, Any], hub: Hub, people: list[dict[str, Any]],
     if f.get("enabled") and watched_entities(auto):
         past = _command_past(auto)
         sentence += f" Once they're {past}, tell {'everyone' if len(who) > 1 else join_names(who) or 'them'} who did it."
-        if f.get("remindMinutes"):
-            sentence += f" If not, remind again every {f['remindMinutes']} minutes."
+        if isinstance(f.get("remindMinutes"), int) and f["remindMinutes"] > 0:
+            sentence += " If not, " + remind_text(f) + "."
     return sentence[0].upper() + sentence[1:]
+
+
+def remind_text(f: dict[str, Any]) -> str:
+    """'remind again every 30 minutes, up to 3 times' / 'remind once more after 1 hour'."""
+    mins = f["remindMinutes"]
+    every = ("hour" if mins == 60 else f"{mins // 60} hours" if mins % 60 == 0
+             else "minute" if mins == 1 else f"{mins} minutes")
+    times = f.get("remindTimes")
+    times = times if isinstance(times, int) and times > 0 else DEFAULT_REMIND_TIMES
+    if times == 1:
+        return f"remind once more after {'an hour' if every == 'hour' else 'a minute' if every == 'minute' else every}"
+    return f"remind again every {every}, up to {times} times"
 
 
 def errors(auto: dict[str, Any], hub: Hub) -> list[str]:
@@ -1030,6 +1061,12 @@ def errors(auto: dict[str, Any], hub: Hub) -> list[str]:
         out.append("Pick at least one day it may run on")
     if auto["notify"].get("enabled") and not auto["recipients"]:
         out.append("Pick who gets the notification")
+    fu = auto["followUp"]
+    rm, rt = fu.get("remindMinutes"), fu.get("remindTimes")
+    if rm is not None and (not isinstance(rm, int) or isinstance(rm, bool) or rm < 1):
+        out.append("“Remind again after” needs a whole number of minutes")
+    if not isinstance(rt, int) or isinstance(rt, bool) or not 1 <= rt <= MAX_REMIND_TIMES:
+        out.append(f"Remind again 1 to {MAX_REMIND_TIMES} times")
     for bid in auto["notify"].get("buttons", []):
         if ":" in bid and not bid.startswith("snooze:") and not hub.get(bid.split(":", 1)[1]):
             out.append(f"A button refers to a device that no longer exists ({bid.split(':', 1)[1]})")
