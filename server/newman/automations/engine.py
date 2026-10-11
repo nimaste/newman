@@ -105,7 +105,9 @@ class Engine:
         return out
 
     def save(self, auto: dict[str, Any]) -> dict[str, Any]:
-        auto = d.normalize({k: v for k, v in auto.items() if k not in ("summary", "lastRun", "nextRun")})
+        # summary/lastRun/nextRun are what list() adds; "_" keys are a client's own bookkeeping.
+        auto = d.normalize({k: v for k, v in auto.items()
+                            if k not in ("summary", "lastRun", "nextRun") and not k.startswith("_")})
         if errs := d.errors(auto, self.hub):
             raise ValueError("; ".join(errs))
         auto["id"] = auto.get("id") or new_id("auto")

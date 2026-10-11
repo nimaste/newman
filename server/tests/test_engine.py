@@ -190,8 +190,9 @@ class NightlyTests(Base):
 
     async def test_save_ignores_read_only_fields(self):
         await self.boot()
-        auto = self.engine.save({**nightly(), "summary": "x", "lastRun": {"id": "r"}, "nextRun": 1.0})
+        auto = self.engine.save({**nightly(), "summary": "x", "lastRun": {"id": "r"}, "nextRun": 1.0, "_cat": "security"})
         self.assertNotIn("summary", self.store.automations()[0])
+        self.assertNotIn("_cat", self.store.automations()[0])  # a page's own bookkeeping isn't saved
 
     async def test_dismiss_closes_run(self):
         await self.boot(side="UNLOCKED")

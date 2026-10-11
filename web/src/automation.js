@@ -216,7 +216,7 @@ export function conditionRows(c, trigger) {
 
 /** Every device a trigger mentions, states and events (works on hub automations, old or new shape). */
 export function triggerEntityIds(t) {
-  return [...new Set(triggerItems(t).flatMap((i) => (i.type === 'state' ? i.entities : i.type === 'event' && i.entity ? [i.entity] : [])))];
+  return [...new Set(triggerItems(t).flatMap((i) => (i.type === 'state' || i.type === 'property' ? i.entities || [] : i.type === 'event' && i.entity ? [i.entity] : [])))];
 }
 
 /** Every device the "Only if" rows look at. */

@@ -44,7 +44,9 @@ export default function Automations() {
   const [cat, setCat] = useState('');
   const [q, setQ] = useState('');
 
-  const toggle = async (a) => {
+  const toggle = async (row) => {
+    // eslint-disable-next-line no-unused-vars
+    const { _cat, ...a } = row; // _cat is this page's grouping, never part of the automation
     const enabled = !a.enabled;
     setPending((p) => ({ ...p, [a.id]: true }));
     autos.setData((list) => list.map((x) => (x.id === a.id ? { ...x, enabled } : x)));
@@ -63,7 +65,7 @@ export default function Automations() {
   const list = (autos.data || []).map((a) => ({ ...a, _cat: categoryOf(a, hub) }));
   const needle = q.trim().toLowerCase();
   const shown = list.filter((a) => (!cat || a._cat === cat) && (!needle || `${a.name} ${a.summary || ''}`.toLowerCase().includes(needle)));
-  const order = [...categories.map((c) => c.id), 'other'];
+  const order = [...new Set([...categories.map((c) => c.id), 'other'])];
   const groups = order
     .map((id) => ({ id, name: (categoriesById[id] && categoriesById[id].name) || 'Other', items: shown.filter((a) => a._cat === id) }))
     .filter((g) => g.items.length);
