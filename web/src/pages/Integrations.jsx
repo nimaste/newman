@@ -565,7 +565,7 @@ function DevicesTab({ devices }) {
         <input className="input input--sm2" type="search" placeholder="Search devices…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search devices" />
       </div>
       <div className="pane-body">
-        <DeviceTileGroups entities={shown} run={run} busy={busy} byRoom={shown.some((e) => e.attrs && e.attrs.area)} emptyText={devices.length ? 'Nothing matches.' : "This connection hasn't reported any devices yet."} />
+        <DeviceTileGroups entities={shown} run={run} busy={busy} emptyText={devices.length ? 'Nothing matches.' : "This connection hasn't reported any devices yet."} />
       </div>
     </>
   );

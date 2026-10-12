@@ -335,7 +335,6 @@ export default function Devices() {
                       entities={r.vis}
                       run={run}
                       busy={busy}
-                      byRoom
                       emptyText="Nothing matches — try another filter or search."
                       onSelect={removable ? toggle : undefined}
                       selected={removable ? picked : undefined}
