@@ -75,31 +75,31 @@ export default function Automations() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Automations</h1>
-        {list.length ? (
-          <div className="filter-bar filter-bar--inline" role="search">
-            <label className="filter">
-              <span className="filter-label">Category</span>
-              <select className="select" value={cat} onChange={(e) => setCat(e.target.value)}>
-                <option value="">All categories ({list.length})</option>
-                {usedCats.map((id) => (
-                  <option key={id} value={id}>
-                    {(categoriesById[id] && categoriesById[id].name) || 'Other'} ({list.filter((a) => a._cat === id).length})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="filter filter--grow">
-              <span className="filter-label">Search</span>
-              <input className="input" type="search" placeholder="Search automations" value={q} onChange={(e) => setQ(e.target.value)} />
-            </label>
-          </div>
-        ) : null}
         {isAdmin ? (
           <button type="button" className="btn btn-primary" onClick={() => navigate('automations/new')}>
             <Icon name="plus" size={16} /> New automation
           </button>
         ) : null}
       </div>
+      {list.length ? (
+        <div className="filter-bar filter-bar--inline page-tools" role="search">
+          <label className="filter">
+            <span className="filter-label">Category</span>
+            <select className="select" value={cat} onChange={(e) => setCat(e.target.value)}>
+              <option value="">All categories ({list.length})</option>
+              {usedCats.map((id) => (
+                <option key={id} value={id}>
+                  {(categoriesById[id] && categoriesById[id].name) || 'Other'} ({list.filter((a) => a._cat === id).length})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter filter--grow">
+            <span className="filter-label">Search</span>
+            <input className="input" type="search" placeholder="Search automations" value={q} onChange={(e) => setQ(e.target.value)} />
+          </label>
+        </div>
+      ) : null}
 
       {isAdmin && templates.data && templates.data.length ? (
         <section className="recipe-strip" aria-label="Start from a recipe">

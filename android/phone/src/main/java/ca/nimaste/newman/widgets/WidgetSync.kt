@@ -15,6 +15,7 @@ import ca.nimaste.newman.core.model.CommandRequest
 import ca.nimaste.newman.core.settings.ConnectionStore
 import ca.nimaste.newman.core.widgets.WidgetAction
 import ca.nimaste.newman.core.widgets.WidgetDevice
+import ca.nimaste.newman.core.widgets.WidgetHome
 import ca.nimaste.newman.core.widgets.WidgetTiles
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -61,8 +62,12 @@ class WidgetSync @Inject constructor(
         return { ids.forEach { id -> watched.computeIfPresent(id) { _, n -> if (n <= 1) null else n - 1 } } }
     }
 
-    /** Everything to refresh when the live connection hears of a change. */
-    private fun liveIds(): List<String> = (shownIds() + watched.keys).distinct()
+    /** Everything to refresh when the live connection hears of a change (the Home status widget's devices too). */
+    private fun liveIds(): List<String> =
+        (deviceIds() + (if (homeWidgetIds().isNotEmpty()) home()?.ids.orEmpty() else emptyList())).distinct()
+
+    /** The devices whose states to fetch: the widgets', the tiles' and the controls panel's. */
+    private fun deviceIds(): List<String> = (shownIds() + watched.keys).distinct()
 
     private val prefs = context.getSharedPreferences("newman_widgets", Context.MODE_PRIVATE)
     private val _version = MutableStateFlow(0)
@@ -76,8 +81,18 @@ class WidgetSync @Inject constructor(
 
     // -- what each widget / tile shows --------------------------------------------------------------
 
-    fun widgetIds(): IntArray = AppWidgetManager.getInstance(context)
-        .getAppWidgetIds(ComponentName(context, DeviceGridReceiver::class.java))
+    /** Every device widget (tiles and rows). */
+    fun widgetIds(): IntArray = AppWidgetManager.getInstance(context).let { m ->
+        m.getAppWidgetIds(ComponentName(context, DeviceGridReceiver::class.java)) +
+            m.getAppWidgetIds(ComponentName(context, DeviceRowsReceiver::class.java))
+    }
+
+    /** Every Home status widget (nothing to choose: they all show the whole house). */
+    fun homeWidgetIds(): IntArray = AppWidgetManager.getInstance(context)
+        .getAppWidgetIds(ComponentName(context, HomeStatusReceiver::class.java))
+
+    /** Something on the home screen or in Quick Settings needs fresh states. */
+    fun anyShown(): Boolean = shownIds().isNotEmpty() || homeWidgetIds().isNotEmpty()
 
     fun devicesOf(widgetId: Int): List<String> =
         prefs.getString("w.$widgetId.ids", null)?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
@@ -94,7 +109,7 @@ class WidgetSync @Inject constructor(
 
     fun removeWidgets(ids: IntArray) {
         prefs.edit().apply { ids.forEach { remove("w.$it.ids"); remove("w.$it.confirm") } }.apply()
-        if (shownIds().isEmpty()) WidgetRefreshWorker.cancel(context)
+        if (!anyShown()) WidgetRefreshWorker.cancel(context)
     }
 
     fun tileDevice(slot: Int): String? = prefs.getString("tile.$slot", null)?.ifEmpty { null }
@@ -132,25 +147,49 @@ class WidgetSync @Inject constructor(
 
     // -- talking to the hub -------------------------------------------------------------------------
 
-    /** Fresh states of [ids] (default: everything shown). False when the hub couldn't be asked. */
+    /** The Home status widgets' last summary (GET /api/widgets/home). */
+    fun home(): WidgetHome? = WidgetTiles.decodeHome(prefs.getString("home", null))
+
+    /** Why the Home status couldn't be fetched, while there's none to show. */
+    @Volatile var homeError: String? = null
+        private set
+
+    /** Fresh states of [ids] (default: everything shown), and the Home status when one is out. False when
+     * the hub couldn't be asked. */
     suspend fun refresh(ids: List<String> = shownIds()): Boolean = lock.withLock {
-        if (!signedIn || ids.isEmpty()) {
+        val wantHome = homeWidgetIds().isNotEmpty()
+        if (!signedIn || (ids.isEmpty() && !wantHome)) {
             changed()
             return false
         }
-        try {
-            val fresh = hubCall { api.widgetState(ids.joinToString(",")) }.devices
-            update { map ->
-                ids.forEach { map.remove(it) } // gone from the hub (or no longer showable): drop them
-                fresh.forEach { map[it.id] = it }
+        var ok = true
+        if (ids.isNotEmpty()) {
+            try {
+                val fresh = hubCall { api.widgetState(ids.joinToString(",")) }.devices
+                update { map ->
+                    ids.forEach { map.remove(it) } // gone from the hub (or no longer showable): drop them
+                    fresh.forEach { map[it.id] = it }
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "Widget refresh failed: ${ApiErrors.message(e)}")
+                ok = false
             }
-            true
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            Log.w(TAG, "Widget refresh failed: ${ApiErrors.message(e)}")
-            changed()
-            false
         }
+        if (wantHome) {
+            try {
+                val h = hubCall { api.widgetHome() }
+                prefs.edit().putString("home", WidgetTiles.encodeHome(h)).apply()
+                homeError = null
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "Home status refresh failed: ${ApiErrors.message(e)}")
+                homeError = if (e is HubException && e.code == 404) "Update the Newman hub to see this" else ApiErrors.message(e)
+                ok = false
+            }
+        }
+        changed()
+        ok
     }
 
     /** Refresh in the background, folding bursts (live updates) into one. */
@@ -158,7 +197,7 @@ class WidgetSync @Inject constructor(
         if (soon?.isActive == true) return
         soon = scope.launch {
             delay(delayMs)
-            refresh(liveIds())
+            refresh(deviceIds()) // and the Home status, when one is out
         }
     }
 
@@ -185,14 +224,18 @@ class WidgetSync @Inject constructor(
 
     /** Signed out: nothing of the house stays on the home screen. */
     fun signedOut() {
-        prefs.edit().remove("cache").apply()
+        prefs.edit().remove("cache").remove("home").apply()
         changed()
     }
 
     /** Redraw every widget and tile from the cache. */
     fun changed() {
         _version.value++
-        scope.launch { runCatching { DeviceGridWidget().updateAll(context) } }
+        scope.launch {
+            runCatching { DeviceGridWidget().updateAll(context) }
+            runCatching { DeviceRowsWidget().updateAll(context) }
+            runCatching { HomeStatusWidget().updateAll(context) }
+        }
         QuickTiles.requestUpdate(context)
     }
 
@@ -211,7 +254,7 @@ class WidgetSync @Inject constructor(
                 if (shown.isNotEmpty() && (id.isEmpty() || id in shown)) refreshSoon()
             }
         }
-        if (shownIds().isNotEmpty()) WidgetRefreshWorker.schedule(context)
+        if (anyShown()) WidgetRefreshWorker.schedule(context)
     }
 
     @EntryPoint

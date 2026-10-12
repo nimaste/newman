@@ -15,7 +15,7 @@ new kind of device appears in the apps with no app update.
 | Phone app | `ca.nimaste.newman` | `ca.nimaste.newman` |
 | Phone notification extension | `ca.nimaste.newman.NotificationServiceExtension` | — |
 | Phone location push extension (answers a tap-to-refresh while the app is closed) | `ca.nimaste.newman.LocationPushExtension` | — (an FCM data message reaches the app) |
-| Phone widgets (home screen, Lock Screen, Control Center controls) | `ca.nimaste.newman.NewmanWidgets` | in the phone app itself: home-screen widget, Quick Settings tiles, Device Controls and shortcuts |
+| Phone widgets (home screen, Lock Screen, Control Center controls) | `ca.nimaste.newman.NewmanWidgets` | in the phone app itself: home-screen widgets (Devices – tiles, Devices – rows, Home status), Quick Settings tiles, Device Controls and shortcuts |
 | Phone live statuses | Live Activities, drawn by `NewmanWidgets` (iOS 26) | ongoing notifications from the phone app |
 | Wall app | `ca.nimaste.newman.wall` | `ca.nimaste.newman.wall` |
 | App Group / shared Keychain | `group.ca.nimaste.newman` | — |

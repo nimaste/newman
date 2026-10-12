@@ -98,7 +98,7 @@ INFO_ATTRS = {"model", "firmware", "host", "channel", "source", "area", "manufac
               "headsUp", "needs", "changedBy", "changedAt", "whoLookup", "resumesAt",
               "changedHow", "changedHowAt", "changedByNoOne", "kernel", "mount", "fsType", "device", "diskType", "vmType", "vmid", "node", "lastParityCheck",
               "containersTotal", "cover", "batteryType", "backgroundReports", "batteryStale",
-              "nextReportIn", "nextReportAt", "dozeExempt"}
+              "nextReportIn", "nextReportAt", "dozeExempt", "deepSleep"}
 
 
 @dataclass(frozen=True)

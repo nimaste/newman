@@ -254,6 +254,140 @@ export function issuesOf(entity) {
   return (entity && entity.health && entity.health.issues) || [];
 }
 
+/** Offline: the hub can't reach it, or it reports "offline" itself. */
+function offline(e) {
+  return !!e && (e.available === false || e.state === 'offline');
+}
+
+/** What a device says is wrong with it: its health issues and a problem it reports (attrs.problem). */
+function troubles(e) {
+  const p = e && e.attrs && e.attrs.problem;
+  return [...issuesOf(e).filter((x) => x !== 'Offline'), ...(p && typeof p === 'string' ? [p] : [])];
+}
+
+/** A house-mode device (an alarm) in a mode no command sets: an entry delay, triggered. */
+function modeAlert(e, kind) {
+  return !!(kind && kind.isMode && e && e.state && !offline(e) && !(kind.commands || []).some((c) => c.confirmsTo === e.state) && !(kind.transitional || []).includes(e.state));
+}
+
+/**
+ * Worth opening: offline, a health issue (battery, tamper…), a problem it reports, settled away from
+ * its kind's secure state (unlocked, open, wet), or an alarm going off.
+ */
+export function needsLook(entity, kind) {
+  return offline(entity) || troubles(entity).length > 0 || notSecure(entity, kind) || modeAlert(entity, kind);
+}
+
+const lower = (s) => String(s || '').toLowerCase();
+/** "Side Door", "Side Door & Back Door"; null for more (then a count reads better). */
+const fewNames = (list) => (list.length <= 2 ? list.map((e) => e.name).join(' & ') : null);
+const nameList = (list) => list.map((e) => e.name).join(', ');
+
+/**
+ * A few chips summing up a group of devices (a Devices category), worded only from /api/meta:
+ * [{ text, tone, title }], tone 'bad' | 'warn' | 'active' | 'good' | 'neutral'. Most pressing first:
+ *   "Side Door unlocked" / "Basement leak!"  (kind.secureState, kind.urgent)
+ *   "1 offline", "Garage Door: battery 15%"   (availability, health issues, attrs.problem)
+ *   "All locked" / "Front Door locked"       (every one at its kind's secure state)
+ *   "Alarm disarmed"                          (kind.isMode)
+ *   "2 on", "Motion: Master Bedroom"          (kind.activeState: a count for things you control,
+ *                                              names for things that only report)
+ *   "Main Floor · Heat", "Basement 21.1 °C"   (a mode you set, or a reading: kind.unit)
+ *   "8 online"                                (when nothing else says anything)
+ * `kinds` is meta's list (its order is the order of the chips).
+ */
+export function summaryChips(list, kinds, { max = 6 } = {}) {
+  const live = list.filter((e) => !offline(e));
+  const groups = (kinds || []).map((k) => ({ k, items: live.filter((e) => e.kind === k.id) })).filter((g) => g.items.length);
+  const problems = [];
+  const good = [];
+  const modes = [];
+  const active = [];
+  const readings = [];
+
+  // Away from the secure state (urgent kinds first: a leak beats an open door).
+  for (const { k, items } of groups) {
+    if (!k.secureState) continue;
+    const bad = items.filter((e) => notSecure(e, k));
+    if (!bad.length) {
+      const secure = items.filter((e) => e.state === k.secureState);
+      const label = lower(stateLabelOf(k, k.secureState));
+      if (secure.length) good.push({ text: items.length === 1 ? `${items[0].name} ${label}` : `All ${label}`, tone: 'good', title: `${k.plural || k.name}: ${nameList(items)}` });
+      continue;
+    }
+    const byLabel = new Map();
+    for (const e of bad) byLabel.set(entityLabel(e, k), [...(byLabel.get(entityLabel(e, k)) || []), e]);
+    for (const [label, es] of byLabel) {
+      const who = fewNames(es);
+      problems.push({ text: who ? `${who} ${lower(label)}` : `${es.length} ${lower(label)}`, tone: k.urgent ? 'bad' : 'warn', title: nameList(es) });
+    }
+  }
+  problems.sort((a, b) => (a.tone === 'bad' ? 0 : 1) - (b.tone === 'bad' ? 0 : 1));
+  const unsecured = problems.length;
+
+  const off = list.filter(offline);
+  if (off.length) problems.push({ text: `${off.length} offline`, tone: 'warn', title: nameList(off) });
+  const hurt = live.filter((e) => troubles(e).length);
+  if (hurt.length) {
+    const first = hurt[0];
+    problems.push({
+      text: hurt.length === 1 ? `${first.name}: ${lower(troubles(first)[0])}` : `${hurt.length} need a look`,
+      tone: 'warn',
+      title: hurt.map((e) => `${e.name}: ${troubles(e).join(', ')}`).join('\n'),
+    });
+  }
+
+  for (const { k, items } of groups) {
+    if (k.isMode) {
+      for (const e of items) {
+        modes.push({ text: `${items.length === 1 ? k.name : e.name} ${lower(entityLabel(e, k))}`, tone: modeAlert(e, k) ? 'bad' : 'neutral', title: e.name });
+      }
+      continue;
+    }
+    if (k.activeState && !k.secureState) {
+      const on = items.filter((e) => isActive(e, k));
+      if (!on.length) continue;
+      const label = activeLabel(k);
+      if ((k.commands || []).length) {
+        // Things you switch: one count per wording, across kinds ("2 on" for lights and plugs).
+        const same = active.find((c) => c.count && c.label === label);
+        if (same) {
+          same.items.push(...on);
+        } else {
+          active.push({ count: true, label, items: on });
+        }
+      } else {
+        const who = fewNames(on);
+        active.push({ text: who ? `${label}: ${who}` : `${on.length} ${lower(label)}`, tone: 'active', title: nameList(on) });
+      }
+      continue;
+    }
+    if (k.activeState) continue;
+    // No on/off notion: a mode you choose (a thermostat's Heat) or a reading in the kind's unit.
+    const settable = (k.commands || []).some((c) => c.valueType === 'state');
+    for (const e of items) {
+      if (settable) readings.push({ text: `${e.name} · ${entityLabel(e, k)}`, tone: 'neutral', title: entityStateText(e, k) });
+      else if (k.unit) {
+        const r = readingText(e, k, { withLabel: false });
+        if (r) readings.push({ text: `${e.name} ${r}`, tone: 'neutral', title: k.name });
+      }
+    }
+  }
+  const counted = active.map((c) => (c.count ? { text: `${c.items.length} ${lower(c.label)}`, tone: 'active', title: nameList(c.items) } : c));
+
+  const chips = [...problems, ...good, ...modes, ...counted, ...readings.slice(0, 3)];
+  // Only offline / health chips so far: one or two devices say what they're doing ("Roborock · Docked"),
+  // more say how many are fine.
+  if (chips.length === problems.length && !unsecured && live.length) {
+    if (live.length <= 2) {
+      for (const e of live) chips.push({ text: `${e.name} · ${entityLabel(e, (kinds || []).find((k) => k.id === e.kind))}`, tone: 'neutral', title: e.name });
+    } else {
+      chips.push({ text: `${live.length} online`, tone: 'neutral', title: nameList(live) });
+    }
+  }
+  return chips.slice(0, max);
+}
+
 /**
  * Kind icon. A kind-id map is only a nicety; an unknown kind falls back to
  * its capabilities (camera, first command's icon, events), then its category, then a generic one.

@@ -261,7 +261,6 @@ export default function Upkeep() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Upkeep</h1>
-        <span className="muted head-hint">Things the house needs now and then. They show on the wall's Today and To do.</span>
         {isAdmin ? (
           <button type="button" className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setForm({})}>
             <Icon name="plus" size={16} /> Add an item

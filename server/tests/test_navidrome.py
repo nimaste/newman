@@ -601,9 +601,13 @@ class NavidromeHubTests(unittest.IsolatedAsyncioTestCase):
         r = await self.client.post(f"/api/entities/{eid}/command", json={"command": "set_volume", "value": 20})
         self.assertEqual(r.status, 200, await r.text())
 
-        # The tablet itself goes offline (no check-in for too long): so does its player.
+        # The tablet itself goes offline (no check-in for too long - on battery, deep sleep may hold its
+        # check-ins back for up to 8 hours): so does its player.
         tablets = next(i for i in self.h.integrations.instances.values() if i.type == "tablets")
         await tablets.check_offline(now=time.time() + 40 * 60)
+        await self.inst.check_offline()
+        self.assertTrue(self.h.hub.get(eid).available)
+        await tablets.check_offline(now=time.time() + 8.5 * 3600)
         await self.inst.check_offline()
         self.assertFalse(self.h.hub.get(eid).available)
 

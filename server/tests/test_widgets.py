@@ -287,6 +287,107 @@ class WidgetTests(unittest.IsolatedAsyncioTestCase):
         await self.settle()
         self.assertNotIn(WTOK_2, [t for t, _, _ in self.apns.sent])
 
+    # -- tones and the "Home status" widget ------------------------------------------------------------
+
+    async def home(self, who=None):
+        st, body = await self.call("GET", "/api/widgets/home", who or self.dante)
+        self.assertEqual(st, 200, body)
+        return body
+
+    async def test_state_tone_comes_from_the_kind(self):
+        by_id, _ = await self.state(["fake.side", "fake.porch", "fake.temp", "fake.door"])
+        self.assertEqual({i: d["tone"] for i, d in by_id.items()},
+                         {"fake.side": "good", "fake.porch": "", "fake.temp": "", "fake.door": "good"})
+        await self.h.hub.update("fake.side", state="UNLOCKED")
+        await self.h.hub.update("fake.porch", state="on")
+        by_id, _ = await self.state(["fake.side", "fake.porch"])
+        self.assertEqual((by_id["fake.side"]["tone"], by_id["fake.porch"]["tone"]), ("active", "active"))
+        await self.h.hub.update("fake.side", state="LOCKING")  # between states: neutral, not "not secure"
+        await self.h.hub.update("fake.porch", available=False)
+        by_id, _ = await self.state(["fake.side", "fake.porch"])
+        self.assertEqual((by_id["fake.side"]["tone"], by_id["fake.porch"]["tone"]), ("", "offline"))
+
+    async def test_home_status_all_secure(self):
+        body = await self.home()
+        self.assertEqual((body["secure"], body["headline"], body["detail"]), (True, "All secure", "lock locked · door closed"))
+        self.assertEqual(body["problems"], [])
+        self.assertEqual([(g["label"], g["text"], g["secure"]) for g in body["groups"]],
+                         [("Lock", "Locked", True), ("Door sensor", "Closed", True), ("Alarm", "Disarmed", None)])
+        self.assertEqual(set(body["ids"]), {"fake.side", "fake.door", "fake.alarm"})
+        # More of a kind: counted, "All locked".
+        self.h.hub.upsert("fake.front", kind="lock", name="Front Door", integration="fake")
+        await self.h.hub.update("fake.front", state="LOCKED")
+        body = await self.home()
+        self.assertEqual(body["detail"], "2 locks · door closed")
+        self.assertEqual(body["groups"][0]["label"], "Locks")
+        self.assertEqual(body["groups"][0]["text"], "All locked")
+
+    async def test_home_status_names_what_isnt_secure_and_how_to_fix_it(self):
+        await self.h.hub.update("fake.side", state="UNLOCKED")
+        body = await self.home()
+        self.assertFalse(body["secure"])
+        self.assertEqual((body["headline"], body["detail"]), ("Side Door unlocked", "door closed"))
+        self.assertEqual(body["problems"], [{"id": "fake.side", "name": "Side Door", "kind": "lock", "icon": "lock",
+                                             "state": "UNLOCKED", "stateLabel": "Unlocked", "urgent": False,
+                                             "fix": {"command": "lock", "label": "Lock", "sensitive": False}}])
+        self.assertEqual(body["groups"][0], {"kind": "lock", "label": "Lock", "text": "Unlocked", "secure": False,
+                                             "icon": "lock"})
+        # A garage door left open, a leak (urgent, nothing to tap) and an open door sensor (nothing to tap).
+        for eid, kind, name, state in (("fake.garage", "garage", "Garage", "open"), ("fake.leak", "leak", "Laundry", "wet")):
+            self.h.hub.upsert(eid, kind=kind, name=name, integration="fake")
+            await self.h.hub.update(eid, state=state)
+        await self.h.hub.update("fake.door", state="open")
+        body = await self.home()
+        self.assertEqual(body["headline"], "4 not secure")
+        self.assertEqual([p["id"] for p in body["problems"]], ["fake.leak", "fake.garage", "fake.side", "fake.door"])
+        self.assertEqual(body["problems"][1]["fix"], {"command": "close", "label": "Close", "sensitive": False})
+        self.assertIsNone(body["problems"][0]["fix"])
+        self.assertEqual(body["detail"], "Laundry leak! · Garage open · Side Door unlocked · Back Door open")
+        self.assertTrue(all(g["secure"] is False for g in body["groups"][:4]))
+        # Two the same: "2 open".
+        await self.h.hub.update("fake.leak", state="dry")
+        await self.h.hub.update("fake.side", state="LOCKED")
+        self.assertEqual((await self.home())["headline"], "2 open")
+        # Offline ones aren't "not secure"; they're counted apart.
+        await self.h.hub.update("fake.garage", state="closed")
+        await self.h.hub.update("fake.door", available=False)
+        body = await self.home()
+        self.assertEqual((body["secure"], body["headline"]), (True, "All secure"))
+        self.assertEqual(body["detail"], "lock locked · garage door closed · leak sensor dry · 1 offline")
+        door = next(g for g in body["groups"] if g["kind"] == "contact")
+        self.assertEqual((door["text"], door["secure"]), ("Offline", None))
+        # Running the fix is the ordinary command endpoint.
+        await self.h.hub.update("fake.side", state="UNLOCKED")
+        fix = (await self.home())["problems"][0]["fix"]["command"]
+        st, _ = await self.call("POST", "/api/entities/fake.side/command", self.dante, json={"command": fix})
+        self.assertEqual(st, 200)
+        self.assertIn(("fake.side", "lock"), self.fake.calls)
+
+    def test_home_status_from_kind_metadata_alone(self):
+        from newman.state import Entity
+        for k in KINDS.values():
+            e = Entity(id="x", kind=k.id, name="X", integration="fake")
+            body = W.home_json([e])  # every kind renders, even with no state yet
+            covered = k.secure_state is not None or k.is_mode
+            self.assertEqual(body["ids"], ["x"] if covered else [], k.id)
+            if k.secure_state is None:
+                self.assertIsNone(body["secure"], k.id)
+            fix = W.fix_action(k)
+            if fix:
+                self.assertEqual(fix.confirms_to, k.secure_state)
+        self.assertEqual(W.home_json([])["headline"], "Nothing to keep secure")
+
+    async def test_home_status_widget_follows_what_it_covers(self):
+        await self.register(self.dante)
+        await self.home()  # Dante's home widget covers the lock, the door sensor and the alarm
+        await self.settle(0.4)
+        await self.h.hub.update("fake.porch", state="on")
+        await self.settle()
+        self.assertEqual(self.apns.sent, [])
+        await self.h.hub.update("fake.door", state="open")
+        await self.settle()
+        self.assertEqual(len(self.apns.sent), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

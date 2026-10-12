@@ -162,8 +162,10 @@ function Page({ route }) {
       return <Backups />;
     default:
       return (
-        <div className="page">
-          <h1 className="page-title">Page not found</h1>
+        <div className="app-page">
+          <div className="app-head">
+            <h1 className="page-title">Page not found</h1>
+          </div>
           <p>
             <a href="#/overview">Back to the overview</a>
           </p>

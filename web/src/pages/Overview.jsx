@@ -65,8 +65,10 @@ export default function Overview() {
 
   if (!entities) {
     return (
-      <div className="page">
-        <h1 className="page-title">{greeting()}</h1>
+      <div className="app-page">
+        <div className="app-head">
+          <h1 className="page-title">{greeting()}</h1>
+        </div>
         <Loading>Loading devices…</Loading>
       </div>
     );
@@ -94,7 +96,7 @@ export default function Overview() {
     const active = mine.filter((e) => !kindsById[e.kind]?.secureState && isActive(e, kindsById[e.kind]) && !isModeKind(kindsById[e.kind]));
     const secureable = mine.some((e) => securityKind(kindsById[e.kind]));
     let detail = plural(mine.length, 'device');
-    let cls = 'teal';
+    let cls = 'good';
     if (problems.length) {
       detail += ` · ${problems.length} need${problems.length === 1 ? 's' : ''} attention`;
       cls = 'amber';

@@ -12,10 +12,16 @@ reporting with the screen off ("background": true - the Android wall sends it on
 alarm is set, every 15 minutes even in Doze), when its next check-in is due ("nextReportIn": seconds)
 and whether Android lets it ignore battery optimisation ("dozeExempt"). A tablet whose screen is off
 shows as "Screen off" (the kind's state note), not offline - and so does its music player
-(navidrome.py asks tablet_asleep()). Offline is:
+(navidrome.py asks tablet_asleep()). Offline (which smart charging tells the admins about) is:
  - screen on (or not said): no report for 15 minutes;
- - screen off, reporting in the background: no report for 35 minutes (background check-ins run late),
-   or its next check-in plus 20 minutes when it said that's later;
+ - screen off, reporting in the background, and able to get through (charging or plugged in - Android
+   never holds an app back on the charger - or exempt from Doze): no report for 35 minutes (background
+   check-ins run late), or its next check-in plus 20 minutes when it said that's later;
+ - screen off, reporting in the background, on battery and not exempt from Doze (silence_expected):
+   Android's deep sleep may hold its check-ins back for hours - expected, not a problem. It stays
+   "Screen off" for up to 8 hours; past its announced check-in it is marked "deepSleep" (smart charging
+   turns its charger on early when its last level was near the bottom of the band), and only after 8
+   hours without a word is it offline;
  - screen off, no background reports (an iPad can't): no report for 12 hours. Its battery is unknown
    after 15 minutes though ("batteryStale"), so smart charging leaves it alone until it reports again.
 """
@@ -36,8 +42,35 @@ OFFLINE_AFTER_S = 15 * 60              # screen on
 SCREEN_OFF_AFTER_S = 35 * 60           # screen off, still checking in (late check-ins are normal)
 SCREEN_OFF_SILENT_AFTER_S = 12 * 3600  # screen off, no background reports: "Screen off" this long
 LATE_GRACE_S = 20 * 60                 # a check-in it announced may come this late before it's offline
+DEEP_SLEEP_MAX_S = 8 * 3600            # screen off on battery, Doze may hold check-ins back: offline after this
 PLUGGED = ("ac", "usb", "wireless", "none")
 SCREEN = ("on", "off")
+
+
+def on_charger(attrs: dict[str, Any]) -> bool:
+    """Its last report said it was charging or plugged in."""
+    return attrs.get("charging") is True or attrs.get("plugged") not in (None, "none")
+
+
+def silence_expected(attrs: dict[str, Any]) -> bool:
+    """Its last report says Android may hold its check-ins back for hours (deep sleep / Doze): screen
+    off, on battery, not exempt from Doze - a quiet tablet then isn't a problem. (Only for one that
+    reports in the background at all: one that doesn't has its own, longer wait.)"""
+    return (attrs.get("screen") == "off" and bool(attrs.get("backgroundReports")) and not on_charger(attrs)
+            and attrs.get("dozeExempt") is not True)
+
+
+def due_within(attrs: dict[str, Any]) -> float:
+    """A background reporter with its screen off should have checked in again within this long."""
+    nxt = attrs.get("nextReportIn")
+    if isinstance(nxt, (int, float)) and not isinstance(nxt, bool):
+        return min(max(SCREEN_OFF_AFTER_S, nxt + LATE_GRACE_S), SCREEN_OFF_SILENT_AFTER_S)
+    return SCREEN_OFF_AFTER_S
+
+
+def deep_sleep(attrs: dict[str, Any], age: float) -> bool:
+    """Quiet past its check-in where that's expected (silence_expected): asleep, not offline (yet)."""
+    return silence_expected(attrs) and due_within(attrs) < age <= DEEP_SLEEP_MAX_S
 
 
 def offline_after(attrs: dict[str, Any]) -> float:
@@ -46,10 +79,9 @@ def offline_after(attrs: dict[str, Any]) -> float:
         return OFFLINE_AFTER_S
     if not attrs.get("backgroundReports"):
         return SCREEN_OFF_SILENT_AFTER_S
-    nxt = attrs.get("nextReportIn")
-    if isinstance(nxt, (int, float)) and not isinstance(nxt, bool):
-        return min(max(SCREEN_OFF_AFTER_S, nxt + LATE_GRACE_S), SCREEN_OFF_SILENT_AFTER_S)
-    return SCREEN_OFF_AFTER_S
+    if silence_expected(attrs):
+        return DEEP_SLEEP_MAX_S
+    return due_within(attrs)
 
 
 def asleep(attrs: dict[str, Any], age: float) -> bool:
@@ -93,7 +125,7 @@ def clean_report(body: Any) -> dict[str, Any]:
         raise ValueError("screen must be on or off")
     if not isinstance(background, bool):
         raise ValueError("background must be true or false")
-    out.update(screen=screen, backgroundReports=background, batteryStale=False)
+    out.update(screen=screen, backgroundReports=background, batteryStale=False, deepSleep=False)
     nxt = body.get("nextReportIn")
     if nxt is not None:
         if isinstance(nxt, bool) or not isinstance(nxt, (int, float)) or not 0 <= nxt <= 86400:
@@ -151,8 +183,10 @@ class TabletsIntegration(Integration):
                 continue  # reported again already
             self.hub.upsert(eid, kind="tablet", name=t.get("name") or "Wall tablet", integration=self.id)
             attrs = t.get("attrs") or {}
-            available, stale = reporting(attrs, time.time() - float(t.get("at") or 0))
-            await self.hub.update(eid, state=t.get("state"), attrs={**attrs, "batteryStale": stale}, available=available)
+            age = time.time() - float(t.get("at") or 0)
+            available, stale = reporting(attrs, age)
+            await self.hub.update(eid, state=t.get("state"), available=available,
+                                  attrs={**attrs, "batteryStale": stale, "deepSleep": deep_sleep(attrs, age)})
         self.set_status("connected", self._detail())
         while True:
             await asyncio.sleep(60)
@@ -197,8 +231,12 @@ class TabletsIntegration(Integration):
             ent = self.hub.get(self.entity_id(uid))
             if not ent or not ent.available:
                 continue  # offline until it reports again
-            available, stale = reporting(t.get("attrs") or {}, now - float(t.get("at") or 0))
+            attrs, age = t.get("attrs") or {}, now - float(t.get("at") or 0)
+            available, stale = reporting(attrs, age)
             if not available:
                 await self.hub.update(ent.id, available=False)
-            elif stale and not ent.attrs.get("batteryStale"):
+                continue
+            if stale and not ent.attrs.get("batteryStale"):
                 await self.hub.update(ent.id, attrs={"batteryStale": True})
+            if deep_sleep(attrs, age) and not ent.attrs.get("deepSleep"):
+                await self.hub.update(ent.id, attrs={"deepSleep": True})  # smart charging watches for this

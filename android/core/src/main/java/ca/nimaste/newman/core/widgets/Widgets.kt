@@ -41,12 +41,109 @@ data class WidgetDevice(
     val area: String? = null,
     val actions: List<WidgetAction> = emptyList(),
     val reading: WidgetReading? = null,
+    /** The hub's colour for the state: "good", "active", "alert", "offline" or "" (null from older hubs). */
+    val tone: String? = null,
     /** Ours, not the hub's: a tap was just sent and the hub hasn't answered yet. */
     val pending: String? = null,
 )
 
 @Serializable
 data class WidgetStateResponse(val devices: List<WidgetDevice> = emptyList())
+
+/** One line of the "Home status" list: "Locks" / "All locked". */
+@Serializable
+data class WidgetHomeGroup(
+    val kind: String = "",
+    val label: String = "",
+    val text: String = "",
+    /** True all secure, false one isn't, null a house mode (an alarm) or all offline. */
+    val secure: Boolean? = null,
+    val icon: String = "",
+)
+
+/** A device that isn't at its secure state, with the command that brings it back (Lock, Close). */
+@Serializable
+data class WidgetHomeProblem(
+    val id: String,
+    val name: String = id,
+    val kind: String = "",
+    val icon: String = "",
+    val stateLabel: String = "",
+    val urgent: Boolean = false,
+    val fix: WidgetAction? = null,
+)
+
+/** GET /api/widgets/home: everything with a secure state, summed up by the hub from kind metadata. */
+@Serializable
+data class WidgetHome(
+    /** True all secure, false something isn't, null nothing in the house has a secure state. */
+    val secure: Boolean? = null,
+    val headline: String = "",
+    val detail: String = "",
+    val problems: List<WidgetHomeProblem> = emptyList(),
+    val groups: List<WidgetHomeGroup> = emptyList(),
+    /** Every device it covers: the live connection's changes to these refresh it. */
+    val ids: List<String> = emptyList(),
+) {
+    /** The problems a tap can fix, in the hub's order (urgent first). */
+    val fixable: List<WidgetHomeProblem> get() = problems.filter { it.fix != null }
+}
+
+/** A widget's colour for a device's state. */
+enum class WidgetTone {
+    /** At its kind's secure state (locked, closed). */
+    GOOD,
+    /** Away from its secure state (unlocked, open), or in its kind's active state (a light on). */
+    ACTIVE,
+    /** An urgent kind away from its secure state (a leak). */
+    ALERT,
+    OFFLINE,
+    NEUTRAL,
+}
+
+/**
+ * How the device widgets lay out the devices the person chose (any number up to the size's limit),
+ * from the widget's current size: the layout grows to fill it - one device fills the widget, two take
+ * half each, and so on. The iPhone's WidgetKit widgets follow the same rules (WidgetLogic).
+ */
+object WidgetLayout {
+    /** Devices the picker allows: what the largest widget shows. */
+    const val MAX_DEVICES = 8
+
+    /** How many devices a widget this size shows: 2 small, 4 medium (or a narrow / short one), 8 large. */
+    fun maxDevices(widthDp: Float, heightDp: Float): Int = when {
+        widthDp < SMALL_DP && heightDp < SMALL_DP -> 2
+        widthDp < SMALL_DP || heightDp < SMALL_DP -> 4
+        else -> MAX_DEVICES
+    }
+
+    /** Wide (a medium widget, 4x2): tiles go side by side. */
+    fun isWide(widthDp: Float, heightDp: Float): Boolean = widthDp >= heightDp * 1.5f
+
+    /** Tiles across: side by side on a wide widget; a square or tall one stacks up to three, then two across. */
+    fun tileColumns(count: Int, wide: Boolean): Int {
+        val n = count.coerceAtLeast(1)
+        return if (wide) n else if (n <= 3) 1 else 2
+    }
+
+    /** How many tiles go on each line, top to bottom ([2, 2, 1]): a short last line's tiles widen to fill it. */
+    fun lines(count: Int, columns: Int): List<Int> {
+        if (count <= 0) return emptyList()
+        val c = columns.coerceAtLeast(1)
+        return (0 until count step c).map { minOf(c, count - it) }
+    }
+
+    /** A tile too short for icon, name and state stacked: the icon goes beside them instead. */
+    fun tileCompact(tileHeightDp: Float): Boolean = tileHeightDp < 84f
+
+    /** A row tall enough for the state under the name; shorter rows put it on the right. */
+    fun rowStacked(rowHeightDp: Float): Boolean = rowHeightDp >= 52f
+
+    /** Rows that fit [heightDp] (at least ~36dp each), so a short widget never squashes them. */
+    fun rowsThatFit(heightDp: Float): Int = (heightDp / 36f).toInt().coerceAtLeast(1)
+
+    private const val SMALL_DP = 200f
+}
 
 /** One device a widget can show (GET /api/widgets/devices), for the pickers. */
 @Serializable
@@ -96,9 +193,13 @@ object WidgetPicker {
             }
     }
 
-    /** Ticking a device adds it at the end; unticking removes it. Order is the widget's order. */
-    fun toggle(selected: List<String>, id: String): List<String> =
-        if (id in selected) selected - id else selected + id
+    /** Ticking a device adds it at the end (unless [max] are already ticked); unticking removes it.
+     * Order is the widget's order. */
+    fun toggle(selected: List<String>, id: String, max: Int = Int.MAX_VALUE): List<String> = when {
+        id in selected -> selected - id
+        selected.size >= max -> selected
+        else -> selected + id
+    }
 
     /** Move the device at [from] by [by] places (-1 up, +1 down), clamped. */
     fun move(selected: List<String>, from: Int, by: Int): List<String> {
@@ -142,6 +243,17 @@ object WidgetTiles {
         else -> readingText(d.reading) ?: d.stateLabel.ifEmpty { d.state ?: "" }
     }
 
+    /** The state's colour: the hub's tone; from older hubs (no tone) the kind's active state, else neutral. */
+    fun tone(d: WidgetDevice): WidgetTone = when {
+        !d.available || d.state == "offline" -> WidgetTone.OFFLINE
+        d.tone == null -> if (d.active) WidgetTone.ACTIVE else WidgetTone.NEUTRAL
+        d.tone == "good" -> WidgetTone.GOOD
+        d.tone == "active" -> WidgetTone.ACTIVE
+        d.tone == "alert" -> WidgetTone.ALERT
+        d.tone == "offline" -> WidgetTone.OFFLINE
+        else -> WidgetTone.NEUTRAL
+    }
+
     /** What a screen reader says for a tile: "Den plug, on". */
     fun describe(d: WidgetDevice): String = ca.nimaste.newman.core.model.Spoken.of(d.name, stateText(d))
 
@@ -171,4 +283,12 @@ object WidgetTiles {
 
     fun parseState(json: String): List<WidgetDevice> =
         NewmanJson.decodeFromString(WidgetStateResponse.serializer(), json).devices
+
+    fun encodeHome(home: WidgetHome): String = NewmanJson.encodeToString(WidgetHome.serializer(), home)
+
+    fun decodeHome(json: String?): WidgetHome? = try {
+        if (json.isNullOrBlank()) null else NewmanJson.decodeFromString(WidgetHome.serializer(), json)
+    } catch (e: Exception) {
+        null
+    }
 }

@@ -20,6 +20,7 @@ import ca.nimaste.newman.core.api.hubCall
 import ca.nimaste.newman.core.widgets.WidgetAction
 import ca.nimaste.newman.core.widgets.WidgetChoice
 import ca.nimaste.newman.core.widgets.WidgetDevice
+import ca.nimaste.newman.core.widgets.WidgetLayout
 import ca.nimaste.newman.core.widgets.WidgetPicker
 import ca.nimaste.newman.ui.theme.N
 import ca.nimaste.newman.ui.theme.NewmanTheme
@@ -48,7 +49,8 @@ private suspend fun loadChoices(context: Context): Result<List<WidgetChoice>> {
     }
 }
 
-/** Adding a "Newman devices" widget, and changing one later (its reconfigure). */
+/** Adding a device widget (tiles or rows), and changing one later (its reconfigure): which devices, in order,
+ * up to 8; the widget shows as many as its size takes. */
 class WidgetConfigActivity : ComponentActivity() {
     private var devices by mutableStateOf<List<WidgetChoice>?>(null)
     private var error by mutableStateOf<String?>(null)
@@ -62,6 +64,7 @@ class WidgetConfigActivity : ComponentActivity() {
         val sync = WidgetSync.from(this)
         val initial = sync.devicesOf(widgetId)
         val initialConfirm = sync.confirmSensitive(widgetId)
+        val fits = devicesThatFit(widgetId)
         lifecycleScope.launch {
             loadChoices(this@WidgetConfigActivity)
                 .onSuccess { list -> devices = list }
@@ -73,6 +76,7 @@ class WidgetConfigActivity : ComponentActivity() {
                 DevicePicker("Newman widget", list, error, multi = true,
                     initial = if (list == null) initial else WidgetPicker.keepKnown(initial, list),
                     initialConfirm = initialConfirm,
+                    max = WidgetLayout.MAX_DEVICES, fits = fits,
                     onSave = { ids, confirm ->
                         sync.setWidget(widgetId, ids, confirm)
                         sync.scope.launch { sync.refresh() }
@@ -82,6 +86,19 @@ class WidgetConfigActivity : ComponentActivity() {
                     onCancel = { finish() })
             }
         }
+    }
+
+    /** How many devices the widget shows at its size right now (the launcher's numbers; all of them when
+     * it hasn't said). Portrait: its narrowest width and tallest height. */
+    private fun devicesThatFit(widgetId: Int): Int {
+        val manager = AppWidgetManager.getInstance(this)
+        val options = manager.getAppWidgetOptions(widgetId)
+        val w = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).toFloat()
+        val h = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT).toFloat()
+        if (w <= 0f || h <= 0f) return WidgetLayout.MAX_DEVICES
+        val rows = manager.getAppWidgetInfo(widgetId)?.provider?.className == DeviceRowsReceiver::class.java.name
+        val max = WidgetLayout.maxDevices(w, h)
+        return if (rows) minOf(max, WidgetLayout.rowsThatFit(h - 12f)) else max
     }
 
     companion object {

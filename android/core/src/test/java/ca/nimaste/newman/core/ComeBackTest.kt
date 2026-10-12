@@ -104,6 +104,59 @@ class ComeBackTest {
     }
 
     @Test
+    fun screenOffWhileAwayComesBackDimmedAtOnce() {
+        val c = ComeBack()
+        c.left(0, true) // Alexa (or anything) came over the wall
+        c.othersPlaying(true, 1_000) // even with something playing
+        val d = c.screenOff(30_000, keepsScreenOn = true)
+        assertTrue(d.bringBack)
+        assertTrue(d.dimmed)
+        // Whatever the come-back settings say.
+        val e = ComeBack()
+        e.left(0, true)
+        assertTrue(e.screenOff(1_000, keepsScreenOn = true).bringBack)
+    }
+
+    @Test
+    fun screenOffWithTheWallInFrontIsThePowerButtonAndStaysOff() {
+        val c = ComeBack()
+        assertNotNull(c.left(0, screenOn = false)) // the wall paused because the screen went off
+        val d = c.screenOff(0, keepsScreenOn = true)
+        assertFalse(d.bringBack)
+        assertFalse(c.check(60 * min, on).bringBack) // and nothing later turns it back on
+    }
+
+    @Test
+    fun screenOffWithKeepAwakeOffLetsItSleep() {
+        val c = ComeBack()
+        c.left(0, true)
+        assertFalse(c.screenOff(1_000, keepsScreenOn = false).bringBack)
+    }
+
+    @Test
+    fun screenOffReturnThatDidNotHappenIsRetriedAfterAMinute() {
+        val c = ComeBack()
+        c.left(0, true)
+        assertTrue(c.screenOff(0, true).bringBack)
+        assertFalse(c.screenOff(ComeBack.SCREEN_OFF_RETRY_MS - 1, true).bringBack)
+        assertTrue(c.screenOff(ComeBack.SCREEN_OFF_RETRY_MS, true).bringBack)
+        // Once the wall was in front again, the next time away starts afresh.
+        c.entered()
+        c.left(ComeBack.SCREEN_OFF_RETRY_MS + 1_000, true)
+        assertTrue(c.screenOff(ComeBack.SCREEN_OFF_RETRY_MS + 2_000, true).bringBack)
+    }
+
+    @Test
+    fun otherReturnsAreNotDimmed() {
+        val c = ComeBack()
+        c.left(0, true)
+        assertFalse(c.screenWoke(1_000, on).dimmed)
+        val d = ComeBack()
+        d.left(0, true)
+        assertFalse(d.check(2 * min, on).dimmed)
+    }
+
+    @Test
     fun minuteChoices() {
         assertEquals(listOf(1, 2, 5, 10), ComeBack.MINUTE_CHOICES)
         assertEquals(5, ComeBack.minutesSetting(5))

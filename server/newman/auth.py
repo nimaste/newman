@@ -44,6 +44,15 @@ DEFAULT_SETTINGS = {
 SESSION_COOKIE = "newman_session"
 SESSION_DAYS = {"browser": 30, "app": 365, "tablet": 365}
 SHORT_BROWSER_HOURS = 12
+# A sign-in counts as in use ("live") when it was seen this recently. A wall tablet that signs in again
+# (a cleared browser, a reinstalled app) leaves its old sign-in behind until it expires a year later;
+# this keeps those out of "shown on" lists. A device in use checks in every few minutes.
+LIVE_HOURS = 72
+
+
+def session_live(s: dict, now: float) -> bool:
+    """Not expired, and seen in the last LIVE_HOURS."""
+    return s["expires_at"] > now and now - s["last_seen"] < LIVE_HOURS * 3600
 
 # -- passwords & PINs ---------------------------------------------------------------------------
 

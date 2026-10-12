@@ -1,9 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
-// Self-hosted fonts (latin subset only) — the dashboard must work offline.
-import '@fontsource/fraunces/latin-500.css';
-import '@fontsource/fraunces/latin-600.css';
+// Self-hosted fonts (latin subset only) — the dashboard must work offline. One sans face throughout.
 import '@fontsource/manrope/latin-400.css';
 import '@fontsource/manrope/latin-500.css';
 import '@fontsource/manrope/latin-600.css';

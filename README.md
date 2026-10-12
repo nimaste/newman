@@ -211,6 +211,13 @@ unavailable, never deleted, so automations that use them keep pointing at them.
 devices it would show alongside the other filters. The filters live in the page's address, so Back from a
 device returns to the same list.
 
+In *Tiles* each category is one row that sums it up — how many devices and a few status chips worked out from the
+kinds (*All locked*, *Side Door unlocked*, *Alarm disarmed*, *Motion: Master Bedroom*, *2 on*, *Main Floor · Heat*,
+*Basement 21.1 °C*, *1 offline*) — and opens to its device tiles. A category with something needing a look
+(offline, unlocked or open, a leak, a battery or other problem) starts open, the rest closed; opening or closing one
+(or *Expand all* / *Collapse all*) is remembered in that browser. Searching or filtering opens every category with a
+match. *Table* lists every device in one table.
+
 Admins can remove devices that are offline or unavailable: with the status filter on *Offline or
 unavailable*, the tiles and table rows can be picked (*Select all* picks the whole list), then
 *Remove N devices…*; an offline device's own page has *Remove device…*. The confirmation names what still
@@ -1155,17 +1162,20 @@ as many as fit, the rest behind *See all* — the 31-day agenda and the weather.
 with it; for an existing one, **Add a Today page** in the editor makes it (using the dashboard's own
 weather and calendar choices) and turns the mornings on.
 
-**Whose dashboard.** The Dashboards page lists *Wall & browser dashboards* with whose each one is in
-plain words — *Chris, your default*, *Wall tablet account (Kitchen), its default* — so two dashboards
-both called "Wall tablet" (yours and the wall tablet account's) are easy to tell apart.
+**Whose dashboard.** The Dashboards page shows the *Wall & browser* dashboards as a table — name, pages,
+**Default for** (*You*, *Kitchen*) and **Shown on** — so two dashboards both called "Wall tablet" (yours and the
+wall tablet account's) are easy to tell apart; one that is nobody's default names its owner under it. *Shown on*
+counts the devices showing it right now (the names on hover or click): only sign-ins in use, seen in the last three
+days. A wall tablet that signs in again (a cleared browser, a reinstalled app) leaves its old sign-in behind until
+it expires a year later; those don't count, and expired sign-ins are deleted.
 
 ### Phone layouts
 
-The phone app has its own layouts (Dashboards → **Phone layouts**): a **household default** that
-everyone uses, and a **customized** layout for anyone who wants their own (**Customize** starts from a
-copy of the default; **Reset to default** goes back). Admins arrange the default and anyone's, and
-can **Reset everyone to the default** (asked once, inline); family and guests see only their own
-phone. Wall tablet accounts have none.
+The phone app has its own layouts (Dashboards → **Phone app**, a table of each layout's tabs and who uses it): a
+**household default** that everyone uses, and a **customized** layout for anyone who wants their own (*Customize for*
+*…* in the default's ⋯ menu starts from a copy of the default; *Reset to the default* in a customized phone's ⋯ menu
+goes back). Admins arrange the default and anyone's, and can **Reset everyone to the default** (asked once); family
+and guests see only their own phone. Wall tablet accounts have none.
 
 The phone editor draws an actual phone (390 × 844): the page's 4-column grid of square cells with the
 real tiles, the Today card at the top of the first tab, the links to the other pages under it, and the
@@ -1188,8 +1198,16 @@ the level moves 5 % — and each wall tablet account becomes a device (**Wall ta
 kind *Wall tablet*: charging / on battery, with battery %, battery temperature °C and voltage V as
 readings). With its screen off it shows **Screen off**, not offline - and so does its music player: the
 Android wall keeps checking in every 15 minutes in the background, even in Android's deep sleep (Doze),
-and says when the next check-in is due (shown offline 35 minutes after the last one, or 20 minutes after
-an announced one that didn't come). If a Fire tablet still drops off overnight, its wall settings have
+and says when the next check-in is due. Where a check-in should get through - charging or plugged in,
+or allowed to ignore battery optimisation - it's shown offline 35 minutes after the last one, or 20
+minutes after an announced one that didn't come. On battery otherwise, Android's deep sleep may hold
+check-ins back for hours: that's expected, so it stays *Screen off* (no alert) and is only offline after
+8 hours without a word; if its last level was within 10 points of *Start charging below* when it went
+quiet, smart charging turns its charger on then rather than wait for a crossing it can't hear about.
+The wall rarely gets that far: it never lets the screen go fully off by itself - it holds the screen on
+(dimmed after a while, with the date and time), and when another app (Alexa, say) is in front and Fire
+OS's timeout turns the screen off, the wall comes straight back with the screen on, dimmed. Pressing
+the power button with the wall in front still turns it off until you wake it. If a Fire tablet still drops off overnight, its wall settings have
 an optional **Let it report while asleep** (section *Battery reports while asleep*: lets the app ignore
 battery optimisation; or once over USB:
 `adb shell dumpsys deviceidle whitelist +ca.nimaste.newman.wall`); an iPad can't, so
@@ -1209,8 +1227,12 @@ charger ("Learned: charges from Kitchen plug") — move the tablet to another pl
 Newman never switches plugs to find out; you can also pick the plug yourself. Admins get one push
 (at most hourly per tablet, again once it has charged) when a tablet with smart charging is below
 10 % and not charging, or its charger isn't responding when it should turn on - and one ("Kitchen
-tablet stopped reporting its battery", at most hourly) when it goes offline (above: 15 minutes
-without a report with the screen on, longer with it off - a sleeping tablet isn't a fault).
+tablet stopped reporting its battery", at most hourly) when it goes offline while it should be able to
+report (above: 15 minutes without a report with the screen on; screen off but charging, plugged in or
+exempt from battery optimisation, 20 minutes past its announced check-in), or "Kitchen tablet hasn't
+checked in for 8 hours" when even a sleeping tablet has been silent that long. A tablet asleep on
+battery isn't a fault: no alert. Turning the charger on early for a sleeping tablet is in its Activity
+("Turned Kitchen plug on: early, Kitchen tablet is asleep at 28%").
 Changing the charger acts at once with the new one (from the last level reported).
 If the hub turns the charger on and the tablet hasn't started charging a minute later, it asks the
 admins once ("Kitchen tablet didn't start charging from Hall plug. Which plug is it on?") with up to
@@ -1484,13 +1506,18 @@ Without an outside address set there, `PUBLIC_URL` is used.
 The phone apps put devices on the home screen. Any device a widget can show is offered — anything with
 a one-tap command, a reading, or more than one state (not cameras) — and a widget shows each one's icon,
 name and state (or its reading, exactly as reported). Tapping a device does what tapping its tile in the
-app does (toggles a light, unlocks a locked lock, starts a docked vacuum); tapping a sensor refreshes.
+app does (toggles a light, unlocks a locked lock, starts a docked vacuum); tapping a sensor opens it in
+the app. Both phones offer three widgets: **Devices – tiles** and **Devices – rows** (you pick which
+devices and how many - 1-2 on a small widget, up to 4 on a medium one, up to 8 on a large one - and the
+layout grows to fill the widget), and **Home status** ("All secure" in green, or in red what isn't -
+"Side Door unlocked" - with a button to lock or close it).
 What a tap does comes from the hub (`GET /api/widgets/state`, worked out from the kind of device), so
 every app agrees and a new kind of device needs nothing in the apps.
 
-- **Android**: add the **Newman devices** widget (any size), pick its devices — search, by room or by
-  type, in the order you want — and choose whether sensitive actions (unlock, open, disarm) ask first
-  (off by default). Long-press the widget to change it. Three **Quick Settings tiles** (Newman 1, 2, 3):
+- **Android**: add **Devices – tiles** or **Devices – rows** (any size, resizable), pick its devices —
+  search, by room or by type, in the order you want, up to 8; the widget shows as many as its size
+  takes — and choose whether sensitive actions (unlock, open, disarm) ask first (off by default).
+  Long-press the widget to change it. **Home status** needs no setup. Three **Quick Settings tiles** (Newman 1, 2, 3):
   add them to the shade, long-press one to pick its device; it shows on / off and runs the action (a
   sensitive one when the phone is locked asks you to unlock first). Widgets refresh on a tap, while the
   app is open (its live connection), and every 15 minutes.

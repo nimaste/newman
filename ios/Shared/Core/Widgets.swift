@@ -46,12 +46,14 @@ struct WidgetDevice: Codable, Hashable, Identifiable {
     var area: String?
     var actions: [WidgetAction]?
     var reading: WidgetReading?
+    /// The hub's colour for the state: "good", "active", "alert", "offline" or "" (WidgetLogic.tone).
+    var tone: String?
 
-    enum CodingKeys: String, CodingKey { case id, name, kind, state, stateLabel, available, icon, area, actions, reading }
+    enum CodingKeys: String, CodingKey { case id, name, kind, state, stateLabel, available, icon, area, actions, reading, tone }
 
     init(id: String, name: String, kind: String? = nil, state: String? = nil, stateLabel: String? = nil,
          available: Bool? = nil, icon: String? = nil, area: String? = nil, actions: [WidgetAction]? = nil,
-         reading: WidgetReading? = nil) {
+         reading: WidgetReading? = nil, tone: String? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -62,6 +64,7 @@ struct WidgetDevice: Codable, Hashable, Identifiable {
         self.area = area
         self.actions = actions
         self.reading = reading
+        self.tone = tone
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +79,7 @@ struct WidgetDevice: Codable, Hashable, Identifiable {
         area = (try? c.decodeIfPresent(String.self, forKey: .area)).flatMap { $0.isEmpty ? nil : $0 }
         actions = try? c.decodeIfPresent([WidgetAction].self, forKey: .actions)
         reading = try? c.decodeIfPresent(WidgetReading.self, forKey: .reading)
+        tone = try? c.decodeIfPresent(String.self, forKey: .tone)
     }
 
     var isAvailable: Bool { available != false && state != "offline" }
@@ -100,6 +104,69 @@ struct WidgetStateReply: Decodable {
     static func parse(_ data: Data) -> [WidgetDevice]? {
         (try? JSONDecoder().decode(WidgetStateReply.self, from: data))?.devices
     }
+}
+
+// MARK: - GET /api/widgets/home (the "Home status" widget)
+
+/// One line of the status list: "Locks" / "All locked".
+struct WidgetHomeGroup: Codable, Hashable {
+    var kind: String?
+    var label: String
+    var text: String
+    /// True all secure, false one isn't, nil a house mode (an alarm) or all offline.
+    var secure: Bool?
+    var icon: String?
+}
+
+/// A device that isn't at its secure state, with the command that brings it back (Lock, Close).
+struct WidgetHomeProblem: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var kind: String?
+    var icon: String?
+    var stateLabel: String?
+    var urgent: Bool?
+    var fix: WidgetAction?
+
+    /// What the fix buttons hand to the device intents.
+    var device: WidgetDevice { WidgetDevice(id: id, name: name, kind: kind, stateLabel: stateLabel, icon: icon) }
+}
+
+/// Everything with a secure state, summed up by the hub (widgets.home_json) from kind metadata.
+struct WidgetHome: Codable, Hashable {
+    /// True all secure, false something isn't, nil nothing in the house has a secure state.
+    var secure: Bool?
+    var headline: String
+    var detail: String?
+    var problems: [WidgetHomeProblem]?
+    var groups: [WidgetHomeGroup]?
+    var ids: [String]?
+
+    var problemList: [WidgetHomeProblem] { problems ?? [] }
+    var groupList: [WidgetHomeGroup] { groups ?? [] }
+    /// The problems a tap can fix, in the hub's order (urgent first).
+    var fixable: [WidgetHomeProblem] { problemList.filter { $0.fix != nil } }
+
+    static func parse(_ data: Data) -> WidgetHome? {
+        try? JSONDecoder().decode(WidgetHome.self, from: data)
+    }
+}
+
+/// A widget's colour for a device's state.
+enum WidgetTone: String {
+    /// At its kind's secure state (locked, closed).
+    case good
+    /// Away from its secure state (unlocked, open), or in its kind's active state (a light on).
+    case active
+    /// An urgent kind away from its secure state (a leak).
+    case alert
+    case offline
+    case neutral
+}
+
+/// The three home-screen sizes the device widgets come in.
+enum WidgetSize: String {
+    case small, medium, large
 }
 
 /// What Siri / Shortcuts can ask for by name ("Turn on the kitchen light with Newman").
@@ -251,6 +318,59 @@ enum WidgetLogic {
     static func isSensitive(_ a: WidgetAction, _ kind: Kind?) -> Bool {
         a.isSensitive || (kind?.command(a.command)?.isSensitive ?? false)
     }
+
+    /// The state's colour: the hub's own (GET /api/widgets/state "tone"), else worked out the same way
+    /// from the kind metadata (older hubs): its secure state, then its active state.
+    static func tone(_ d: WidgetDevice, _ kind: Kind?) -> WidgetTone {
+        if !d.isAvailable { return .offline }
+        if let t = d.tone { return WidgetTone(rawValue: t) ?? .neutral }
+        guard let kind, let s = d.state, !s.isEmpty else { return .neutral }
+        if let secure = kind.secureState {
+            if (kind.transitional ?? []).contains(s) { return .neutral }
+            if s == secure { return .good }
+            return (kind.urgent ?? false) ? .alert : .active
+        }
+        if let active = kind.activeState, s == active { return .active }
+        return .neutral
+    }
+
+    /// newman://device?id=… - the app on that device (a sensor's tile, which has nothing to run).
+    static func deviceURL(_ id: String) -> URL? {
+        let q = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+#"))) ?? id
+        return URL(string: "newman://device?id=\(q)")
+    }
+
+    // MARK: device widget layout (the person picks how many; the layout fills the widget)
+
+    /// How many devices a size shows: more than 2 in a small one is unreadable.
+    static func maxDevices(_ size: WidgetSize) -> Int {
+        switch size {
+        case .small: return 2
+        case .medium: return 4
+        case .large: return 8
+        }
+    }
+
+    /// Tiles across: a wide widget (medium) puts them side by side; a square one stacks up to three
+    /// full-width tiles, then goes two across.
+    static func tileColumns(count: Int, wide: Bool) -> Int {
+        let n = max(1, count)
+        if wide { return n }
+        return n <= 3 ? 1 : 2
+    }
+
+    /// How many tiles go on each line, top to bottom ([2, 2, 1]): a short last line's tiles widen to fill it.
+    static func lines(count: Int, columns: Int) -> [Int] {
+        guard count > 0 else { return [] }
+        let c = max(1, columns)
+        return stride(from: 0, to: count, by: c).map { min(c, count - $0) }
+    }
+
+    /// A tile too short for icon, name and state stacked: the icon goes beside them instead.
+    static func tileCompact(tileHeight: Double) -> Bool { tileHeight < 84 }
+
+    /// A row tall enough for the state under the name; shorter rows put it on the right.
+    static func rowStacked(rowHeight: Double) -> Bool { rowHeight >= 52 }
 
     /// A command Siri / a switch resolved for a device: sensitive when the kind metadata or the
     /// hub's widget state says so.

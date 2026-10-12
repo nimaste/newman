@@ -1,6 +1,8 @@
 """Wall tablets report their own battery (POST /api/tablet/battery): one device per tablet account that
 automations (charge between 20 and 80 %) and dashboards use like any other; offline after 15 minutes
-(screen on), 35 minutes (screen off, still checking in) or 12 hours (screen off, no background reports)."""
+(screen on), 35 minutes (screen off, still checking in and able to: charging, plugged in or exempt from
+Doze), 8 hours (screen off on battery: deep sleep may hold check-ins back) or 12 hours (screen off, no
+background reports)."""
 import asyncio
 import json
 import os
@@ -15,7 +17,8 @@ from aiohttp.test_utils import TestClient, TestServer  # noqa: E402
 
 from newman.api import build_app  # noqa: E402
 from newman.config import config  # noqa: E402
-from newman.integrations.tablets import OFFLINE_AFTER_S, SCREEN_OFF_AFTER_S, SCREEN_OFF_SILENT_AFTER_S  # noqa: E402
+from newman.integrations.tablets import (DEEP_SLEEP_MAX_S, OFFLINE_AFTER_S, SCREEN_OFF_AFTER_S,  # noqa: E402
+                                         SCREEN_OFF_SILENT_AFTER_S)
 from newman.kinds import KINDS, properties_for  # noqa: E402
 from test_auth import Browser, FakeLocks, H  # noqa: E402
 
@@ -262,6 +265,67 @@ class TabletBatteryTests(unittest.IsolatedAsyncioTestCase):
         for bad in ({**GOOD, "nextReportIn": -1}, {**GOOD, "nextReportIn": "soon"}, {**GOOD, "nextReportIn": True},
                     {**GOOD, "dozeExempt": "yes"}):
             self.assertEqual((await self.report(bad)).status, 400, bad)
+
+    async def test_asleep_on_battery_stays_screen_off_for_8_hours(self):
+        # Screen off, on battery, not exempt from Doze: deep sleep may hold its check-ins back for hours -
+        # "Screen off" (asleep), marked deepSleep once past its announced check-in, offline after 8 hours.
+        self.assertEqual(DEEP_SLEEP_MAX_S, 8 * 3600)
+        asleep = {**GOOD, "charging": False, "plugged": "none", "screen": "off", "background": True,
+                  "nextReportIn": 900, "dozeExempt": False}
+        await self.report(asleep)
+        self.assertFalse(self.h.hub.get(self.eid).attrs["deepSleep"])
+        now = time.time()
+        await self.inst().check_offline(now=now + 34 * 60)
+        self.assertFalse(self.h.hub.get(self.eid).attrs["deepSleep"])
+        await self.inst().check_offline(now=now + 36 * 60)
+        e = self.h.hub.get(self.eid)
+        self.assertEqual((e.available, e.attrs["deepSleep"], e.attrs["batteryStale"]), (True, True, False))
+        self.assertEqual(await self.label(), "Screen off")
+        self.assertNotIn("deepSleep", {p["id"] for p in properties_for(e)})  # a detail, not automation fodder
+        self.assertTrue(self.inst().tablet_asleep(self.tablet["id"], now=now + 7.9 * 3600))
+        await self.inst().check_offline(now=now + 7.9 * 3600)
+        self.assertTrue(self.h.hub.get(self.eid).available)
+        await self.inst().check_offline(now=now + 8.1 * 3600)
+        self.assertFalse(self.h.hub.get(self.eid).available)
+        await self.report(asleep)
+        e = self.h.hub.get(self.eid)
+        self.assertEqual((e.available, e.attrs["deepSleep"]), (True, False))
+        # Where its check-ins should get through, missing one is offline as before: exempt from Doze...
+        await self.report({**asleep, "dozeExempt": True})
+        now = time.time()
+        await self.inst().check_offline(now=now + 36 * 60)
+        self.assertFalse(self.h.hub.get(self.eid).available)
+        # ...or on its charger (charging, or plugged in and full).
+        for more in ({"charging": True, "plugged": "ac"}, {"charging": False, "plugged": "usb"}):
+            await self.report({**asleep, **more})
+            now = time.time()
+            await self.inst().check_offline(now=now + 34 * 60)
+            self.assertTrue(self.h.hub.get(self.eid).available, more)
+            await self.inst().check_offline(now=now + 36 * 60)
+            self.assertFalse(self.h.hub.get(self.eid).available, more)
+        # Screen on: 15 minutes, as always.
+        await self.report({**asleep, "screen": "on"})
+        now = time.time()
+        await self.inst().check_offline(now=now + 16 * 60)
+        self.assertFalse(self.h.hub.get(self.eid).available)
+
+    async def test_after_a_restart_a_tablet_in_deep_sleep_is_asleep_not_offline(self):
+        await self.report({**GOOD, "charging": False, "plugged": "none", "screen": "off", "background": True,
+                           "nextReportIn": 900})
+        inst = self.inst()
+        f = self.data / "integrations" / inst.id / "tablets.json"
+        saved = json.loads(f.read_text())
+        saved[self.tablet["id"]]["at"] -= 3 * 3600
+        f.write_text(json.dumps(saved))
+        h2 = H(self.data)
+        h2.integrations.start_all()
+        for _ in range(50):
+            if h2.hub.get(self.eid):
+                break
+            await asyncio.sleep(0.02)
+        e = h2.hub.get(self.eid)
+        self.assertEqual((e.available, e.attrs["screen"], e.attrs["deepSleep"]), (True, "off", True))
+        await h2.integrations.stop_all()
 
     async def test_screen_off_without_background_reports_stays_screen_off_for_12_hours(self):
         # An iPad: a last report as it goes to sleep, then nothing until it's woken.

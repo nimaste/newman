@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="widget_name">Newman devices</string>
-    <string name="widget_description">Your devices at a glance; tap one to switch it</string>
+    <string name="widget_name">Devices – tiles</string>
+    <string name="widget_description">Large tiles for the devices you choose; tap one to run it</string>
+    <string name="widget_rows_name">Devices – rows</string>
+    <string name="widget_rows_description">A row for each device you choose: its name and state; tap one to run it</string>
+    <string name="widget_home_name">Home status</string>
+    <string name="widget_home_description">All secure, or what isn\'t - with a tap to lock or close it</string>
 </resources>

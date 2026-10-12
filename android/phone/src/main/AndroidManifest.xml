@@ -78,7 +78,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- Home-screen widget (widgets/DeviceGridWidget.kt): a grid of devices, chosen when it's added. -->
+        <!-- Home-screen widgets (widgets/DeviceGridWidget.kt, HomeStatusWidget.kt): "Devices – tiles" (this
+             receiver's name is the first widget's, so placed ones keep working), "Devices – rows" (devices
+             chosen when added, in WidgetConfigActivity) and "Home status". -->
         <receiver
             android:name=".widgets.DeviceGridReceiver"
             android:exported="true"
@@ -89,6 +91,28 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/device_grid_widget" />
+        </receiver>
+        <receiver
+            android:name=".widgets.DeviceRowsReceiver"
+            android:exported="true"
+            android:label="@string/widget_rows_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/device_rows_widget" />
+        </receiver>
+        <receiver
+            android:name=".widgets.HomeStatusReceiver"
+            android:exported="true"
+            android:label="@string/widget_home_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/home_status_widget" />
         </receiver>
         <activity
             android:name=".widgets.WidgetConfigActivity"

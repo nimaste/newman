@@ -39,7 +39,7 @@ const TABLET = [
 ];
 
 export default function SignInSettings() {
-  const { isAdmin, where, refresh } = useAuth();
+  const { isAdmin, refresh } = useAuth();
   const res = useApi(isAdmin ? 'api/auth/settings' : null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -80,7 +80,6 @@ export default function SignInSettings() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Sign-in settings</h1>
-        <span className="muted head-hint">You're connected {where === 'home' ? 'from home' : 'from outside'}.</span>
         {isAdmin && form ? (
           <button type="button" className="btn btn-primary head-btn" style={{ marginLeft: 'auto' }} disabled={!dirty || saving} onClick={save}>
             {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}

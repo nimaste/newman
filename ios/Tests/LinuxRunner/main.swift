@@ -607,6 +607,69 @@ do {
     eq(WidgetLogic.nextRefresh(now: 1000, lastActionAt: nil), 1900, "else 15 minutes")
 }
 
+// MARK: device widget layouts, tones and Home status (GET /api/widgets/home)
+
+do {
+    eq([WidgetSize.small, .medium, .large].map { WidgetLogic.maxDevices($0) }, [2, 4, 8], "devices per size")
+    // Small (square): 1 fills it, 2 stack. Medium (wide): side by side. Large: up to 3 stacked, then 2 across.
+    eq(WidgetLogic.lines(count: 1, columns: WidgetLogic.tileColumns(count: 1, wide: false)), [1], "small 1")
+    eq(WidgetLogic.lines(count: 2, columns: WidgetLogic.tileColumns(count: 2, wide: false)), [1, 1], "small 2: halves")
+    eq(WidgetLogic.lines(count: 3, columns: WidgetLogic.tileColumns(count: 3, wide: true)), [3], "medium 3 in a row")
+    eq(WidgetLogic.lines(count: 4, columns: WidgetLogic.tileColumns(count: 4, wide: true)), [4], "medium 4 in a row")
+    eq(WidgetLogic.lines(count: 3, columns: WidgetLogic.tileColumns(count: 3, wide: false)), [1, 1, 1], "large 3 stacked")
+    eq(WidgetLogic.lines(count: 5, columns: WidgetLogic.tileColumns(count: 5, wide: false)), [2, 2, 1], "large 5: last widens")
+    eq(WidgetLogic.lines(count: 8, columns: WidgetLogic.tileColumns(count: 8, wide: false)), [2, 2, 2, 2], "large 8")
+    eq(WidgetLogic.lines(count: 0, columns: 2), [], "nothing")
+    check(WidgetLogic.tileCompact(tileHeight: 70) && !WidgetLogic.tileCompact(tileHeight: 150), "short tiles go sideways")
+    check(WidgetLogic.rowStacked(rowHeight: 70) && !WidgetLogic.rowStacked(rowHeight: 36), "tall rows stack the state")
+    eq(WidgetLogic.deviceURL("lutron.device 8")?.absoluteString, "newman://device?id=lutron.device%208", "device link")
+
+    // Tones: the hub's when it sends one, else from the kind metadata (secure state, then active state).
+    let locked = WidgetDevice(id: "l", name: "Side Door", kind: "lock", state: "LOCKED", available: true)
+    eq(WidgetLogic.tone(locked, kinds["lock"]), .good, "locked: good")
+    var unlocked = locked
+    unlocked.state = "UNLOCKED"
+    eq(WidgetLogic.tone(unlocked, kinds["lock"]), .active, "unlocked: active")
+    unlocked.state = "UNLOCKING"
+    eq(WidgetLogic.tone(unlocked, kinds["lock"]), .neutral, "between states: neutral")
+    let on = WidgetDevice(id: "x", name: "Kitchen", kind: "light", state: "on")
+    eq(WidgetLogic.tone(on, kinds["light"]), .active, "light on: active")
+    eq(WidgetLogic.tone(WidgetDevice(id: "x", name: "K", kind: "light", state: "off"), kinds["light"]), .neutral, "off: neutral")
+    if kinds["leak"]?.secureState != nil {
+        eq(WidgetLogic.tone(WidgetDevice(id: "w", name: "Laundry", kind: "leak", state: "wet"), kinds["leak"]), .alert, "leak: alert")
+    }
+    eq(WidgetLogic.tone(WidgetDevice(id: "x", name: "K", available: false), nil), .offline, "offline")
+    eq(WidgetLogic.tone(WidgetDevice(id: "x", name: "K", tone: "good"), nil), .good, "hub's tone")
+    eq(WidgetLogic.tone(WidgetDevice(id: "x", name: "K", kind: "light", state: "on", tone: ""), kinds["light"]), .neutral,
+       "hub's neutral wins")
+    let toned = WidgetStateReply.parse(Data(#"{"devices":[{"id":"a","name":"A","tone":"alert"}]}"#.utf8))
+    eq(toned?.first?.tone, "alert", "tone decoded")
+
+    // GET /api/widgets/home (server/tests/test_widgets.py has the hub side).
+    let homeJSON = #"""
+    {"secure": false, "headline": "Side Door unlocked", "detail": "door closed",
+     "problems": [{"id": "fake.side", "name": "Side Door", "kind": "lock", "icon": "lock", "state": "UNLOCKED",
+                   "stateLabel": "Unlocked", "urgent": false, "fix": {"command": "lock", "label": "Lock", "sensitive": false}},
+                  {"id": "fake.leak", "name": "Laundry", "kind": "leak", "icon": "leak", "state": "wet",
+                   "stateLabel": "Leak!", "urgent": true, "fix": null}],
+     "groups": [{"kind": "lock", "label": "Lock", "text": "Unlocked", "secure": false, "icon": "lock"},
+                {"kind": "alarm", "label": "Alarm", "text": "Disarmed", "secure": null, "icon": "alarm"}],
+     "ids": ["fake.side", "fake.leak", "fake.alarm"], "somethingNew": 1}
+    """#
+    if let home = WidgetHome.parse(Data(homeJSON.utf8)) {
+        eq(home.secure, false, "home: not secure")
+        eq(home.headline, "Side Door unlocked", "home headline")
+        eq(home.fixable.map(\.id), ["fake.side"], "only fixable problems get buttons")
+        eq(home.fixable.first?.fix?.command, "lock", "fix command")
+        eq(home.fixable.first?.device.name, "Side Door", "fix device")
+        eq(home.groupList.map(\.text), ["Unlocked", "Disarmed"], "home groups")
+        check(home.groupList[1].secure == nil, "a house mode isn't secure or not")
+    } else { check(false, "home status decodes") }
+    let bare = WidgetHome.parse(Data(#"{"secure": null, "headline": "Nothing to keep secure"}"#.utf8))
+    check(bare != nil && bare?.secure == nil && bare?.problemList.isEmpty == true && bare?.groupList.isEmpty == true,
+          "home status: missing lists are empty")
+}
+
 // MARK: live video (mobile-shared/live-player.html protocol)
 
 eq(LivePageMessage.parse(["type": "ready"]), .ready, "page ready")

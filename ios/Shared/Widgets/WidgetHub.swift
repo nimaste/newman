@@ -19,6 +19,7 @@ enum WidgetHub {
         static let meta = "widgets.meta"
         static let metaAt = "widgets.metaAt"
         static let states = "widgets.states"
+        static let home = "widgets.home"
         static let catalog = "widgets.catalog"
         static let lastAction = "widgets.lastActionAt"
         static let pushToken = "widgets.pushToken"
@@ -135,6 +136,23 @@ enum WidgetHub {
         for d in devices { all[d.id] = d }
         if all.count > 200 { all = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) }) }
         if let data = try? JSONEncoder().encode(all) { defaults?.set(data, forKey: K.states) }
+    }
+
+    // MARK: the "Home status" widget (GET /api/widgets/home)
+
+    /// Is everything secure, what isn't and what fixes it. Kept, so an unreachable hub still shows the last one.
+    static func home() async throws -> WidgetHome {
+        let data = try await checked("GET", "api/widgets/home")
+        guard let home = WidgetHome.parse(data) else {
+            throw APIError(status: 0, message: "Newman's reply couldn't be read.", signInRequired: false)
+        }
+        defaults?.set(data, forKey: K.home)
+        return home
+    }
+
+    static var cachedHome: WidgetHome? {
+        guard let data = defaults?.data(forKey: K.home) else { return nil }
+        return WidgetHome.parse(data)
     }
 
     // MARK: commands (POST /api/entities/{id}/command, as the app sends them)

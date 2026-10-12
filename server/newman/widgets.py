@@ -2,7 +2,8 @@
 and Quick Settings tiles): a small, fixed view of any device, worked out from kinds.py alone.
 
 GET  /api/widgets/devices    - every device a widget can show, for the widget's device picker
-GET  /api/widgets/state?ids= - those devices now: state, a reading, and what a tap does
+GET  /api/widgets/state?ids= - those devices now: state, a reading, its colour (tone), and what a tap does
+GET  /api/widgets/home       - the "Home status" widget: all secure or not, what isn't and what fixes it
 POST /api/widgets/push-token - this phone's widget push token (push/widgets.py sends the reloads)
 
 A device is widget-showable when its kind can do something in one tap (a command that needs no value),
@@ -118,13 +119,147 @@ def device_json(e: Entity) -> dict[str, Any]:
             "icon": icon_of(e), "controllable": bool(plain_commands(k))}
 
 
+def secure_of(e: Entity, k: Kind) -> bool | None:
+    """True at the kind's secure state (locked, closed, dry), False settled away from it; None when the
+    kind has no secure state, the device is offline or has no state, or it's between states (locking)."""
+    if k.secure_state is None or e.offline or e.state in (None, "") or e.state in k.transitional:
+        return None
+    return e.state == k.secure_state
+
+
+def tone(e: Entity, k: Kind) -> str:
+    """The colour a widget gives the device's state: "good" (at its secure state), "alert" (an urgent kind
+    away from it - a leak), "active" (away from its secure state, or in the kind's active state - on),
+    "offline", else "" (neutral)."""
+    if e.offline:
+        return "offline"
+    s = secure_of(e, k)
+    if s is True:
+        return "good"
+    if s is False:
+        return "alert" if k.urgent else "active"
+    if k.secure_state is None and k.active_state is not None and e.state == k.active_state:
+        return "active"
+    return ""
+
+
 def state_json(e: Entity) -> dict[str, Any]:
     """One entry of GET /api/widgets/state."""
     k = KINDS[e.kind]
     return {"id": e.id, "name": e.name, "kind": e.kind, "state": e.state, "stateLabel": k.label_for(e.state, e.attrs),
             "available": e.available, "active": k.active_state is not None and e.state == k.active_state,
-            "icon": icon_of(e), "area": area_of(e),
+            "tone": tone(e, k), "icon": icon_of(e), "area": area_of(e),
             "actions": actions_json(e, k), "reading": reading(e, k)}
+
+
+# -- the "Home status" widget (GET /api/widgets/home) -----------------------------------------------------
+
+def fix_action(k: Kind) -> Command | None:
+    """The one-tap command that brings a device back to its kind's secure state (Lock, Close)."""
+    if k.secure_state is None:
+        return None
+    return next((c for c in plain_commands(k) if c.confirms_to == k.secure_state), None)
+
+
+def _lower_first(s: str) -> str:
+    return s[:1].lower() + s[1:]
+
+
+def _label(e: Entity, k: Kind) -> str:
+    return k.label_for(e.state, e.attrs)
+
+
+def _group(k: Kind, ents: list[Entity]) -> dict[str, Any]:
+    """One line of the status list: "Locks: All locked", "Garage door: Closed", "Alarm: Disarmed"."""
+    label = k.plural if len(ents) > 1 else k.name
+    online = [e for e in ents if not e.offline]
+    offline = len(ents) - len(online)
+    secure: bool | None = None
+    if not online:
+        text = "Offline" if len(ents) == 1 else f"{len(ents)} offline"
+        offline = 0
+    elif k.secure_state is None:  # a house mode (an alarm): its state
+        text = ", ".join(dict.fromkeys(_label(e, k) for e in online))
+    else:
+        bad = [e for e in online if secure_of(e, k) is False]
+        secure = not bad
+        if not bad:
+            ok = k.state_label(k.secure_state)
+            text = ok if len(online) == 1 else f"All {_lower_first(ok)}"
+        elif len(bad) == 1 and len(online) > 1:
+            text = f"{bad[0].name} {_lower_first(_label(bad[0], k))}"
+        else:
+            labels = list(dict.fromkeys(_lower_first(_label(e, k)) for e in bad))
+            if len(online) == 1:
+                text = _label(bad[0], k)
+            else:
+                text = f"{len(bad)} {labels[0]}" if len(labels) == 1 else f"{len(bad)} not secure"
+    if offline:
+        text += f" · {offline} offline"
+    return {"kind": k.id, "label": label, "text": text, "secure": secure, "icon": k.id}
+
+
+def home_json(ents: list[Entity]) -> dict[str, Any]:
+    """Everything with a secure state (locks, doors, garage doors, leak and smoke sensors - from the kind
+    metadata alone) and the house modes (an alarm), summed up for the "Home status" widget:
+
+    secure    True when every one of them that's online is at its secure state, False when one isn't,
+              None when the house has none
+    headline  "All secure" / "Side Door unlocked" / "2 unlocked" / "2 not secure"
+    detail    "2 locks · garage door closed" / the other ones that aren't secure
+    problems  the devices that aren't secure (urgent ones first), each with the command that fixes it
+    groups    one line per kind: {"label": "Locks", "text": "All locked", "secure": True}
+    ids       every device it covers (what the widget's reload pushes follow)
+    """
+    watched = [e for e in ents if (k := KINDS.get(e.kind)) is not None and (k.secure_state is not None or k.is_mode)]
+    by_kind: dict[str, list[Entity]] = {}
+    for e in sorted(watched, key=lambda e: e.name.lower()):
+        by_kind.setdefault(e.kind, []).append(e)
+    order = list(KINDS)
+    kinds = sorted(by_kind, key=lambda kid: (KINDS[kid].is_mode, order.index(kid)))
+    groups = [_group(KINDS[kid], by_kind[kid]) for kid in kinds]
+    groups.sort(key=lambda g: g["secure"] is not False)  # what's wrong first (stable: kind order otherwise)
+
+    bad = [e for e in watched if secure_of(e, KINDS[e.kind]) is False]
+    bad.sort(key=lambda e: (not KINDS[e.kind].urgent, fix_action(KINDS[e.kind]) is None, e.name.lower()))
+    problems = []
+    for e in bad:
+        k = KINDS[e.kind]
+        fix = fix_action(k)
+        problems.append({"id": e.id, "name": e.name, "kind": e.kind, "icon": icon_of(e), "state": e.state,
+                         "stateLabel": _label(e, k), "urgent": k.urgent,
+                         "fix": {"command": fix.id, "label": fix.label, "sensitive": fix.sensitive} if fix else None})
+
+    secured = [e for e in watched if KINDS[e.kind].secure_state is not None]
+    offline = sum(1 for e in secured if e.offline)
+
+    def all_good(skip: set[str]) -> list[str]:
+        """"2 locks", "garage door closed": the kinds whose devices are all secure."""
+        parts = []
+        for kid in kinds:
+            k, online = KINDS[kid], [e for e in by_kind[kid] if not e.offline]
+            if k.secure_state is None or not online or kid in skip:
+                continue
+            ok = _lower_first(k.state_label(k.secure_state))
+            parts.append(f"{len(online)} {_lower_first(k.plural)}" if len(online) > 1 else f"{k.noun} {ok}")
+        return parts
+
+    if not secured:
+        secure, headline, detail = None, "Nothing to keep secure", ""
+    elif not problems:
+        parts = all_good(set()) + ([f"{offline} offline"] if offline else [])
+        secure, headline, detail = True, "All secure", " · ".join(parts)
+    else:
+        labels = list(dict.fromkeys(_lower_first(p["stateLabel"]) for p in problems))
+        if len(problems) == 1:
+            headline = f"{problems[0]['name']} {labels[0]}"
+            detail = " · ".join(all_good({problems[0]["kind"]}))
+        else:
+            headline = f"{len(problems)} {labels[0]}" if len(labels) == 1 else f"{len(problems)} not secure"
+            detail = " · ".join(f"{p['name']} {_lower_first(p['stateLabel'])}" for p in problems)
+        secure = False
+    return {"secure": secure, "headline": headline, "detail": detail, "problems": problems, "groups": groups,
+            "ids": [e.id for e in watched]}
 
 
 def parse_ids(raw: str | None) -> list[str]:
@@ -156,6 +291,14 @@ def add_widget_routes(r: web.RouteTableDef, h: "Newman", *, push: "WidgetPush",
         if ids and req["user"].get("id"):
             push.saw(req["user"]["id"], [e.id for e in ents])  # reload pushes only for what they show
         return web.json_response({"devices": [state_json(e) for e in ents]})
+
+    @r.get("/api/widgets/home")
+    async def widget_home(req: web.Request) -> web.Response:
+        """The "Home status" widget: is everything secure, what isn't and how to fix it (home_json)."""
+        body = home_json(h.hub.all())
+        if body["ids"] and req["user"].get("id"):
+            push.saw(req["user"]["id"], body["ids"])  # reloads when any of them changes
+        return web.json_response(body)
 
     @r.post("/api/widgets/push-token")
     async def widget_push_token(req: web.Request) -> web.Response:

@@ -271,11 +271,12 @@ class WallSettingsActivity : ComponentActivity() {
                     Switch(comeBackOnWake, { comeBackOnWake = it })
                     Text("Come back when the screen wakes", color = Ink)
                 }
-                val returns = returnAfter || comeBackAfter || comeBackOnWake
-                if (returns && !owner && !overlay) {
+                Text("If the screen turns off while another app is in front, the wall always comes back dimmed and keeps the screen on.", color = Muted)
+                // (That return is always on, so the permission it needs always matters.)
+                if (!owner && !overlay) {
                     Text("Coming back needs Android's “Display over other apps” for Newman Wall.", color = Coral)
                     OutlinedButton(onClick = { openOverlaySettings() }) { Text("Allow display over other apps") }
-                } else if (returns && !owner) {
+                } else if (!owner) {
                     Text("“Display over other apps” is allowed.", color = Muted)
                 }
             }

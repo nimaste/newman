@@ -1,8 +1,9 @@
-// Dashboards: what the wall tablet, the browser and the phones show. Two parts:
+// Dashboards: what the wall tablet, the browser and the phones show. Two tables:
 //  - Wall & browser dashboards: everyone arranges their own; admins also see and arrange other
-//    accounts' (a wall tablet's account can't edit its own). Each row says whose it is.
-//  - Phone layouts: the household default and, per person, "using the household default" or
-//    "customized" (with Reset). Admins arrange the default and anyone's; others only their own.
+//    accounts' (a wall tablet's account can't edit its own). "Shown on" counts only sign-ins the
+//    hub says are live (session.live), so a tablet's old, abandoned sign-ins don't pile up there.
+//  - Phone layouts: the household default (and who uses it) and each customized phone. Admins
+//    arrange the default and anyone's; others only their own.
 
 import { useEffect, useRef, useState } from 'react';
 import { api, enc, toast } from '../api.js';
@@ -63,19 +64,42 @@ function NameModal({ title, initial, onClose, onSave, label = 'Save', owners }) 
   );
 }
 
-/** "Tabs: Overview, Security, Lights · 1 more page" for a phone layout. */
-function layoutSummary(layout) {
-  const pages = (layout && layout.pages) || [];
-  const tabs = pages.filter((p) => p.tab).map((p) => p.name);
-  const more = pages.length - tabs.length;
-  return `Tabs: ${tabs.join(', ') || 'none'}${more ? ` · ${plural(more, 'more page')}` : ''}${layout && layout.today ? ' · Today card' : ''}`;
+/** "3 devices": the names on hover, and in a little list on click. */
+function DeviceCount({ names }) {
+  if (!names.length) return <span className="muted">—</span>;
+  return (
+    <details className="dash-shown">
+      <summary title={names.join('\n')}>{plural(names.length, 'device')}</summary>
+      <ul className="dash-shown-list">
+        {names.map((n, i) => (
+          <li key={i}>{n}</li>
+        ))}
+      </ul>
+    </details>
+  );
 }
 
-/** The phone layouts part: the household default and each person (admins), or just your phone. */
+/** A phone layout's tab names ("Overview, Security, Lights"). */
+function tabNames(layout) {
+  return ((layout && layout.pages) || []).filter((p) => p.tab).map((p) => p.name);
+}
+
+function TabsCell({ layout }) {
+  const tabs = tabNames(layout);
+  return tabs.length ? <span>{tabs.join(', ')}</span> : <span className="muted">None</span>;
+}
+
+/** A customized phone's tabs (its layout is fetched on its own). */
+function PersonTabs({ userId }) {
+  const res = useApi('api/phone-layouts/' + enc(userId));
+  if (!res.data) return <span className="muted">{res.error ? '?' : '…'}</span>;
+  return <TabsCell layout={res.data.layout} />;
+}
+
+/** The phone layouts table: the household default and each customized phone (admins), or just your phone. */
 function PhoneLayouts({ isAdmin, me }) {
+  const confirm = useConfirm();
   const res = useApi(isAdmin ? 'api/phone-layouts' : 'api/phone-layouts/me');
-  const [askAll, setAskAll] = useState(false);
-  const [busy, setBusy] = useState(false);
   useLiveRefresh((m) => m.type === 'dashboard', () => res.reload(), 500);
 
   const reset = async (path, name) => {
@@ -87,42 +111,69 @@ function PhoneLayouts({ isAdmin, me }) {
       /* toast shown */
     }
   };
-  const resetAll = async () => {
-    setBusy(true);
+  const resetAll = async (custom) => {
+    const ok = await confirm({
+      title: 'Reset everyone to the default?',
+      body:
+        custom.length === 1
+          ? `${custom[0].name}’s customized phone goes back to the household default.`
+          : `All ${custom.length} customized phones (${custom.map((p) => p.name).join(', ')}) go back to the household default.`,
+      confirmLabel: 'Reset',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const r = await api.post('api/phone-layouts/reset-all', {});
       toast(`${plural(r.reset || 0, 'phone')} back on the household default`, 'success');
-      setAskAll(false);
       res.reload();
     } catch {
       /* toast shown */
-    } finally {
-      setBusy(false);
     }
   };
 
   if (!res.data) return res.error ? <ErrorBox error={res.error} onRetry={res.reload} /> : <Loading />;
 
+  const head = (
+    <thead>
+      <tr>
+        <th scope="col">Name</th>
+        <th scope="col">Tabs</th>
+        <th scope="col">Used by</th>
+        <th scope="col" className="dash-col-actions">
+          <span className="sr-only">Actions</span>
+        </th>
+      </tr>
+    </thead>
+  );
+
   if (!isAdmin) {
     const own = res.data.source === 'own';
     return (
-      <div className="rows">
-        <div className="row dash-row">
-          <a className="dash-main" href="#/dashboards/phone/me">
-            <span className="strong">Your phone</span>
-            <span className="phone-meta">
-              {own ? 'customized' : 'using the household default'} · {layoutSummary(res.data.layout)}
-            </span>
-          </a>
-          {own ? (
-            <button type="button" className="btn-link dash-reset" onClick={() => reset('api/phone-layouts/me/reset')}>
-              Reset to default
-            </button>
-          ) : null}
-          <a className="btn btn-sm2" href="#/dashboards/phone/me">
-            {own ? 'Arrange' : 'Customize'}
-          </a>
-        </div>
+      <div className="table-wrap">
+        <table className="dtable">
+          {head}
+          <tbody>
+            <tr>
+              <td>
+                <a className="dtable-name" href="#/dashboards/phone/me">
+                  {own ? 'Your phone' : 'Household default'}
+                </a>
+              </td>
+              <td>
+                <TabsCell layout={res.data.layout} />
+              </td>
+              <td>You</td>
+              <td className="dash-col-actions">
+                <span className="dtable-actions">
+                  <a className="btn btn-sm" href="#/dashboards/phone/me">
+                    {own ? 'Arrange' : 'Customize'}
+                  </a>
+                  {own ? <MoreMenu label="More for your phone" items={[{ label: 'Reset to the default', onClick: () => reset('api/phone-layouts/me/reset') }]} /> : null}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     );
   }
@@ -130,66 +181,67 @@ function PhoneLayouts({ isAdmin, me }) {
   const people = res.data.people || [];
   const onDefault = people.filter((p) => p.source !== 'own');
   const custom = people.filter((p) => p.source === 'own');
+  const you = (p) => (me && p.userId === me.id ? ' (you)' : '');
   return (
-    <>
-      <div className="rows">
-        <div className="row dash-row">
-          <a className="dash-main" href="#/dashboards/phone/default">
-            <span className="strong">Household default</span>
-            <span className="phone-meta">
-              {layoutSummary(res.data.default)} · {onDefault.length ? 'used by ' + onDefault.map((p) => p.name).join(', ') : 'nobody uses it right now'}
-            </span>
-          </a>
-          <a className="btn btn-sm2" href="#/dashboards/phone/default">
-            Arrange
-          </a>
-        </div>
-        {people.map((p) => {
-          const own = p.source === 'own';
-          const href = '#/dashboards/phone/' + enc(p.userId);
-          return (
-            <div key={p.userId} className="row dash-row">
-              <a className="dash-main" href={href}>
-                <span className="strong">
+    <div className="table-wrap">
+      <table className="dtable">
+        {head}
+        <tbody>
+          <tr>
+            <td>
+              <a className="dtable-name" href="#/dashboards/phone/default">
+                Household default
+              </a>
+            </td>
+            <td>
+              <TabsCell layout={res.data.default} />
+            </td>
+            <td>{onDefault.length ? onDefault.map((p) => p.name + you(p)).join(', ') : <span className="muted">Nobody</span>}</td>
+            <td className="dash-col-actions">
+              <span className="dtable-actions">
+                <a className="btn btn-sm" href="#/dashboards/phone/default">
+                  Arrange
+                </a>
+                <MoreMenu
+                  label="More for the household default"
+                  items={[
+                    ...onDefault.map((p) => ({ label: `Customize for ${p.name}${you(p)}`, onClick: () => navigate('dashboards/phone/' + enc(p.userId)) })),
+                    ...(custom.length ? [{ label: 'Reset everyone to the default', danger: true, onClick: () => resetAll(custom) }] : []),
+                  ]}
+                />
+              </span>
+            </td>
+          </tr>
+          {custom.map((p) => {
+            const href = '#/dashboards/phone/' + enc(p.userId);
+            return (
+              <tr key={p.userId}>
+                <td>
+                  <a className="dtable-name" href={href}>
+                    {p.name}’s phone
+                  </a>
+                </td>
+                <td>
+                  <PersonTabs userId={p.userId} />
+                </td>
+                <td>
                   {p.name}
-                  {me && p.userId === me.id ? <span className="dash-owner"> (you)</span> : null}
-                </span>
-                <span className="phone-meta">{own ? 'customized' : 'using the household default'}</span>
-              </a>
-              {own ? (
-                <button type="button" className="btn-link dash-reset" onClick={() => reset('api/phone-layouts/' + enc(p.userId) + '/reset', p.name)}>
-                  Reset to default
-                </button>
-              ) : null}
-              <a className="btn btn-sm2" href={href}>
-                {own ? 'Arrange' : 'Customize'}
-              </a>
-            </div>
-          );
-        })}
-      </div>
-      {custom.length ? (
-        askAll ? (
-          <div className="dash-confirm" role="group" aria-label="Reset everyone">
-            <span>
-              {custom.length === 1
-                ? `Reset ${custom[0].name}’s customized phone to the household default?`
-                : `Reset all ${custom.length} customized phones (${custom.map((p) => p.name).join(', ')}) to the household default?`}
-            </span>
-            <button type="button" className="btn btn-sm2 btn-danger" disabled={busy} onClick={resetAll}>
-              Yes, reset
-            </button>
-            <button type="button" className="btn btn-sm2" onClick={() => setAskAll(false)}>
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button type="button" className="btn-link dash-quiet" onClick={() => setAskAll(true)}>
-            Reset everyone to the default
-          </button>
-        )
-      ) : null}
-    </>
+                  {you(p)}
+                </td>
+                <td className="dash-col-actions">
+                  <span className="dtable-actions">
+                    <a className="btn btn-sm" href={href}>
+                      Arrange
+                    </a>
+                    <MoreMenu label={`More for ${p.name}’s phone`} items={[{ label: 'Reset to the default', onClick: () => reset('api/phone-layouts/' + enc(p.userId) + '/reset', p.name) }]} />
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -216,7 +268,8 @@ export default function Dashboards() {
   }, [list.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const devicesFor = (d) => {
-    const s = sessions.data || [];
+    // Only sign-ins in use: the hub keeps a tablet's old sign-ins until they expire, a year on.
+    const s = (sessions.data || []).filter((x) => x.live);
     const owner = ownerOf(d);
     const ownerName = owner ? owner.name : me && me.name;
     const pinned = s.filter((x) => x.dashboardId === d.id);
@@ -291,54 +344,71 @@ export default function Dashboards() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Dashboards</h1>
-        <span className="muted head-hint">What the wall tablet, the browser and the phones show.</span>
-        <button type="button" className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setModal({ kind: 'new' })}>
+        <button type="button" className="btn btn-primary" onClick={() => setModal({ kind: 'new' })}>
           <Icon name="plus" size={16} /> New dashboard
         </button>
       </div>
-      <div className="pane">
-        <div className="pane-body">
-          <h2 className="dash-section">Wall &amp; browser dashboards</h2>
+      <div className="pane pane--plain">
+        <div className="pane-body pane-body--flush-x">
+          <h2 className="dash-section">Wall &amp; browser</h2>
           {!items ? (
             list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : <Loading />
           ) : !items.length ? (
             <Empty title="Setting up your first dashboard…">Newman lays it out from your devices.</Empty>
           ) : (
-            <div className="rows">
-              {items.map((d) => {
-                const shown = devicesFor(d);
-                const pages = d.pages || [];
-                return (
-                  <div key={d.id} className="row dash-row">
-                    <a className="dash-main" href={'#/dashboards/' + enc(d.id)}>
-                      <span className="strong">
-                        {d.name}
-                        <span className="dash-owner">
-                          {' · '}
-                          {whose(d)}
-                          {d.isDefault ? (ownerOf(d) ? ', its default' : ', your default') : ''}
-                        </span>
-                      </span>
-                      <span className="phone-meta">
-                        {plural(pages.length, 'page')}
-                        {pages.length ? ': ' + pages.map((p) => p.name).join(', ') : ''} · {shown.length ? 'shown on ' + shown.join(', ') : 'not on any device'}
-                      </span>
-                    </a>
-                    <a className="btn btn-sm2" href={'#/dashboards/' + enc(d.id)}>
-                      Arrange
-                    </a>
-                    <MoreMenu
-                      label={`More for ${d.name}`}
-                      items={[
-                        { label: 'Rename', onClick: () => setModal({ kind: 'rename', d }) },
-                        { label: 'Duplicate', onClick: () => duplicate(d) },
-                        ...(d.isDefault ? [] : [{ label: 'Make default', onClick: () => makeDefault(d) }]),
-                        { label: 'Delete', danger: true, onClick: () => remove(d) },
-                      ]}
-                    />
-                  </div>
-                );
-              })}
+            <div className="table-wrap">
+              <table className="dtable">
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Pages</th>
+                    <th scope="col">Default for</th>
+                    <th scope="col">Shown on</th>
+                    <th scope="col" className="dash-col-actions">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((d) => {
+                    const pages = d.pages || [];
+                    const owner = ownerOf(d);
+                    return (
+                      <tr key={d.id}>
+                        <td>
+                          <a className="dtable-name" href={'#/dashboards/' + enc(d.id)}>
+                            {d.name}
+                          </a>
+                          {!d.isDefault ? <span className="dtable-sub">{whose(d)}</span> : null}
+                        </td>
+                        <td>
+                          <span title={pages.map((p) => p.name).join(', ')}>{pages.length}</span>
+                        </td>
+                        <td>{d.isDefault ? (owner ? owner.name : 'You') : <span className="muted">—</span>}</td>
+                        <td>
+                          <DeviceCount names={devicesFor(d)} />
+                        </td>
+                        <td className="dash-col-actions">
+                          <span className="dtable-actions">
+                            <a className="btn btn-sm" href={'#/dashboards/' + enc(d.id)}>
+                              Arrange
+                            </a>
+                            <MoreMenu
+                              label={`More for ${d.name}`}
+                              items={[
+                                { label: 'Rename', onClick: () => setModal({ kind: 'rename', d }) },
+                                { label: 'Duplicate', onClick: () => duplicate(d) },
+                                ...(d.isDefault ? [] : [{ label: 'Make default', onClick: () => makeDefault(d) }]),
+                                { label: 'Delete', danger: true, onClick: () => remove(d) },
+                              ]}
+                            />
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           {bare.length ? (
@@ -353,17 +423,8 @@ export default function Dashboards() {
               ))}
             </div>
           ) : null}
-          <p className="help" style={{ marginTop: 14 }}>
-            A wall tablet shows its account’s default dashboard unless you pick another one for it under Profile → Your devices.
-            {isAdmin ? ' A wall tablet account can’t arrange its own: do it here.' : ''}
-          </p>
 
-          <h2 className="dash-section dash-section--next">Phone layouts</h2>
-          <p className="help dash-section-help">
-            {isAdmin
-              ? 'The Newman app on phones. Everyone uses the household default unless their phone is customized; customizing starts from a copy of the default.'
-              : 'How the Newman app arranges your phone. Customizing starts from a copy of the household default.'}
-          </p>
+          <h2 className="dash-section dash-section--next">Phone app</h2>
           <PhoneLayouts isAdmin={isAdmin} me={me} />
         </div>
       </div>

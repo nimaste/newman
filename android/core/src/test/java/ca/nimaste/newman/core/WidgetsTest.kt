@@ -6,7 +6,10 @@ import ca.nimaste.newman.core.widgets.WidgetChoice
 import ca.nimaste.newman.core.widgets.WidgetDevice
 import ca.nimaste.newman.core.widgets.WidgetDevicesResponse
 import ca.nimaste.newman.core.widgets.WidgetGrouping
+import ca.nimaste.newman.core.widgets.WidgetHome
+import ca.nimaste.newman.core.widgets.WidgetLayout
 import ca.nimaste.newman.core.widgets.WidgetPicker
+import ca.nimaste.newman.core.widgets.WidgetTone
 import ca.nimaste.newman.core.widgets.WidgetReading
 import ca.nimaste.newman.core.widgets.WidgetTiles
 import kotlinx.serialization.json.JsonPrimitive
@@ -134,5 +137,76 @@ class WidgetsTest {
         assertEquals(sel, WidgetPicker.move(sel, 9, 1))
         assertEquals(listOf("l1", "t1"), WidgetPicker.toggle(sel, "k1"))
         assertEquals(listOf("l1", "t1"), WidgetPicker.keepKnown(listOf("l1", "gone", "t1"), choices))
+        assertEquals(listOf("l1", "k1"), WidgetPicker.toggle(listOf("l1", "k1"), "t1", max = 2)) // full
+        assertEquals(listOf("l1"), WidgetPicker.toggle(listOf("l1", "k1"), "k1", max = 2)) // unticking still works
+    }
+
+    @Test
+    fun layoutFillsTheWidgetWithWhatWasChosen() {
+        // A small (2x2) widget shows 2, a medium (4x2) or narrow one 4, a large (4x4) one 8.
+        assertEquals(2, WidgetLayout.maxDevices(150f, 150f))
+        assertEquals(4, WidgetLayout.maxDevices(330f, 160f))
+        assertEquals(4, WidgetLayout.maxDevices(150f, 330f))
+        assertEquals(8, WidgetLayout.maxDevices(330f, 380f))
+        assertTrue(WidgetLayout.isWide(330f, 160f))
+        assertFalse(WidgetLayout.isWide(150f, 150f))
+        fun lines(n: Int, wide: Boolean) = WidgetLayout.lines(n, WidgetLayout.tileColumns(n, wide))
+        assertEquals(listOf(1), lines(1, wide = false)) // one fills it
+        assertEquals(listOf(1, 1), lines(2, wide = false)) // two halves, stacked on a square widget
+        assertEquals(listOf(2), lines(2, wide = true)) // side by side on a wide one
+        assertEquals(listOf(4), lines(4, wide = true)) // medium: four in a row
+        assertEquals(listOf(1, 1, 1), lines(3, wide = false))
+        assertEquals(listOf(2, 2, 1), lines(5, wide = false)) // the last one widens
+        assertEquals(listOf(2, 2, 2, 2), lines(8, wide = false))
+        assertEquals(emptyList<Int>(), WidgetLayout.lines(0, 2))
+        assertTrue(WidgetLayout.tileCompact(70f))
+        assertFalse(WidgetLayout.tileCompact(150f))
+        assertTrue(WidgetLayout.rowStacked(70f))
+        assertFalse(WidgetLayout.rowStacked(36f))
+        assertEquals(1, WidgetLayout.rowsThatFit(60f))
+        assertEquals(4, WidgetLayout.rowsThatFit(150f))
+    }
+
+    @Test
+    fun toneComesFromTheHubWithAFallback() {
+        val d = WidgetDevice(id = "x", tone = "good")
+        assertEquals(WidgetTone.GOOD, WidgetTiles.tone(d))
+        assertEquals(WidgetTone.ACTIVE, WidgetTiles.tone(d.copy(tone = "active")))
+        assertEquals(WidgetTone.ALERT, WidgetTiles.tone(d.copy(tone = "alert")))
+        assertEquals(WidgetTone.NEUTRAL, WidgetTiles.tone(d.copy(tone = "")))
+        assertEquals(WidgetTone.OFFLINE, WidgetTiles.tone(d.copy(available = false)))
+        // An older hub without tones: its "active" flag.
+        assertEquals(WidgetTone.ACTIVE, WidgetTiles.tone(d.copy(tone = null, active = true)))
+        assertEquals(WidgetTone.NEUTRAL, WidgetTiles.tone(d.copy(tone = null)))
+        val parsed = WidgetTiles.parseState("""{"devices": [{"id": "a", "tone": "alert"}, {"id": "b"}]}""")
+        assertEquals(listOf("alert", null), parsed.map { it.tone })
+    }
+
+    @Test
+    fun parsesTheHomeStatus() {
+        // What GET /api/widgets/home returns (server/tests/test_widgets.py has the hub side).
+        val json = """
+            {"secure": false, "headline": "Side Door unlocked", "detail": "door closed",
+             "problems": [{"id": "fake.side", "name": "Side Door", "kind": "lock", "icon": "lock", "state": "UNLOCKED",
+                           "stateLabel": "Unlocked", "urgent": false, "fix": {"command": "lock", "label": "Lock", "sensitive": false}},
+                          {"id": "fake.leak", "name": "Laundry", "kind": "leak", "icon": "leak", "state": "wet",
+                           "stateLabel": "Leak!", "urgent": true, "fix": null}],
+             "groups": [{"kind": "lock", "label": "Lock", "text": "Unlocked", "secure": false, "icon": "lock"},
+                        {"kind": "alarm", "label": "Alarm", "text": "Disarmed", "secure": null, "icon": "alarm"}],
+             "ids": ["fake.side", "fake.leak", "fake.alarm"], "somethingNew": 1}
+        """.trimIndent()
+        val home = NewmanJson.decodeFromString(WidgetHome.serializer(), json)
+        assertEquals(false, home.secure)
+        assertEquals("Side Door unlocked", home.headline)
+        assertEquals(listOf("fake.side"), home.fixable.map { it.id })
+        assertEquals(WidgetAction("lock", "Lock", sensitive = false), home.fixable.first().fix)
+        assertEquals(listOf("Unlocked", "Disarmed"), home.groups.map { it.text })
+        assertNull(home.groups[1].secure)
+        // Cached and read back as it was.
+        assertEquals(home, WidgetTiles.decodeHome(WidgetTiles.encodeHome(home)))
+        assertNull(WidgetTiles.decodeHome("not json"))
+        val bare = NewmanJson.decodeFromString(WidgetHome.serializer(), """{"secure": null, "headline": "Nothing to keep secure"}""")
+        assertNull(bare.secure)
+        assertTrue(bare.problems.isEmpty() && bare.groups.isEmpty())
     }
 }

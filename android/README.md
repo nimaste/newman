@@ -36,8 +36,9 @@ android/
     livestatus/ LiveStatuses.kt: live statuses' shapes (socket / GET /api/live/current / FCM), LiveNotifications
                 (what each looks like as a notification, what to post / cancel for a new list)
     settings/   ConnectionStore (EncryptedSharedPreferences)
-    widgets/    Widgets.kt: GET /api/widgets/devices + /state shapes, WidgetPicker (group, search, order),
-                WidgetTiles (tap action, confirm, state text, spoken label, cache); DeviceControls.kt:
+    widgets/    Widgets.kt: GET /api/widgets/devices + /state + /home shapes, WidgetPicker (group, search,
+                order, limit), WidgetTiles (tap action, confirm, state text, tone, spoken label, cache),
+                WidgetLayout (devices per size, tile lines, compact tiles / stacked rows); DeviceControls.kt:
                 DeviceControlPlan (Device Controls: switch / button / status, unlock needed), UsageRank
     model/Spoken.kt  TalkBack wording ("Den plug, on") and TextScale (font-size caps for fixed cells)
   core/src/test/   unit tests + JSON captured read-only from the live hub (resources/hub)
@@ -51,7 +52,8 @@ android/
     ui/         onboarding, home (tabs + 4-column grid), today (Today card), people (list + osmdroid map),
                 tiles, device sheet, camera, alerts, me (incl. "Share my location")
                 common/LiveVideo.kt: LiveCamera = still + live video (shared player page in a WebView)
-    widgets/    WidgetSync (states cache, taps, live / FCM / 15-min refresh), DeviceGridWidget (Glance),
+    widgets/    WidgetSync (states + Home status cache, taps, live / FCM / 15-min refresh), DeviceGridWidget
+                (Glance: Devices – tiles / rows), HomeStatusWidget, WidgetFaces (colours, tile / row faces),
                 DevicePicker + WidgetConfigActivity / TileSettingsActivity / ConfirmActivity, QuickTiles
                 (Newman 1/2/3), WidgetRefreshWorker, WidgetIcons, NewmanControlsService (Device Controls),
                 LauncherShortcuts + ShortcutActivity (app-icon and home-screen shortcuts)
@@ -103,7 +105,8 @@ buttons; People wording ("Home", "School", "3.2 km away", "updated 4 min ago"), 
 from `GET /api/me/location`, the background report schedule, the one-shot locate, colour/photo
 parsing and the tap-to-refresh states (incl. 429 and the 45 s timeout); live messages incl. `entity-removed`;
 home-screen widgets (`WidgetsTest`: the hub's widget state, the tap action, "confirm first" only for
-sensitive actions, exact readings, the cache, the picker's room / type groups, search and reordering);
+sensitive actions, exact readings, the cache, the picker's room / type groups, search, reordering and
+limit, the layout per size and count, tones, the Home status reply);
 Device Controls and shortcuts (`DeviceControlsTest`: switch / button / status from the hub's actions, unlock
 only for sensitive taps, the most-used ranking, spoken labels, the font-size caps, and Change server's
 same-hub check); live statuses (`LiveStatusesTest`: the socket's list as notifications - title, state,
@@ -208,25 +211,44 @@ FCM they follow while the app runs and catch up when it opens. Signing out remov
 
 ## Home-screen widgets and Quick Settings tiles (phone)
 
-- **Newman devices widget** (Jetpack Glance 1.1, Material 3: the wallpaper's colours on Android 12+,
-  Newman's otherwise): any size; a grid of device tiles (icon, name, state or reading), as many
-  columns as fit (1-5), scrolling when there are more. Adding it opens the picker
-  (`WidgetConfigActivity`): every device `GET /api/widgets/devices` offers, **by room** or **by type**,
-  with search; tick devices to add them, reorder or remove them under *On this widget*; and **Confirm
-  first for sensitive actions** (off by default). Long-press the widget → reconfigure to change it.
+- **Three widgets** (Jetpack Glance 1.1, Newman's colours - the iPhone widgets' too), all resizable:
+  - **Devices – tiles** (`DeviceGridReceiver`, the first widget's receiver, so widgets already placed
+    keep working): large tiles - icon, name (16 sp bold), state (15 sp).
+  - **Devices – rows** (`DeviceRowsReceiver`): one full-width row per device, name and state.
+  - **Home status** (`HomeStatusReceiver`, `GET /api/widgets/home`): green "All secure" with a detail
+    line ("2 locks · garage door closed") when every device whose kind has a secure state is at it;
+    otherwise red, naming what isn't ("Side Door unlocked", "2 not secure") with a **Lock** / **Close**
+    button (the kind's command that reaches its secure state). Wide (4x2) it adds the list (Locks: All
+    locked / Garage door: Closed / Alarm: Disarmed, what isn't secure first) and up to two buttons.
+    Worked out by the hub from kind metadata (`secure_state`, `is_mode`, `urgent`); nothing to choose.
+    An older hub without it: "Update the Newman hub to see this".
+- **Choosing devices** (tiles and rows): adding one opens the picker (`WidgetConfigActivity`): every
+  device `GET /api/widgets/devices` offers, **by room** or **by type**, with search; tick up to 8 to add
+  them, reorder or remove them under *On this widget*; and **Confirm first for sensitive actions** (off
+  by default). Long-press the widget → reconfigure to change it. The widget shows as many as its
+  current size takes (`WidgetLayout.maxDevices`: 2 small, 4 medium / narrow, 8 large; rows also no
+  shorter than ~36 dp) and the picker marks the rest "Shown when the widget is bigger". The layout
+  fills the widget and is worked out again on every resize: one device fills it (larger text); a
+  square widget stacks up to 3, then goes two across (a short last line widens); a wide one puts them
+  side by side. Short tiles put the icon beside the text; tall rows put the state under the name.
+  The state's colour is its **tone** from `GET /api/widgets/state` (`good` green at its secure state,
+  `active` amber when on or away from it, `alert` red for an urgent one like a leak, else grey; older
+  hubs: amber when `active`).
 - **Tapping** a device runs its primary action from `GET /api/widgets/state` (`actions[0]` with
   `primary`, worked out by the hub from kinds.py - the app has no list of kinds) through
   `POST /api/entities/{id}/command`, on the app's own OkHttp client (client certificate, Cloudflare
   headers, home or outside address). The tile shows "Unlock…" at once, then the hub's state 1.2 s and
   5 s later; a refusal shows "Couldn't unlock" until the next refresh. With *Confirm first* on, a
-  sensitive action opens a small dialog (`ConfirmActivity`). Tapping a sensor (no action) refreshes.
+  sensitive action opens a small dialog (`ConfirmActivity`). Tapping a sensor (no action) opens the app
+  on it.
 - **Quick Settings tiles**: Newman 1, 2 and 3 (`QuickTiles`). Long-press a tile (`TileSettingsActivity`,
   the QS tile preferences screen) to pick its device; tapping an unset tile opens the same. The tile
   shows the device's name, its state as subtitle, active (highlighted) in the kind's active state,
   unavailable when offline; tapping runs the primary action - a sensitive one on a locked phone asks
   for the phone to be unlocked first (`unlockAndRun`).
-- **Freshness** (`WidgetSync`): the last states are cached (plain SharedPreferences `newman_widgets`:
-  device ids and states, no tokens), so widgets draw at once and while the hub is unreachable. They
+- **Freshness** (`WidgetSync`): the last states and Home status are cached (plain SharedPreferences
+  `newman_widgets`: device ids and states, no tokens), so widgets draw at once and while the hub is
+  unreachable. They
   refresh on a tap, when the app's live WebSocket reports a change to a shown device (or reconnects)
   while the app runs, every 15 minutes through WorkManager (`WidgetRefreshWorker`, only while some
   widget or tile is set up, network required), and - only when the build has FCM - on the hub's
@@ -461,8 +483,13 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
     JobScheduler afresh (on the Fire tablet a package update once left WorkManager believing its job
     was scheduled while JobScheduler had none). A one-off runs as soon as the screen goes off or, screen
     off, the charger is plugged in or out (a receiver registered while the process lives).
-  - The hub shows *Screen off* (the tablet and its music player) and calls it offline 35 minutes after
-    the last report, or 20 minutes past an announced `nextReportIn`.
+  - The hub shows *Screen off* (the tablet and its music player). Where a check-in should get through
+    (charging or plugged in, or exempt from Doze) it calls it offline 35 minutes after the last report,
+    or 20 minutes past an announced `nextReportIn`. On battery and not exempt, Doze may hold the
+    check-ins back for hours: that's expected — still *Screen off*, no alert, offline only after 8
+    hours without a word (and smart charging turns the charger on early if the last level was near the
+    bottom of its band). With the wall coming back dimmed whenever the screen goes off over another
+    app (above), the screen is normally never off long enough for this.
   - **Optional, if it still drops off overnight**: wall settings → *Battery reports while asleep* →
     *Let it report while asleep* asks Android to let the app ignore battery optimisation
     (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`); or once over USB:
@@ -555,11 +582,22 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
   way to see touches in other apps or which app is in front without Usage Access, so silent use of
   another app (Settings, Silk) gets those minutes — turn the setting off for longer work. When the
   screen wakes (`SCREEN_ON` / `USER_PRESENT`) and the wall isn't in front, it comes back at once
-  (unless something is playing). The screen turning off with the wall in front isn't leaving. Wall
-  settings → *Come back after leaving* and *Come back when the screen wakes* (both on by default;
-  `come_back_after_leaving`, `come_back_minutes`, `come_back_on_wake` in `wall_settings`). Same
-  *Display over other apps* need as above. Logged at warning level as `NewmanWall` *Come back: …*.
-  The rule is `ComeBack` in `core/wall/` (`ComeBackTest`).
+  (unless something is playing). Wall settings → *Come back after leaving* and *Come back when the
+  screen wakes* (both on by default; `come_back_after_leaving`, `come_back_minutes`, `come_back_on_wake`
+  in `wall_settings`). Same *Display over other apps* need as above. Logged at warning level as
+  `NewmanWall` *Come back: …*. The rule is `ComeBack` in `core/wall/` (`ComeBackTest`).
+- **Never fully off:** while the wall is in front it holds the screen on (`FLAG_KEEP_SCREEN_ON`; dimming
+  only lowers the window brightness, never below `WallBrightness.FLOOR`). Any other app in front (Alexa's
+  screen, Silk, Settings) gets Fire OS's own screen timeout instead — and a dark tablet falls into deep
+  sleep (Doze), where its battery check-ins don't get out. So when the screen goes off (`SCREEN_OFF`)
+  while another app is in front, the wall comes back **at once**, whatever the settings above or
+  anything playing (music carries on behind it): it brings itself to the front and turns the screen on
+  with a short `SCREEN_DIM_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` (plus the activity's `setTurnScreenOn` /
+  `setShowWhenLocked`), straight into its **dimmed** screen (the date and time) rather than full
+  brightness; a touch wakes it as usual. A return that didn't happen is tried again after a minute at
+  the earliest. The screen going off with the wall itself in front can only be the power button: that's
+  honoured — it stays off until someone wakes it (then the wall shows, awake). With `keepAwake(false)`
+  from the page the screen may sleep normally and none of this applies.
 - The pure parts (framing, levels, end of speech, the wake-score trigger, openWakeWord's buffering,
   the config, when to give up the microphone and when to come back) are in `:core` (`core/voice/`)
   with unit tests (`VoiceTest`, `MicShareTest`).
@@ -589,6 +627,9 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
 7. **Coming back after Home:** press Home; the wall is back after the set minutes (2 by default);
    turning the screen off and on brings it back at once; with Prime Video or music playing it stays
    away until that stops (plus the minutes). `adb logcat -s NewmanWall` shows *Come back: …*.
+8. **Screen timing out over another app:** open Silk (or ask Alexa something that leaves its card up)
+   and leave it: when Fire OS turns the screen off, it comes straight back on, dimmed, with the wall's
+   date and time. Press the power button with the wall in front: it stays off until woken.
 
 ## Connecting (both apps)
 

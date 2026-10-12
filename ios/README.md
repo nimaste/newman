@@ -7,7 +7,7 @@ Two apps, built from one XcodeGen project (`project.yml`), following `docs/apps.
 | `Newman` | `ca.nimaste.newman` | The phone app: Overview / Security / Lights / People / Alerts, Today, device controls, cameras, push, location sharing |
 | `NotificationServiceExtension` | `ca.nimaste.newman.NotificationServiceExtension` | Runs only for snapshot pushes (the only ones with `mutable-content`): attaches the camera snapshot (`snapshot_url`), using the client certificate from the shared Keychain. It never touches notification categories (on iOS 26 an extension registering a push's category stopped every later notification until the phone restarted); buttons-only pushes skip it |
 | `LocationPushExtension` | `ca.nimaste.newman.LocationPushExtension` | Apple's Location Push Service Extension: answers the hub's one-shot location push (someone tapped this person on their map) with ONE fix, even when the app was swiped away |
-| `NewmanWidgets` | `ca.nimaste.newman.NewmanWidgets` | WidgetKit extension (phone): home-screen device widgets, Lock Screen device widgets, Control Center controls, widget push updates, live status Live Activities (iOS 26 only) |
+| `NewmanWidgets` | `ca.nimaste.newman.NewmanWidgets` | WidgetKit extension (phone): home-screen device widgets (tiles, rows) and Home status, Lock Screen device widgets, Control Center controls, widget push updates, live status Live Activities (iOS 26 only) |
 | `NewmanWall` | `ca.nimaste.newman.wall` | The wall tablet: a full-screen kiosk around the hub's own `<server>/wall` page |
 
 iOS 17+ (the `NewmanWidgets` extension iOS 26+), Swift 5.9. One Swift package, for the wall app only: ONNX Runtime (`microsoft/onnxruntime-swift-package-manager`, pinned to 1.20.0 like the Android wall's `onnxruntime-android`) for the on-device wake word. Team `T342YL2VCE`, automatic signing for local builds.
@@ -346,20 +346,39 @@ particular kind of device is built in: what a tile shows, what tapping it does, 
 sensitive and which devices can be a switch all come from `/api/meta` kind metadata and the hub's
 JSON (`WidgetLogic` in Shared/Core, checked on Linux).
 
-- **Adding them**: long-press the Home Screen → Edit → Add Widget → Newman → **Devices** (small 2×2,
-  medium 4×2, large 4×4 tiles), then long-press the widget → Edit Widget → **Devices** (pick and order;
-  the list is every device of the hub a widget can show - not cameras or remotes - in sections by room,
-  then by type, with search) and **Confirm First**. Lock Screen: customise the Lock Screen → add
+- **Adding them**: long-press the Home Screen → Edit → Add Widget → Newman → **Devices – tiles**,
+  **Devices – rows** or **Home status** (small, medium or large; Home status small or medium). For the
+  two device widgets, long-press the widget → Edit Widget → **Devices** (pick and order, as many as the
+  size takes: 1-2 small, 1-4 medium, 1-8 large - iOS's picker stops at the size's limit; the list is
+  every device of the hub a widget can show - not cameras or remotes - in sections by room, then by
+  type, with search) and **Confirm First**. Home status has only **Confirm First**: it covers the house. Lock Screen: customise the Lock Screen → add
   **Device** (circular, rectangular, inline) → pick one device; **Tap Runs Its Action** (on by
   default; off = tap opens that device in the app) and **Confirm First**. Controls (iOS 18): Control
   Center → + → Add a Control → Newman → **Newman Switch** (on/off devices) or **Newman Button** (its
   action right now: open/close the garage, lock/unlock…), then tap it to pick the device; the same
   controls go on the Lock Screen and the Action button (Settings → Action Button → Controls).
-- **Tiles**: icon, name, state ("On · 60%", "Locked", "22.5 °C"); a lit tile for an active device,
-  the warning colour away from the secure state; "Offline" dimmed. A controllable tile is an App
-  Intents button (iOS 17 interactive widgets) that sends the device's tap action - the app's own rule
-  (`DeviceLogic.tapAction`: the on/off pair, else the command that isn't the current state) - to
-  `POST /api/entities/{id}/command`; a sensor just shows its reading.
+- **Devices – tiles** (kind `ca.nimaste.newman.devices`, the first widget's kind, so widgets already
+  placed keep working - one set up with more devices than its size now takes shows its first ones):
+  icon, name (16 pt bold) and state (15 pt). **Devices – rows** (`ca.nimaste.newman.devices.rows`): one
+  full-width row per device, name and state. The layout fills the widget with however many were
+  chosen (`WidgetLogic.tileColumns` / `lines`): one device fills it (larger text); small: two stacked
+  halves; medium: side by side (up to 4 in a row); large: up to 3 stacked, then two across (a short
+  last line widens). Short tiles put the icon beside the text; tall rows put the state under the name,
+  short ones on the right. The state's colour is its **tone** (the hub's, else worked out the same way
+  from the kind metadata): at its secure state green (teal), on / away from its secure state amber, an
+  urgent one (a leak) red, else grey; "Offline" dimmed. A controllable device is an App Intents button
+  (iOS 17 interactive widgets) that sends its tap action - the app's own rule (`DeviceLogic.tapAction`:
+  the on/off pair, else the command that isn't the current state) - to `POST /api/entities/{id}/command`;
+  a sensor opens the app on it (`newman://device?id=`; a small widget can't hold links, so there the
+  whole widget opens the app, on the device when it shows one).
+- **Home status** (`ca.nimaste.newman.home`, `GET /api/widgets/home`): green "All secure" with a
+  detail line ("2 locks · garage door closed") when every device whose kind has a secure state is at
+  it; otherwise red, naming what isn't ("Side Door unlocked", "2 not secure") with a **Lock** / **Close**
+  button - the kind's command that reaches its secure state, run like a tile's tap (sensitive ones
+  authenticate first). Medium adds the list (Locks: All locked / Garage door: Closed / Alarm: Disarmed -
+  what isn't secure first) and up to two buttons. All worked out by the hub from kind metadata
+  (`secure_state`, `is_mode`, `urgent`), never from kind names. An older hub without it: "Update the
+  Newman hub to see this".
 - **Sensitive actions need an unlocked phone**: actions the kind metadata (or the hub's widget
   state) marks `sensitive` (unlock, open the garage, disarm…) never run from a locked phone. A tile or
   control button runs them through `RunSensitiveActionIntent` (`authenticationPolicy =
@@ -380,9 +399,10 @@ JSON (`WidgetLogic` in Shared/Core, checked on Linux).
   address), session token, Cloudflare headers and mTLS certificate from the shared Keychain, so the
   widgets work away from home. Not signed in: "Sign in to Newman".
 - **State**: `GET /api/widgets/state?ids=a,b,c` → `{"devices":[{id, name, kind, state, stateLabel,
-  available, icon, area, actions:[{command, label, sensitive}], reading:{value, unit}|null}]}` (missing
+  available, tone, icon, area, actions:[{command, label, sensitive}], reading:{value, unit}|null}]}` (missing
   fields tolerated; older hubs without it (404): built from `/api/entities` + `/api/meta`). Kinds are
-  cached 6 h and the last states kept in the App Group, so an unreachable hub shows the last state dimmed.
+  cached 6 h and the last states (and the last Home status) kept in the App Group, so an unreachable hub
+  shows the last state dimmed.
 - **Freshness**: after an action the intent waits ~1 s and reloads all widgets and controls; the
   timeline asks again 30 s after an action, else every 15 minutes; the app reloads them when it goes
   to the background. **Widget push updates (iOS 26+)**: `NewmanWidgetPushHandler` gets WidgetKit's

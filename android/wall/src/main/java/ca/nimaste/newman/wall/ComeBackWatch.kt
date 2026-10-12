@@ -22,19 +22,26 @@ import ca.nimaste.newman.core.wall.ComeBack
 
 /**
  * Brings the wall back to the front by itself after it left for any reason - Home or Recents by
- * accident, another app, an assistant AssistantWatch didn't come back from - (ComeBack: after the
- * wall settings' minutes with no other app playing anything, and when the screen wakes).
+ * accident, another app, Alexa or another assistant AssistantWatch didn't come back from - (ComeBack:
+ * after the wall settings' minutes with no other app playing anything, when the screen wakes, and at
+ * once when the screen goes off over the other app).
  *
  * "In front" is any Newman screen resumed (the wall, its settings, Connect), from the app's activity
  * lifecycle; leaving because the screen turned off doesn't count. Other apps' sound is every started
  * playback AudioManager reports (Android hides which app plays, so the wall's own - silent while
  * it's away - can't be told apart). Coming to the front from the background uses "Display over other
  * apps" (or device owner), like AssistantWatch. Decisions are logged at warning level (NewmanWall).
- * Main thread.
+ *
+ * The screen going off while another app is in front (Fire OS's own timeout - the wall only holds the
+ * screen on while it is itself in front) would otherwise leave the tablet dark and in deep sleep:
+ * the wall comes back and turns the screen on into its dimmed screen ([WallActivity.returnDimmed], a
+ * short wake lock that wakes the screen; the wall's window then holds it on). Main thread.
  */
 class ComeBackWatch(
     private val app: Application,
     private val settings: WallSettings,
+    /** Whether the wall holds the screen on while it's in front (NewmanWall.keepAwake). */
+    private val keepsScreenOn: () -> Boolean = { true },
     /** Just before the wall brings itself back. */
     private val beforeReturn: () -> Unit = {},
 ) {
@@ -90,7 +97,15 @@ class ComeBackWatch(
             else -> "coming back after ${ComeBack.minutesSetting(o.minutes)} min with no other app playing" +
                 if (logic.isPlaying) " (something is playing now)" else ""
         })
+        // The screen went off in the second before this (its broadcast found the wall not yet away).
+        if (why == null && power?.isInteractive == false) screenWentOff("already off when the wall's leaving was confirmed")
         evaluate()
+    }
+
+    private fun screenWentOff(how: String) {
+        val d = logic.screenOff(now(), keepsScreenOn())
+        if (d.bringBack) bringBack(d.why, dimmed = d.dimmed)
+        else if (logic.away) Log.w(TAG, "Come back: the screen went off ($how) - not coming back: ${d.why}")
     }
 
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
@@ -99,7 +114,12 @@ class ComeBackWatch(
 
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(c: Context, intent: Intent) {
-            // (Screen on and unlocked arrive together: one return.)
+            if (intent.action == Intent.ACTION_SCREEN_OFF) {
+                screenWentOff("screen off broadcast")
+                return
+            }
+            // (Screen on and unlocked arrive together: one return. Also the screen this watch just
+            // turned on itself for a dimmed return.)
             if (!logic.away || now() - broughtAt < 3_000) return
             val d = logic.screenWoke(now(), options())
             if (d.bringBack) bringBack(d.why) else Log.w(TAG, "Come back: the screen woke (${intent.action}) - not coming back: ${d.why}")
@@ -113,7 +133,10 @@ class ComeBackWatch(
         started = true
         app.registerActivityLifecycleCallbacks(lifecycle)
         am?.registerAudioPlaybackCallback(playbackCallback, main)
-        val f = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_USER_PRESENT) }
+        val f = IntentFilter(Intent.ACTION_SCREEN_ON).apply {
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
         ContextCompat.registerReceiver(app, screen, f, ContextCompat.RECEIVER_NOT_EXPORTED)
         am?.let { playback(it.activePlaybackConfigurations) }
     }
@@ -148,14 +171,32 @@ class ComeBackWatch(
         d.recheckInMs?.let { main.postDelayed(tick, it.coerceAtLeast(1_000)) }
     }
 
-    private fun bringBack(reason: String) {
+    private fun bringBack(reason: String, dimmed: Boolean = false) {
         broughtAt = now()
         beforeReturn()
-        bringWallToFront(app, TAG, "Come back: bringing the wall back - $reason")
+        if (dimmed) WallActivity.returnDimmed() // before the screen comes on: no full-brightness wake
+        bringWallToFront(app, TAG, "Come back: bringing the wall back" + (if (dimmed) ", dimmed" else "") + " - $reason")
+        if (dimmed) wakeScreen()
+    }
+
+    /**
+     * Turns the screen on (it is off) for the returning wall: a dim wake lock that wakes the device,
+     * held for a few seconds - the wall's own window (FLAG_KEEP_SCREEN_ON) holds it on from there.
+     */
+    @Suppress("DEPRECATION") // SCREEN_DIM_WAKE_LOCK: still the way for an app to wake the screen itself
+    private fun wakeScreen() {
+        try {
+            power?.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "newman:comeback")
+                ?.apply { setReferenceCounted(false) }
+                ?.acquire(WAKE_HOLD_MS)
+        } catch (e: Exception) {
+            Log.w(TAG, "Come back: couldn't turn the screen on: $e")
+        }
     }
 
     companion object {
         private const val TAG = "NewmanWall"
+        private const val WAKE_HOLD_MS = 10_000L
     }
 }
 

@@ -134,9 +134,10 @@ export default function Activity() {
   return (
     <div className="app-page">
       <div className="app-head">
-      <h1 className="page-title">Activity</h1>
+        <h1 className="page-title">Activity</h1>
+      </div>
 
-      <div className="filter-bar filter-bar--inline" role="search">
+      <div className="filter-bar filter-bar--inline page-tools" role="search">
         <label className="filter">
           <span className="filter-label">Show</span>
           <select className="select" value={current.id} onChange={(e) => setView(e.target.value)}>
@@ -151,7 +152,6 @@ export default function Activity() {
           <span className="filter-label">Search</span>
           <input className="input" type="search" placeholder="e.g. Side Door, person, Chris" value={search} onChange={(e) => setSearch(e.target.value)} />
         </label>
-      </div>
       </div>
 
       <div className="pane">

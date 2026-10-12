@@ -69,7 +69,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * headers, keeps the screen on, dims after a while without a touch, exposes window.NewmanWall,
  * reports the tablet's battery to the hub (BatteryReporter) and, while on screen, listens for
  * "Hey Newman" when the page turns voice on (VoiceListener) - giving the microphone to Alexa or any
- * other app that starts recording, coming back after an assistant took over the screen (AssistantWatch), and coming back after\n * leaving the front any other way or when the screen wakes (ComeBackWatch).
+ * other app that starts recording, coming back after an assistant took over the screen (AssistantWatch), and coming back after
+ * leaving the front any other way, when the screen wakes, or - dimmed, the screen turned back on - when
+ * the screen goes off over another app (ComeBackWatch). While the wall is in front the screen never goes
+ * off by itself (FLAG_KEEP_SCREEN_ON; dimming only lowers the brightness); only the power button turns it
+ * off there, and that is honoured until the screen is woken.
  */
 class WallActivity : ComponentActivity() {
 
@@ -156,8 +160,10 @@ class WallActivity : ComponentActivity() {
         assistant = AssistantWatch(applicationContext, voice, settings) { pinPrompt.skipNextResume() }
         assistant.start()
         // Coming back after Home / Recents / another app, or when the screen wakes (no new pin prompt either).
-        comeBack = ComeBackWatch(application, settings) { pinPrompt.skipNextResume() }
+        // Also the screen going off over another app: back at once, the screen on and dimmed.
+        comeBack = ComeBackWatch(application, settings, keepsScreenOn = { keepAwake }) { pinPrompt.skipNextResume() }
         comeBack.start()
+        turnScreenOnWhenShown() // (a return with the screen off: ComeBackWatch)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (Build.VERSION.SDK_INT >= 28) {
@@ -260,7 +266,8 @@ class WallActivity : ComponentActivity() {
             if (loadedServer != null || webOrigin != hubOrigin()) createWebView()
             load()
         }
-        wake()
+        // Back because the screen went off over another app: on, but dimmed (the date and time).
+        if (dimmedReturnPending()) returnedDimmed() else wake()
         scheduleDimCheck()
         voice.setPermitted(hasMic()) // (it may have been allowed in Android's settings meanwhile)
         voice.setForeground(true)
@@ -656,6 +663,7 @@ class WallActivity : ComponentActivity() {
     }
 
     fun wake() {
+        dimmedReturnAt = -1L // a touch, a key, the page or the screen woken by hand: awake from here on
         lastTouch = SystemClock.elapsedRealtime()
         val was = dimmed
         dimmed = false
@@ -668,11 +676,33 @@ class WallActivity : ComponentActivity() {
             dimToPage(false)
         }
         // Turn the screen on if it went off (keepAwake false, or the page asked to wake it).
+        turnScreenOnWhenShown()
+    }
+
+    /** The screen comes on (over the lock screen) whenever the wall is shown. */
+    private fun turnScreenOnWhenShown() {
         if (Build.VERSION.SDK_INT >= 27) {
             setTurnScreenOn(true)
             setShowWhenLocked(true)
             getSystemService(KeyguardManager::class.java)?.let { if (!it.isKeyguardSecure) it.requestDismissKeyguard(this, null) }
         }
+    }
+
+    /**
+     * Back in front with the screen just turned on by ComeBackWatch (it went off over another app):
+     * the dimmed screen, as if nobody had touched the wall for a while - never full brightness, and
+     * the window holds the screen on (FLAG_KEEP_SCREEN_ON) as always.
+     */
+    private fun returnedDimmed() {
+        Log.i(TAG, "back with the screen turned on: dimmed")
+        turnScreenOnWhenShown()
+        applyKeepAwake()
+        if (dimmed) {
+            setWindowBrightness(WallBrightness.dimmed(settings.dimLevel, powerSave()))
+            hideSystemBars()
+            setGestureGuard(true)
+            dimToPage(true)
+        } else dim()
     }
 
     /** For the page (NewmanWall.isDimmed()): it may have loaded while the screen was dimmed. */
@@ -722,7 +752,8 @@ class WallActivity : ComponentActivity() {
 
     private val screenOn = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SCREEN_ON) wake()
+            // (Not the screen ComeBackWatch turned on for a dimmed return: onResume dims that.)
+            if (intent.action == Intent.ACTION_SCREEN_ON && !dimmedReturnPending()) wake()
         }
     }
 
@@ -811,5 +842,18 @@ class WallActivity : ComponentActivity() {
         private const val TOKEN_KEY = "newman.tablet.token"
         /** Darkening for a dimmed page that doesn't draw its own dimmed screen: dark, still visibly on. */
         private val FALLBACK_DIM = Color.argb(140, 0, 0, 0)
+        /** How long after [returnDimmed] the wall's showing (and the screen coming on) counts as that return. */
+        private const val DIMMED_RETURN_MS = 15_000L
+
+        /** When ComeBackWatch last brought the wall back with the screen off (elapsedRealtime), or -1. */
+        @Volatile private var dimmedReturnAt = -1L
+
+        /** ComeBackWatch, just before bringing the wall back and turning the screen on: show it dimmed. */
+        fun returnDimmed() {
+            dimmedReturnAt = SystemClock.elapsedRealtime()
+        }
+
+        private fun dimmedReturnPending(): Boolean =
+            dimmedReturnAt >= 0 && SystemClock.elapsedRealtime() - dimmedReturnAt < DIMMED_RETURN_MS
     }
 }

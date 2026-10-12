@@ -215,7 +215,7 @@ def build_app(h: "Newman") -> web.Application:
         return {"id": s["id"], "kind": s["kind"], "deviceName": s["device_name"], "createdAt": s["created_at"],
                 "lastSeen": s["last_seen"], "lastIp": s["last_ip"], "where": s["where_from"],
                 "remember": bool(s["remember"]), "certificate": bool(s["cert"]), "current": s["id"] == current,
-                "dashboardId": s.get("dashboard_id")}
+                "dashboardId": s.get("dashboard_id"), "live": A.session_live(s, time.time())}
 
     def token_of(req: web.Request) -> str | None:
         head = req.headers.get("Authorization", "")
@@ -458,6 +458,7 @@ def build_app(h: "Newman") -> web.Application:
     @r.get("/api/auth/sessions")
     async def auth_sessions(req: web.Request) -> web.Response:
         everyone = req.query.get("all") and req["user"]["role"] == "admin"
+        h.store.purge_sessions()  # expired sign-ins are gone for good; nothing lists them
         names = {u["id"]: u["name"] for u in h.store.users()}
         return web.json_response([{**session_json(s, req["session"]["id"]), "user": names.get(s["user_id"], "")}
                                   for s in h.store.sessions(None if everyone else req["user"]["id"])])

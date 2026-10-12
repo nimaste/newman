@@ -256,7 +256,6 @@ export default function Backups() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Backups</h1>
-        <span className="muted head-hint">Everything in Newman: accounts, connections, automations, dashboards.</span>
         <button type="button" className="btn btn-primary head-btn" style={{ marginLeft: 'auto' }} disabled={!!busy} onClick={backupNow}>
           {busy === 'now' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <Icon name="plus" size={15} />} Back up now
         </button>

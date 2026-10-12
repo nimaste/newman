@@ -214,6 +214,22 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await c2.get("/api/entities", headers=tab)).status, 401)
         await c2.close()
 
+    async def test_abandoned_sign_ins_are_not_live_and_expired_ones_are_gone(self):
+        # A wall tablet that signs in again leaves its old sign-in behind (valid for a year): listed,
+        # but not live, so "shown on" lists skip it. Expired sign-ins are removed altogether.
+        await self.setup_admin()
+        for name in ("Kitchen tablet", "Old tablet", "Expired tablet"):
+            c, r, _ = await self.login(kind="tablet", deviceName=name)
+            self.assertEqual(r.status, 200)
+            await c.close()
+        now, by = time.time(), {s["device_name"]: s["id"] for s in self.h.store.sessions()}
+        self.h.store._exec("UPDATE sessions SET last_seen = ? WHERE id = ?", (now - 5 * 86400, by["Old tablet"]))
+        self.h.store._exec("UPDATE sessions SET expires_at = ? WHERE id = ?", (now - 60, by["Expired tablet"]))
+        sessions = await (await self.client.get("/api/auth/sessions")).json()
+        self.assertEqual({s["deviceName"]: s["live"] for s in sessions},
+                         {"Browser": True, "Kitchen tablet": True, "Old tablet": False})
+        self.assertNotIn("Expired tablet", {s["device_name"] for s in self.h.store.sessions()})
+
     async def test_family_can_use_but_not_change(self):
         await self.setup_admin()
         await self.client.post("/api/users", json={"username": "marlina", "name": "Marlina", "role": "family",

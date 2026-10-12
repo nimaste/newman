@@ -381,9 +381,6 @@ export default function Profile() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Your profile</h1>
-        <span className="muted head-hint">
-          {user.name} · {user.username} · {user.role === 'admin' ? 'Admin' : 'Family'}
-        </span>
       </div>
       <div className="pane pane--plain">
         <div className="pane-body pane-body--flush-x">

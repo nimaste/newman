@@ -27,6 +27,7 @@ import ca.nimaste.newman.core.today.DismissRequest
 import ca.nimaste.newman.core.today.SnoozeRequest
 import ca.nimaste.newman.core.today.TodayBriefing
 import ca.nimaste.newman.core.widgets.WidgetDevicesResponse
+import ca.nimaste.newman.core.widgets.WidgetHome
 import ca.nimaste.newman.core.widgets.WidgetPushToken
 import ca.nimaste.newman.core.widgets.WidgetStateResponse
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -107,6 +108,10 @@ interface NewmanApi {
     /** These devices now ([ids] comma-separated, in the widget's order). */
     @GET("api/widgets/state")
     suspend fun widgetState(@Query("ids") ids: String): WidgetStateResponse
+
+    /** The "Home status" widget: all secure or not, what isn't and the command that fixes it. */
+    @GET("api/widgets/home")
+    suspend fun widgetHome(): WidgetHome
 
     @POST("api/widgets/push-token")
     suspend fun widgetPushToken(@Body body: WidgetPushToken): Response<OkResponse>

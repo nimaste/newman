@@ -24,7 +24,6 @@ export default function Cameras() {
             ]}
           />
         ) : null}
-        {hasCams && tab === 'live' ? <span className="muted head-hint">Tap one to watch it full screen</span> : null}
       </div>
       <div className="pane pane--plain">
         <div className="pane-body pane-body--flush-x">

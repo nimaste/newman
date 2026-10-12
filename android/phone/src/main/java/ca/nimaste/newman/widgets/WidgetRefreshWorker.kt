@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 class WidgetRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val sync = WidgetSync.from(applicationContext)
-        if (sync.shownIds().isEmpty()) {
+        if (!sync.anyShown()) {
             cancel(applicationContext)
             return Result.success()
         }

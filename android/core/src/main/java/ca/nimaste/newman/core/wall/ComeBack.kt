@@ -15,6 +15,14 @@ package ca.nimaste.newman.core.wall
  * wall off; silent use of another app (Settings, Silk) gets [Options.minutes] before the wall comes
  * back - long enough for a quick look, and the setting can be turned off for longer work.
  * Pure: the wall feeds it what the activity, the screen and AudioManager report, with the time.
+ *
+ * The screen going off while the wall is away ([screenOff]) brings it back at once, whatever the
+ * settings or anything playing: nobody is looking at the other app any more, and a dark tablet falls
+ * into deep sleep (no check-ins with Newman). It comes back [Decision.dimmed] - the screen turned on
+ * into the wall's dimmed screen (the date and time), never left fully off - as long as the wall keeps
+ * the screen on (NewmanWall.keepAwake, on by default). The screen going off while the wall itself is
+ * in front can only be the power button (the wall holds the screen on): that is honoured - the wall
+ * isn't away, so nothing here turns it back on until someone wakes it.
  */
 class ComeBack {
     data class Options(
@@ -26,14 +34,18 @@ class ComeBack {
         val onWake: Boolean = true,
     )
 
-    /** [bringBack]: come to the front now ([why] says why, or why not). [recheckInMs]: ask again then. */
-    data class Decision(val bringBack: Boolean, val why: String, val recheckInMs: Long? = null)
+    /**
+     * [bringBack]: come to the front now ([why] says why, or why not). [recheckInMs]: ask again then.
+     * [dimmed]: turn the screen on (it is off) into the wall's dimmed screen, not full brightness.
+     */
+    data class Decision(val bringBack: Boolean, val why: String, val recheckInMs: Long? = null, val dimmed: Boolean = false)
 
     var away = false
         private set
     private var awaySince = 0L
     private var playing = false
     private var quietSince = 0L
+    private var screenOffReturnAt: Long? = null
 
     /** No Newman screen is in front any more. Returns why it isn't counted as away, or null when it is. */
     fun left(now: Long, screenOn: Boolean): String? {
@@ -48,6 +60,7 @@ class ComeBack {
     /** A Newman screen is in front again. */
     fun entered() {
         away = false
+        screenOffReturnAt = null
     }
 
     /** Whether any other app is playing anything now. */
@@ -81,7 +94,28 @@ class ComeBack {
         return Decision(true, "the screen woke")
     }
 
+    /**
+     * The screen went off (a timeout over another app, or the power button there - Android doesn't
+     * say which). [keepsScreenOn]: the wall keeps the screen on while it's in front (keep awake).
+     * A return that didn't happen (the wall never came to the front) is tried again only after
+     * [SCREEN_OFF_RETRY_MS], so a tablet that can't bring the wall back doesn't flash on and off.
+     */
+    fun screenOff(now: Long, keepsScreenOn: Boolean): Decision {
+        if (!away) return Decision(false, "the wall is in front: the screen was turned off on purpose, it stays off until woken")
+        if (!keepsScreenOn) return Decision(false, "the wall lets the screen sleep (keep awake is off)")
+        val last = screenOffReturnAt
+        if (last != null && now - last < SCREEN_OFF_RETRY_MS) {
+            return Decision(false, "already tried ${(now - last) / 1000} s ago (trying again after ${SCREEN_OFF_RETRY_MS / 1000} s)")
+        }
+        screenOffReturnAt = now
+        awaySince = now
+        return Decision(true, "the screen went off while another app was in front", dimmed = true)
+    }
+
     companion object {
+        /** The least time between two screen-off returns that didn't bring the wall to the front. */
+        const val SCREEN_OFF_RETRY_MS = 60_000L
+
         /** The choices offered in the wall settings. */
         val MINUTE_CHOICES = listOf(1, 2, 5, 10)
         const val DEFAULT_MINUTES = 2

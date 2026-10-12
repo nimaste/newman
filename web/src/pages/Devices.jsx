@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { enc } from '../api.js';
 import { navigate, useApi, useHub, useRoute } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
@@ -8,8 +8,50 @@ import { StateText } from '../components/DeviceList.jsx';
 import { DeviceTileGroups } from '../components/DeviceTiles.jsx';
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
 import { Icon } from '../icons.jsx';
-import { groupByArea, issuesOf } from '../model.js';
+import { groupByArea, issuesOf, needsLook, summaryChips } from '../model.js';
 import { plural } from '../format.js';
+
+// Which categories are open, remembered in this browser ({categoryId: true | false}). A category
+// you haven't opened or closed yourself is open while something in it needs a look.
+const OPEN_KEY = 'newman.devices.open';
+function loadOpen() {
+  try {
+    const v = JSON.parse(localStorage.getItem(OPEN_KEY) || '{}');
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
+function saveOpen(v) {
+  try {
+    localStorage.setItem(OPEN_KEY, JSON.stringify(v));
+  } catch {
+    /* storage off (a private window): it just isn't remembered */
+  }
+}
+
+/** One category: a row that sums it up (name, count, status chips) and opens to its device tiles. */
+function CategoryRow({ name, count, chips, open, onToggle, children }) {
+  return (
+    <section className={'dcat' + (open ? ' is-open' : '')} aria-label={name}>
+      <button type="button" className="dcat-head" aria-expanded={open} onClick={onToggle}>
+        <span className="dcat-caret" aria-hidden="true">
+          <Icon name="chevronRight" size={16} />
+        </span>
+        <span className="dcat-name">{name}</span>
+        <span className="dcat-count">{count}</span>
+        <span className="dcat-chips">
+          {chips.map((c, i) => (
+            <span key={i} className={'schip schip--' + c.tone} title={c.title || undefined}>
+              {c.text}
+            </span>
+          ))}
+        </span>
+      </button>
+      {open ? <div className="dcat-body">{children}</div> : null}
+    </section>
+  );
+}
 
 /** Filters live in the URL: #/devices?c=lighting&t=light&s=offline&i=lutron&q=kitchen */
 function setFilters(next) {
@@ -41,11 +83,19 @@ export default function Devices() {
   const { run, rename, busy } = useDeviceActions();
   const [picked, setPicked] = useState(() => new Set());
   const [confirming, setConfirming] = useState(null); // the devices being removed
+  const [opened, setOpened] = useState(loadOpen);
+  // While searching or filtering every category with a match is open; ones you close then stay
+  // closed until the filters change (not remembered).
+  const [closedNow, setClosedNow] = useState(() => new Set());
+  const filterKey = query.toString();
+  useEffect(() => setClosedNow(new Set()), [filterKey]);
 
   if (!entities) {
     return (
-      <div className="page">
-        <h1 className="page-title">Devices</h1>
+      <div className="app-page">
+        <div className="app-head">
+          <h1 className="page-title">Devices</h1>
+        </div>
         {entitiesError ? <ErrorBox error={entitiesError} onRetry={reloadEntities} /> : <Loading>Loading devices…</Loading>}
       </div>
     );
@@ -103,81 +153,133 @@ export default function Devices() {
     });
   const selectAll = (on) => setPicked(on ? new Set(shown.map((e) => e.id)) : new Set());
 
+  // Tiles: one collapsible row per category. Searching or filtering shows the categories with a
+  // match, open.
+  const filtering = !!(cat || type || status || conn || needle);
+  const lookup = (e) => kindsById[e.kind];
+  const known = new Set(categories.map((c) => c.id));
+  const rowCats = [...categories, { id: '_other', name: 'Other' }];
+  const rows = rowCats
+    .map((c) => {
+      const inCat = (e) => (c.id === '_other' ? !known.has(catOf(e)) : catOf(e) === c.id);
+      const all = entities.filter(inCat);
+      const vis = shown.filter(inCat);
+      const attention = all.some((e) => needsLook(e, lookup(e)));
+      const open = filtering ? !closedNow.has(c.id) : (opened[c.id] ?? attention);
+      return { id: c.id, name: c.name, all, vis, open };
+    })
+    .filter((r) => (filtering ? r.vis.length : r.all.length));
+  const allOpen = rows.length > 0 && rows.every((r) => r.open);
+  const toggleRow = (r) => {
+    if (filtering) {
+      setClosedNow((prev) => {
+        const next = new Set(prev);
+        if (r.open) next.add(r.id);
+        else next.delete(r.id);
+        return next;
+      });
+      return;
+    }
+    setOpened((prev) => {
+      const next = { ...prev, [r.id]: !r.open };
+      saveOpen(next);
+      return next;
+    });
+  };
+  const setAll = (open) => {
+    if (filtering) {
+      setClosedNow(open ? new Set() : new Set(rows.map((r) => r.id)));
+      return;
+    }
+    setOpened((prev) => {
+      const next = { ...prev, ...Object.fromEntries(rows.map((r) => [r.id, open])) };
+      saveOpen(next);
+      return next;
+    });
+  };
+
   return (
     <div className="app-page">
       <div className="app-head">
-      <h1 className="page-title">Devices</h1>
+        <h1 className="page-title">Devices</h1>
+        {view === 'tiles' && rows.length > 1 ? (
+          <button type="button" className="btn" onClick={() => setAll(!allOpen)}>
+            {allOpen ? 'Collapse all' : 'Expand all'}
+          </button>
+        ) : null}
+      </div>
 
-      <div className="filter-bar filter-bar--inline filter-bar--devices" role="search">
-        <label className="filter">
-          <span className="filter-label">Category</span>
-          <select className="select" value={cat} onChange={(ev) => setFilters({ ...keep, c: ev.target.value, t: '' })}>
-            <option value="">All devices ({forCat.length})</option>
-            {cats.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.count})
-              </option>
-            ))}
-          </select>
-        </label>
-        {catKinds.length > 1 ? (
+      <div className="page-tools">
+        <div className="filter-bar filter-bar--inline filter-bar--devices" role="search">
           <label className="filter">
-            <span className="filter-label">Type</span>
-            <select className="select" value={type} onChange={(ev) => setFilters({ ...keep, t: ev.target.value })}>
-              <option value="">All types</option>
-              {catKinds.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.plural || k.name} ({forCat.filter((e) => e.kind === k.id).length})
+            <span className="filter-label">Category</span>
+            <select className="select" value={cat} onChange={(ev) => setFilters({ ...keep, c: ev.target.value, t: '' })}>
+              <option value="">All devices ({forCat.length})</option>
+              {cats.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.count})
                 </option>
               ))}
             </select>
           </label>
-        ) : null}
-        <label className="filter">
-          <span className="filter-label">Status</span>
-          <select className="select" value={status ? status.id : ''} onChange={(ev) => setFilters({ ...keep, s: ev.target.value })}>
-            <option value="">Any status ({forStatus.length})</option>
-            {STATUSES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label} ({forStatus.filter(s.test).length})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="filter">
-          <span className="filter-label">Connection</span>
-          <select className="select" value={conn} onChange={(ev) => setFilters({ ...keep, i: ev.target.value })}>
-            <option value="">All connections ({forConn.length})</option>
-            {connList.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({forConn.filter((e) => e.integration === c.id).length})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="filter filter--grow">
-          <span className="filter-label">Search</span>
-          <span className="search-box">
-            <input
-              className="input"
-              type="search"
-              placeholder="Name or room"
-              value={search}
-              onChange={(ev) => setFilters({ ...keep, q: ev.target.value })}
-            />
-          </span>
-        </label>
-      </div>
+          {catKinds.length > 1 ? (
+            <label className="filter">
+              <span className="filter-label">Type</span>
+              <select className="select" value={type} onChange={(ev) => setFilters({ ...keep, t: ev.target.value })}>
+                <option value="">All types</option>
+                {catKinds.map((k) => (
+                  <option key={k.id} value={k.id}>
+                    {k.plural || k.name} ({forCat.filter((e) => e.kind === k.id).length})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label className="filter">
+            <span className="filter-label">Status</span>
+            <select className="select" value={status ? status.id : ''} onChange={(ev) => setFilters({ ...keep, s: ev.target.value })}>
+              <option value="">Any status ({forStatus.length})</option>
+              {STATUSES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label} ({forStatus.filter(s.test).length})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter">
+            <span className="filter-label">Connection</span>
+            <select className="select" value={conn} onChange={(ev) => setFilters({ ...keep, i: ev.target.value })}>
+              <option value="">All connections ({forConn.length})</option>
+              {connList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({forConn.filter((e) => e.integration === c.id).length})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter filter--grow">
+            <span className="filter-label">Search</span>
+            <span className="search-box">
+              <input
+                className="input"
+                type="search"
+                placeholder="Name or room"
+                value={search}
+                onChange={(ev) => setFilters({ ...keep, q: ev.target.value })}
+              />
+            </span>
+          </label>
+        </div>
 
-      <Segmented
-        label="View"
-        value={view}
-        onChange={(v) => setFilters({ ...keep, v: v === 'table' ? 'table' : '' })}
-        options={[
-          { id: 'tiles', label: 'Tiles' },
-          { id: 'table', label: 'Table' },
-        ]}
-      />
+        <Segmented
+          label="View"
+          value={view}
+          onChange={(v) => setFilters({ ...keep, v: v === 'table' ? 'table' : '' })}
+          options={[
+            { id: 'tiles', label: 'Tiles' },
+            { id: 'table', label: 'Table' },
+          ]}
+        />
       </div>
 
       {removable && shown.length ? (
@@ -204,22 +306,43 @@ export default function Devices() {
       ) : null}
 
       {view === 'tiles' ? (
-        <div className="pane">
-          <div className="pane-body">
+        <div className="pane pane--plain">
+          <div className="pane-body pane-body--flush-x">
             {!entities.length ? (
-              <Empty title="No devices yet" action={<a href="#/integrations">Add a connection</a>}>
-                Devices appear here as soon as Newman is connected to them.
-              </Empty>
+              <div className="card">
+                <Empty title="No devices yet" action={<a href="#/integrations">Add a connection</a>}>
+                  Devices appear here as soon as Newman is connected to them.
+                </Empty>
+              </div>
+            ) : !rows.length ? (
+              <div className="card">
+                <Empty title="Nothing matches" action={<button type="button" className="btn btn-sm" onClick={() => setFilters({ v: keep.v })}>Show all devices</button>}>
+                  Try another filter or search.
+                </Empty>
+              </div>
             ) : (
-              <DeviceTileGroups
-                entities={shown}
-                run={run}
-                busy={busy}
-                byRoom
-                emptyText="Nothing matches — try another filter or search."
-                onSelect={removable ? toggle : undefined}
-                selected={removable ? picked : undefined}
-              />
+              <div className="dcat-list">
+                {rows.map((r) => (
+                  <CategoryRow
+                    key={r.id}
+                    name={r.name}
+                    count={filtering && r.vis.length !== r.all.length ? `${r.vis.length} of ${r.all.length}` : plural(r.all.length, 'device')}
+                    chips={summaryChips(r.all, kinds)}
+                    open={r.open}
+                    onToggle={() => toggleRow(r)}
+                  >
+                    <DeviceTileGroups
+                      entities={r.vis}
+                      run={run}
+                      busy={busy}
+                      byRoom
+                      emptyText="Nothing matches — try another filter or search."
+                      onSelect={removable ? toggle : undefined}
+                      selected={removable ? picked : undefined}
+                    />
+                  </CategoryRow>
+                ))}
+              </div>
             )}
           </div>
         </div>

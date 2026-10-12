@@ -51,7 +51,8 @@ import ca.nimaste.newman.ui.theme.T
 
 /**
  * Choosing what a widget (several devices, in order) or a Quick Settings tile (one device) shows:
- * every device a widget can show (GET /api/widgets/devices), by room or by type, with search.
+ * every device a widget can show (GET /api/widgets/devices), by room or by type, with search. A widget takes
+ * up to [max] devices.
  */
 @Composable
 fun DevicePicker(
@@ -61,6 +62,10 @@ fun DevicePicker(
     multi: Boolean,
     initial: List<String>,
     initialConfirm: Boolean,
+    /** At most this many can be ticked (a widget: what its largest size shows). */
+    max: Int = Int.MAX_VALUE,
+    /** How many the widget shows at its size now: the rest are marked as shown once it's bigger. */
+    fits: Int = Int.MAX_VALUE,
     onSave: (ids: List<String>, confirmSensitive: Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -102,12 +107,12 @@ fun DevicePicker(
                     val groups = WidgetPicker.group(devices, if (byType) WidgetGrouping.TYPE else WidgetGrouping.AREA, query)
                     LazyColumn(Modifier.fillMaxSize()) {
                         if (multi && selected.isNotEmpty() && query.isBlank()) {
-                            item { Header("On this widget") }
+                            item { Header(if (max == Int.MAX_VALUE) "On this widget" else "On this widget · ${selected.size} of $max") }
                             itemsIndexed(selected, key = { _, id -> "sel:$id" }) { i, id ->
-                                SelectedRow(known[id]?.name ?: id, first = i == 0, last = i == selected.lastIndex,
+                                SelectedRow(known[id]?.name ?: id, hidden = i >= fits, first = i == 0, last = i == selected.lastIndex,
                                     onUp = { selected = WidgetPicker.move(selected, i, -1) },
                                     onDown = { selected = WidgetPicker.move(selected, i, 1) },
-                                    onRemove = { selected = WidgetPicker.toggle(selected, id) })
+                                    onRemove = { selected = WidgetPicker.toggle(selected, id, max) })
                             }
                         }
                         if (!multi && query.isBlank()) {
@@ -117,8 +122,9 @@ fun DevicePicker(
                             item(key = "h:$group") { Header(group) }
                             items(list, key = { "d:${group}:${it.id}" }) { d ->
                                 val sub = if (byType) d.area else d.kindName
-                                ChoiceRow(d.name, sub, d.id in selected, multi) {
-                                    selected = if (multi) WidgetPicker.toggle(selected, d.id) else listOf(d.id)
+                                val ticked = d.id in selected
+                                ChoiceRow(d.name, sub, ticked, multi, enabled = ticked || selected.size < max) {
+                                    selected = if (multi) WidgetPicker.toggle(selected, d.id, max) else listOf(d.id)
                                 }
                             }
                         }
@@ -141,25 +147,28 @@ private fun Header(text: String) {
 }
 
 @Composable
-private fun ChoiceRow(name: String, sub: String?, checked: Boolean, multi: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+private fun ChoiceRow(name: String, sub: String?, checked: Boolean, multi: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(enabled = enabled, onClick = onClick).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically) {
-        if (multi) Checkbox(checked = checked, onCheckedChange = { onClick() },
+        if (multi) Checkbox(checked = checked, onCheckedChange = { onClick() }, enabled = enabled,
             colors = CheckboxDefaults.colors(checkedColor = N.Teal, checkmarkColor = N.Night, uncheckedColor = N.Muted))
         else RadioButton(selected = checked, onClick = onClick,
             colors = RadioButtonDefaults.colors(selectedColor = N.Teal, unselectedColor = N.Muted))
         Column(Modifier.weight(1f)) {
-            Text(name, style = T.body)
+            Text(name, style = if (enabled) T.body else T.body.copy(color = N.Muted))
             if (!sub.isNullOrEmpty()) Text(sub, style = T.tiny)
         }
     }
 }
 
 @Composable
-private fun SelectedRow(name: String, first: Boolean, last: Boolean, onUp: () -> Unit, onDown: () -> Unit, onRemove: () -> Unit) {
+private fun SelectedRow(name: String, hidden: Boolean, first: Boolean, last: Boolean, onUp: () -> Unit, onDown: () -> Unit, onRemove: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(RoundedCornerShape(12.dp)).background(N.Glass)
         .padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(name, style = T.body, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = T.body)
+            if (hidden) Text("Shown when the widget is bigger", style = T.tiny)
+        }
         IconButton(onClick = onUp, enabled = !first) { NIcon("up", size = 18.dp, color = if (first) N.Border else N.Soft) }
         IconButton(onClick = onDown, enabled = !last) { NIcon("down", size = 18.dp, color = if (last) N.Border else N.Soft) }
         IconButton(onClick = onRemove) { NIcon("x", size = 18.dp, color = N.Soft) }

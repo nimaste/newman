@@ -21,7 +21,7 @@ export default function Household({ current, children }) {
   ];
   return (
     <div className="app-page hh-page">
-      <div className="hh-head">
+      <div className="app-head hh-head">
         <h1 className="page-title">Household</h1>
         <nav className="tabs hh-tabs" aria-label="Household sections">
           {tabs.map((t) => (

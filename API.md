@@ -10,6 +10,11 @@ home only). Away from home the admin's sign-in policy applies (client certificat
 and/or a 2FA code - see README). `/api/public/*` is authenticated per request by HMAC tokens minted
 into push notifications (and webhook secrets).
 
+`GET /api/auth/sessions` (admins: `?all=1` for every account) lists the signed-in devices:
+`{"id", "kind": "browser|app|tablet", "deviceName", "user", "createdAt", "lastSeen", "where", "dashboardId", "current",
+"live", ...}`. `live` = not expired and seen in the last 72 hours (a device in use checks in every few minutes); a
+tablet's old sign-in left behind by a new one stays listed but isn't live. Expired sign-ins are deleted, not listed.
+
 ---
 
 ## Meta
@@ -304,14 +309,17 @@ even in Doze; an iPad can't), `nextReportIn` (seconds until its next check-in at
 null) and `dozeExempt` bool (Android lets it ignore battery optimisation). → 204; 400 for a
 bad body; 401 signed out. The account becomes one device `tablets.<account id>` (kind `tablet`: state
 `charging` / `battery`; attrs `batteryLevel`, `charging`, `plugged`, `temperature` °C, `voltage` V,
-`screen`, `backgroundReports`, `batteryStale`, `nextReportIn`, `nextReportAt` (epoch s), `dozeExempt`).
-While `screen` is `off` its `stateLabel` is "Screen off"
+`screen`, `backgroundReports`, `batteryStale`, `nextReportIn`, `nextReportAt` (epoch s), `dozeExempt`,
+`deepSleep`). While `screen` is `off` its `stateLabel` is "Screen off"
 (the kind's `notes` in `/api/meta`: `[{"attr": "screen", "value": "off", "label": "Screen off"}]` - shown
 instead of the state's label while an attr has that value; the state itself stays). Offline after 15
-minutes without a report with the screen on, 35 minutes after a screen-off report with `background` (or
-`nextReportIn` + 20 minutes when that's later, up to 12 hours), 12
-hours after one without; `batteryStale` is true once a screen-off tablet without background reports has
-been quiet 15 minutes (its level is unknown: smart charging leaves it alone). While such a tablet is
+minutes without a report with the screen on; after a screen-off report with `background`: when it was
+charging / plugged in or `dozeExempt` (its check-ins should get through) 35 minutes (or `nextReportIn` +
+20 minutes when that's later, up to 12 hours), otherwise - on battery, not exempt, so Doze may hold its
+check-ins back - 8 hours, with `deepSleep` true once it's past that 35 minutes / `nextReportIn` + 20
+(asleep, expected - not offline); 12 hours after one without `background`; `batteryStale` is true once a
+screen-off tablet without background reports has been quiet 15 minutes (its level is unknown: smart
+charging leaves it alone). Any report sets `deepSleep` false again. While such a tablet is
 asleep (screen off, background, not overdue) its music player stays available with `screen` `off`
 ("Screen off") instead of going offline when its page stops reporting.
 
@@ -380,7 +388,8 @@ showable ones are left out; without `ids`, every showable device):
 
 ```json
 {"devices": [{"id": "ring.f0b7…", "name": "Side Door", "kind": "lock", "state": "LOCKED",
-              "stateLabel": "Locked", "available": true, "active": false, "icon": "lock", "area": "Mudroom",
+              "stateLabel": "Locked", "available": true, "active": false, "tone": "good", "icon": "lock",
+              "area": "Mudroom",
               "actions": [{"command": "unlock", "label": "Unlock", "sensitive": true, "primary": true},
                           {"command": "lock", "label": "Lock", "sensitive": false, "primary": false}],
               "reading": null}]}
@@ -396,6 +405,37 @@ showable ones are left out; without `ids`, every showable device):
   state is a number (temperature, sensor), else the first of the kind's `summary` properties that is a
   number (a thermostat's current temperature, a server's CPU); `null` otherwise.
 - `active` — in the kind's `activeState` (on, unlocked, open…); apps highlight it.
+- `tone` — the colour widgets give the state, from the kind metadata: `"good"` at the kind's
+  `secureState` (locked, closed, dry), `"alert"` an `urgent` kind away from it (a leak), `"active"` away
+  from it (unlocked, open) or — for kinds without a secure state — in the `activeState` (on),
+  `"offline"`, else `""` (neutral; also between states, e.g. locking).
+
+`GET /api/widgets/home` — the phones' **Home status** widget: every device whose kind has a
+`secureState`, and the house modes (`isMode`, an alarm), summed up:
+
+```json
+{"secure": false, "headline": "Side Door unlocked", "detail": "garage door closed",
+ "problems": [{"id": "ring.f0b7…", "name": "Side Door", "kind": "lock", "icon": "lock", "state": "UNLOCKED",
+               "stateLabel": "Unlocked", "urgent": false,
+               "fix": {"command": "lock", "label": "Lock", "sensitive": false}}],
+ "groups": [{"kind": "lock", "label": "Lock", "text": "Unlocked", "secure": false, "icon": "lock"},
+            {"kind": "garage", "label": "Garage door", "text": "Closed", "secure": true, "icon": "garage"},
+            {"kind": "alarm", "label": "Alarm", "text": "Disarmed", "secure": null, "icon": "alarm"}],
+ "ids": ["ring.f0b7…", "myq.garage", "ring.alarm"]}
+```
+
+- `secure` — `true` when every online one is at its secure state, `false` when one isn't, `null` when
+  the house has none. Offline devices and ones between states (locking) don't count against it.
+- `headline` — "All secure" / "Side Door unlocked" / "2 open" / "2 not secure" / "Nothing to keep secure";
+  `detail` — when secure, what's covered ("2 locks · garage door closed · 1 offline"); with one problem,
+  the kinds that are fine; with several, each one ("Side Door unlocked · Garage open").
+- `problems` — what isn't secure, urgent kinds first, then those with a fix, then by name; `fix` is the
+  kind's one-tap command whose `confirmsTo` is the secure state (Lock, Close), `null` when there's none
+  (a door sensor, a leak). Run it with `POST /api/entities/{id}/command`.
+- `groups` — one line per kind (label: the kind's name, or plural for several), not-secure ones first,
+  house modes last; `text` "All locked" / "Locked" / "Side Door unlocked" / "2 open" (+ " · 1 offline"),
+  a mode's state label.
+- `ids` — every device it covers; asking counts as the account's widgets showing them (reload pushes).
 
 Run an action with the usual `POST /api/entities/{id}/command` `{"command": "unlock"}` (wall tablets'
 PIN rule for sensitive commands applies as everywhere; phones aren't asked).
@@ -409,10 +449,10 @@ Kept with the sign-in it came from: signing out, revoking that device or removin
 (and a token whose sign-in has expired is never pushed to). `DELETE /api/phones/{deviceId}` drops it too.
 
 **Reload pushes.** When a widget-showable device changes in a way a widget shows (name, state, state
-label, availability, `active`, actions or reading — not a timestamp or an unshown attribute), each live
+label, availability, `active`, `tone`, actions or reading — not a timestamp or an unshown attribute), each live
 token gets a reload push, **at most one per 30 s per token**: a change inside that window goes out when
 it ends, folded into one. Once an account's widgets have asked for particular devices
-(`GET /api/widgets/state?ids=`, remembered for 3 days), only changes to those count for that account's
+(`GET /api/widgets/state?ids=` and `GET /api/widgets/home`, remembered for 3 days), only changes to those count for that account's
 phones; until then any showable device's change does (e.g. after a hub restart).
 - iOS (`ios-widget`): APNs `apns-push-type: widgets`, topic `<APNS_BUNDLE_ID>.push-type.widgets`,
   priority 5, payload `{"aps": {"content-changed": true}}` — WidgetKit reloads the widgets. Skipped when
