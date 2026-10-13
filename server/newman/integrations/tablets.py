@@ -7,6 +7,14 @@ The connection is made the first time a tablet reports. The last report of each 
 this connection's data folder (tablets.json), so after a restart the devices are back straight away
 with their last values.
 
+A tablet's device belongs to the account it's signed in with, and lasts only while that account has a
+wall-tablet sign-in that sign-in still accepts (not expired, account not disabled) - however long the
+tablet has been quiet or asleep. Once it has none (signed out, the sign-in ended from the devices list,
+expired, or the account disabled or removed) the device and its saved report go: forget_account, called
+by the API (api.forget_signed_out_tablets) then, at start and every hour. It's removed outright, never
+marked offline first, so smart charging sees no tablet going quiet: no alert, no plug switched. Its smart
+charging settings stay, for when the account signs in on a wall tablet again.
+
 A report may say whether the tablet's screen is on ("screen": "on" | "off") and whether it keeps
 reporting with the screen off ("background": true - the Android wall sends it only while its check-in
 alarm is set, every 15 minutes even in Doze), when its next check-in is due ("nextReportIn": seconds)
@@ -212,6 +220,8 @@ class TabletsIntegration(Integration):
             eid = self.entity_id(uid)
             if self.hub.get(eid):
                 continue  # reported again already
+            if uid not in self.tablets:
+                continue  # its account signed out meanwhile (forget_account)
             self.hub.upsert(eid, kind="tablet", name=t.get("name") or "Wall tablet", integration=self.id)
             attrs = t.get("attrs") or {}
             age = time.time() - float(t.get("at") or 0)
@@ -230,6 +240,25 @@ class TabletsIntegration(Integration):
         if t is not None and name and t.get("name") != name:
             t["name"] = name
             self._save()
+
+    def tablet_accounts(self) -> set[str]:
+        """The accounts this connection keeps a tablet's battery for."""
+        return set(self.tablets) | {e.id.split(".", 1)[1] for e in self.hub.all() if e.integration == self.id}
+
+    def forget_account(self, user_id: str) -> tuple[str, list[str]]:
+        """The account isn't signed in on any wall tablet now: its battery device and last report go (the
+        API decides, see api.forget_signed_out_tablets). Removed straight away, not marked offline first,
+        so smart charging sees no tablet going quiet. Returns (its name, the removed device ids)."""
+        t = self.tablets.pop(user_id, None)
+        eid = self.entity_id(user_id)
+        name = (t or {}).get("name") or ""
+        on_hub = self.hub.remove(eid)  # (not yet, at start: then only its saved report goes)
+        gone = [eid] if on_hub or t is not None else []
+        if t is not None:
+            self._save()
+        if self.status == "connected":
+            self.set_status("connected", self._detail())
+        return name, gone
 
     async def report(self, user_id: str, name: str, attrs: dict[str, Any], now: float | None = None) -> None:
         """One tablet's battery, from its signed-in account."""
@@ -259,7 +288,7 @@ class TabletsIntegration(Integration):
 
     async def check_offline(self, now: float | None = None) -> None:
         now = now or time.time()
-        for uid, t in self.tablets.items():
+        for uid, t in list(self.tablets.items()):  # (an account's tablet may be removed meanwhile)
             ent = self.hub.get(self.entity_id(uid))
             if not ent:
                 continue

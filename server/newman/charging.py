@@ -151,6 +151,7 @@ class SmartCharging:
         self._tablet_flips: list[dict[str, Any]] = []   # {"at", "uid", "on", "done"}
         self._tasks: set[asyncio.Task] = set()
         hub.subscribe_changes(self._changed)
+        hub.subscribe_registry(self._registered, self._removed)
 
     # -- settings ------------------------------------------------------------------------------------
 
@@ -190,6 +191,20 @@ class SmartCharging:
             await self._tablet_changed(old, new)
         elif switchable(new.kind):
             await self._switch_changed(old, new)
+
+    async def _registered(self, _new: Entity) -> None:
+        pass  # a tablet's first report reaches _changed like any other
+
+    async def _removed(self, ids: list[str]) -> None:
+        """A tablet's device removed (its account signed out of every wall tablet, see
+        integrations/tablets.py): forget what was going on with it - an open "which plug?" question, a wait
+        for it to charge, its last zone - without switching anything or telling anyone. Its settings stay
+        for when the account signs in on a wall tablet again (its first report is then a fresh look)."""
+        for eid in ids:
+            uid = eid.split(".", 1)[-1]
+            if self.tablet(uid) is None:
+                for kept in (self._watch, self._question, self._zone, self._pending, self._alerted, self._silent):
+                    kept.pop(uid, None)
 
     async def _tablet_changed(self, old: Entity | None, new: Entity) -> None:
         uid = new.id.split(".", 1)[-1]

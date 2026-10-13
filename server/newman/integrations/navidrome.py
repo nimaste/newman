@@ -19,6 +19,10 @@ A player is available while its wall page reports (at least every minute while o
 goes quiet it is offline - unless its tablet is asleep (screen off, still checking in its battery on
 time: the tablets connection's tablet_asleep()); then it stays available with "screen": "off", which
 the kind shows as "Screen off", and only goes offline when the tablet does.
+
+A player lasts only while its account is signed in on a wall tablet (the same rule as the tablet's
+battery device, see tablets.py): once it isn't, the player's device and its queue go (forget_account,
+called by the API). Signing in again starts a fresh, empty player.
 """
 from __future__ import annotations
 
@@ -325,8 +329,9 @@ class NavidromeIntegration(Integration):
     async def run(self) -> None:
         # The wall tablets' players are back straight away (offline until their page reports, or
         # "Screen off" while their tablet is asleep).
-        for uid in self.players:
-            await self._publish(uid, page=False)
+        for uid in list(self.players):
+            if uid in self.players:  # (unless its account signed out meanwhile: forget_account)
+                await self._publish(uid, page=False)
         attempt = 0
         while True:
             ok = await self.sign_in()
@@ -407,6 +412,26 @@ class NavidromeIntegration(Integration):
         if p is not None and name and p.get("name") != name:
             p["name"] = name
             self._save_players()
+
+    def tablet_accounts(self) -> set[str]:
+        """The accounts this connection keeps a wall tablet's player for."""
+        return set(self.players) | {self.uid_of(e.id) for e in self.hub.all() if e.integration == self.id}
+
+    def forget_account(self, uid: str) -> tuple[str, list[str]]:
+        """The account isn't signed in on any wall tablet now: its player device, queue and an unanswered
+        "Did you mean …?" go (the API decides, see api.forget_signed_out_tablets). Signing in again starts
+        a fresh player. Returns (the account's name, the removed device ids)."""
+        p = self.players.pop(uid, None)
+        self.offers.pop(uid, None)
+        eid = self.player_id(uid)
+        name = (p or {}).get("name") or ""
+        on_hub = self.hub.remove(eid)  # (not yet, at start: then only its saved queue goes)
+        gone = [eid] if on_hub or p is not None else []
+        if p is not None:
+            self._save_players()
+        if self.status == "connected":
+            self.set_status("connected", self._detail())
+        return name, gone
 
     def ensure_player(self, uid: str, name: str) -> dict[str, Any]:
         p = self.players.get(uid)

@@ -54,6 +54,12 @@ def session_live(s: dict, now: float) -> bool:
     """Not expired, and seen in the last LIVE_HOURS."""
     return s["expires_at"] > now and now - s["last_seen"] < LIVE_HOURS * 3600
 
+
+def session_accepted(s: dict, user: dict | None, now: float) -> bool:
+    """Sign-in still accepts it: not expired (expires_at slides forward each time it's used), and its
+    account is still there and not disabled."""
+    return s["expires_at"] >= now and bool(user) and not user["disabled"]
+
 # -- passwords & PINs ---------------------------------------------------------------------------
 
 

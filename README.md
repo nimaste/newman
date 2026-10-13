@@ -133,6 +133,9 @@ bridge network.
   with your own account also works (it then shows *your* dashboard). To switch accounts, press and
   hold the clock on the wall screen → **Sign out**. Renaming the account (the pencil by its name, or
   **⋯ → Rename…**) renames its battery and music player too — unless you renamed those yourself.
+  Both last only while the account is signed in on a wall tablet: signing it out there removes them
+  ("Removed Chris's tablet: no longer signed in on a tablet" in Activity; see
+  [Wall tablet battery](#wall-tablet-battery)).
 - **Alerts on wall tablets** — an automation's **Then** can also *show it on a wall tablet*: as a card
   that slides in, full screen with the camera live (e.g. the doorbell), or as an alarm that stays until
   someone taps OK; with or without a sound, waking a dimmed screen or not. It reaches the tablet over
@@ -464,6 +467,9 @@ Music from your own [Navidrome](https://www.navidrome.org/) (or any Subsonic-com
 `http://10.1.1.2:4533` — use the address on your network rather than the public `music.garito.ca`), your
 Navidrome username and password. Then open (or reload) each wall tablet: each one gets its own **music
 player** device (“Hallway music”). Add a **Music** tile to a wall dashboard for search and albums.
+A player belongs to the account the tablet is signed in with: once that account is no longer signed in on
+any wall tablet, its player and queue are removed with the tablet's battery device (see
+[Wall tablet battery](#wall-tablet-battery)); signing in again starts a fresh player.
 
 **Only a token is kept.** Subsonic's token sign-in is `t = md5(password + salt)`: Newman uses the password
 once to make a token with a random salt, checks it (`ping`), then keeps only the username, token and salt
@@ -1214,6 +1220,14 @@ battery optimisation; or once over USB:
 `adb shell dumpsys deviceidle whitelist +ca.nimaste.newman.wall`); an iPad can't, so
 it says goodbye as it sleeps and shows *Screen off* for up to 12 hours (its battery counts as unknown
 after 15 minutes). Screen on, it's shown offline after 15 minutes without a report.
+
+The device belongs to the account the tablet is signed in with, and lasts as long as that account has a
+wall-tablet sign-in Newman still accepts — however long the tablet is asleep or quiet. When the account
+has none left (signed out, the sign-in ended from the devices list, expired, or the account disabled or
+removed) the device and its last report are removed, along with its music player; one that expired goes
+at the hourly check (and at start). It's removed outright, so smart charging switches nothing and sends
+no alert; the account's smart charging settings stay, ready for when it signs in on a tablet again.
+Automations and dashboards that used it say the device no longer exists.
 
 **Smart charging** keeps it between 20 and 80 % without any automations: turn it on under
 **Household → Accounts → the tablet → Charging**. The hub switches the tablet's charger plug on when

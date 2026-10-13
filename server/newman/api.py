@@ -233,10 +233,10 @@ def build_app(h: "Newman") -> web.Application:
     def find_session(req: web.Request) -> tuple[dict[str, Any], dict[str, Any]] | None:
         tok = token_of(req)
         s = h.store.session_by_token(A.token_hash(tok)) if tok else None
-        if not s or s["expires_at"] < time.time():
+        if not s:
             return None
         u = h.store.user(s["user_id"])
-        if not u or u["disabled"]:
+        if not A.session_accepted(s, u, time.time()):
             return None
         if time.time() - s["last_seen"] > 300:  # sliding expiry, written at most every 5 minutes
             o = origin(req)
@@ -394,6 +394,7 @@ def build_app(h: "Newman") -> web.Application:
             h.store.remove_session(req["session"]["id"])
             widget_push.tokens.prune()  # its widgets get no more pushes
             live.tokens.prune()  # nor its live statuses
+            forget_signed_out_tablets()  # the account's last wall tablet signed out: its devices go
         resp = web.json_response({"ok": True})
         resp.del_cookie(A.SESSION_COOKIE, path="/")
         return resp
@@ -407,6 +408,7 @@ def build_app(h: "Newman") -> web.Application:
             return _err(400, problem)
         h.store.update_user(u["id"], password_hash=A.hash_secret(str(data["new"])), password_changed_at=time.time())
         h.store.remove_sessions(u["id"], keep=req["session"]["id"])  # sign out every other device
+        forget_signed_out_tablets()
         return web.json_response({"ok": True})
 
     @r.post("/api/auth/pin")
@@ -488,6 +490,7 @@ def build_app(h: "Newman") -> web.Application:
         h.store.remove_session(sid)
         widget_push.tokens.prune()
         live.tokens.prune()
+        forget_signed_out_tablets()
         return web.json_response({"ok": True})
 
     def settings_json() -> dict[str, Any]:
@@ -579,6 +582,37 @@ def build_app(h: "Newman") -> web.Application:
             if e.name == old or e.name.startswith(old + " "):
                 await h.hub.update(e.id, name=new + e.name[len(old):])
 
+    def forget_signed_out_tablets() -> None:
+        """A wall tablet's devices (its battery, its music player) belong to the account it's signed in with,
+        and exist only while that account has a wall-tablet sign-in that sign-in still accepts - however
+        quiet or asleep the tablet is. Called on sign-out, an ending sign-in, an account removed or
+        disabled, at start and every hour (sign-ins that expired). Each connection that keeps devices per
+        tablet account says which accounts (tablet_accounts) and drops one's devices and saved data
+        (forget_account). Smart charging settings stay: signing the account in again brings them back."""
+        now = time.time()
+        users = {u["id"]: u for u in h.store.users()}
+        signed_in = {s["user_id"] for s in h.store.sessions()
+                     if s["kind"] == "tablet" and A.session_accepted(s, users.get(s["user_id"]), now)}
+        names: dict[str, str] = {}
+        removed: list[str] = []
+        for inst in list(h.integrations.instances.values()):
+            accounts = getattr(inst, "tablet_accounts", None)
+            if not accounts:
+                continue
+            for uid in sorted(accounts() - signed_in):
+                name, ids = inst.forget_account(uid)
+                names[uid] = names.get(uid) or (users.get(uid) or {}).get("name") or name
+                removed += ids
+        for eid in removed:
+            h.store.forget_entity(eid)  # a name or settings given to it go too, as for any removed device
+        if removed:
+            h.hub.set_name_overrides(h.store.entity_names())
+        for uid, name in names.items():
+            what = f"{name}'s tablet" if name else "a wall tablet"
+            log.info("Removed %s (%s): no longer signed in on a wall tablet", what, uid)
+            h.store.log_event("system", f"Removed {what}: no longer signed in on a tablet")
+    h.forget_signed_out_tablets = forget_signed_out_tablets  # also at start and hourly (app.py)
+
     @r.patch("/api/users/{uid}")
     async def update_user(req: web.Request) -> web.Response:
         require_admin(req)
@@ -650,6 +684,7 @@ def build_app(h: "Newman") -> web.Application:
             await rename_account_devices(uid, u["name"], changes["name"])
         if changes.get("disabled") or "password_hash" in changes:
             h.store.remove_sessions(uid)
+        forget_signed_out_tablets()  # disabled, a new password or a new role signs its wall tablet out
         now = h.store.user(uid)
         if was_sharing and not loc.sharing(now):
             loc.forget(u.get("person_id"))  # nothing kept once they stop sharing
@@ -718,6 +753,7 @@ def build_app(h: "Newman") -> web.Application:
         h.store.remove_user(uid)
         widget_push.tokens.prune()
         live.tokens.prune()
+        forget_signed_out_tablets()
         if u and u.get("person_id") and not loc.account(u["person_id"]):
             loc.forget(u["person_id"])  # no account sharing for them any more: keep nothing
         return web.json_response({"ok": True})

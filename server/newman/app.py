@@ -26,6 +26,8 @@ from .store import Store
 
 log = logging.getLogger("newman")
 
+TABLET_SIGN_INS_EVERY_S = 3600  # how often expired wall-tablet sign-ins are looked for
+
 
 class Newman:
     def __init__(self) -> None:
@@ -59,9 +61,13 @@ class Newman:
         log.info("Newman %s listening on :%s", config.app_version, config.port)
 
         self.integrations.start_all()
+        # Before the connections bring back their saved devices: a wall tablet's battery and music player
+        # whose account is no longer signed in on a wall tablet go now (api.forget_signed_out_tablets).
+        self._check_tablet_sign_ins()
         scheduler = asyncio.create_task(self.engine.run_scheduler(), name="scheduler")
         discovery = asyncio.create_task(self._discover(), name="discovery")
         backups = asyncio.create_task(self._auto_backups(), name="backups")
+        tablets = asyncio.create_task(self._tablet_sign_ins(), name="tablet-sign-ins")
 
         stop = self._stop = asyncio.Event()
         loop = asyncio.get_running_loop()
@@ -73,6 +79,7 @@ class Newman:
         scheduler.cancel()
         discovery.cancel()
         backups.cancel()
+        tablets.cancel()
         await self.integrations.stop_all()
         await self.notifier.close()
         await runner.cleanup()
@@ -104,6 +111,18 @@ class Newman:
                     log.exception("Nightly backup failed")
                     self.store.log_event("system", "Nightly backup failed", "See the hub's log for why.")
             await asyncio.sleep(61)
+
+    async def _tablet_sign_ins(self) -> None:
+        """Every hour: wall tablets' devices whose account's last wall-tablet sign-in has expired go."""
+        while True:
+            await asyncio.sleep(TABLET_SIGN_INS_EVERY_S)
+            self._check_tablet_sign_ins()
+
+    def _check_tablet_sign_ins(self) -> None:
+        try:
+            self.forget_signed_out_tablets()
+        except Exception:  # never stop the hub (or the hourly check) over it
+            log.exception("Checking wall tablets' sign-ins failed")
 
     def hub_identity(self) -> tuple[str, str, str | None]:
         """(id, home name, outside address) - what /api/hello, mDNS and the connect link say."""
