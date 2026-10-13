@@ -1202,18 +1202,18 @@ and says when the next check-in is due. Where a check-in should get through - ch
 or allowed to ignore battery optimisation - it's shown offline 35 minutes after the last one, or 20
 minutes after an announced one that didn't come. On battery otherwise, Android's deep sleep may hold
 check-ins back for hours: that's expected, so it stays *Screen off* (no alert) and is only offline after
-8 hours without a word; if its last level was within 10 points of *Start charging below* when it went
-quiet, smart charging turns its charger on then rather than wait for a crossing it can't hear about.
-The wall rarely gets that far: it never lets the screen go fully off by itself - it holds the screen on
-(dimmed after a while, with the date and time), and when another app (Alexa, say) is in front and Fire
-OS's timeout turns the screen off, the wall comes straight back with the screen on, dimmed. Pressing
-the power button with the wall in front still turns it off until you wake it. If a Fire tablet still drops off overnight, its wall settings have
+8 hours without a word. The wall rarely gets that far: **its screen never stays off**. It holds the
+screen on (dimmed after a while, with the date and time), and whatever turns it off - the power button,
+Fire OS's timeout over another app (Alexa, say), its charging or Show Mode screen, the charger being
+plugged in or out - the wall turns it straight back on into its dimmed screen and comes to the front,
+trying again every 30 seconds while it stays off. Its 15-minute check-ins do the same, and start the
+wall again if Android closed it. This needs Android's *Display over other apps* for Newman Wall (the
+wall's settings have a button for it); without it the tablet's health says so. If a Fire tablet still drops off overnight, its wall settings have
 an optional **Let it report while asleep** (section *Battery reports while asleep*: lets the app ignore
 battery optimisation; or once over USB:
 `adb shell dumpsys deviceidle whitelist +ca.nimaste.newman.wall`); an iPad can't, so
 it says goodbye as it sleeps and shows *Screen off* for up to 12 hours (its battery counts as unknown
-after 15 minutes - smart charging leaves it alone until it wakes). Screen on, it's shown offline after
-15 minutes without a report.
+after 15 minutes). Screen on, it's shown offline after 15 minutes without a report.
 
 **Smart charging** keeps it between 20 and 80 % without any automations: turn it on under
 **Household → Accounts → the tablet → Charging**. The hub switches the tablet's charger plug on when
@@ -1226,13 +1226,14 @@ off) goes on or off and within 10 s exactly that one tablet starts or stops char
 charger ("Learned: charges from Kitchen plug") — move the tablet to another plug and it relearns.
 Newman never switches plugs to find out; you can also pick the plug yourself. Admins get one push
 (at most hourly per tablet, again once it has charged) when a tablet with smart charging is below
-10 % and not charging, or its charger isn't responding when it should turn on - and one ("Kitchen
-tablet stopped reporting its battery", at most hourly) when it goes offline while it should be able to
-report (above: 15 minutes without a report with the screen on; screen off but charging, plugged in or
-exempt from battery optimisation, 20 minutes past its announced check-in), or "Kitchen tablet hasn't
-checked in for 8 hours" when even a sleeping tablet has been silent that long. A tablet asleep on
-battery isn't a fault: no alert. Turning the charger on early for a sleeping tablet is in its Activity
-("Turned Kitchen plug on: early, Kitchen tablet is asleep at 28%").
+10 % and not charging, or its charger isn't responding when it should turn on.
+A tablet going quiet - offline, asleep past its check-in, or its battery unknown - isn't a fault: the
+hub can't see its battery any more, so it just turns the charger on, without telling anyone ("Turned
+Kitchen plug on: Kitchen tablet went quiet" in its Activity); its next report takes it from there (off
+again above *Stop charging above*). Only when a tablet has been silent for 3 hours with its charger on
+(or no charger set) do the admins get one push for that silence: "Kitchen tablet has been off for 3
+hours even with its charger on - it may be dead or frozen" (an iPad, which is silent all night anyway:
+once it's offline, after 12 hours).
 Changing the charger acts at once with the new one (from the last level reported).
 If the hub turns the charger on and the tablet hasn't started charging a minute later, it asks the
 admins once ("Kitchen tablet didn't start charging from Hall plug. Which plug is it on?") with up to

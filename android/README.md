@@ -462,7 +462,8 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
 - **Battery reports** (`BatteryReporter`): `POST /api/tablet/battery` with level, charging, plugged
   (ac/usb/wireless/none), temperature and voltage from `ACTION_BATTERY_CHANGED`, plus `"screen"`,
   `"background": true` with `"nextReportIn"` (seconds) while the check-in alarm is armed, and
-  `"dozeExempt"` - while the screen is on: at start once the page is signed in, every 5 minutes,
+  `"dozeExempt"`, `"canComeBack"` (*Display over other apps* allowed, or device owner) and `"appVersion"`
+  - while the screen is on: at start once the page is signed in, every 5 minutes,
   and at once when charging changes, the level moves 5 points or the screen comes back on. It uses the
   page's session (the hub's cookies from the WebView's `CookieManager`, or the tablet's token) over
   core's `HubHttp` client (certificate + Cloudflare headers); the request is `BatteryPost`'s. Failures
@@ -586,18 +587,27 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
   screen wakes* (both on by default; `come_back_after_leaving`, `come_back_minutes`, `come_back_on_wake`
   in `wall_settings`). Same *Display over other apps* need as above. Logged at warning level as
   `NewmanWall` *Come back: …*. The rule is `ComeBack` in `core/wall/` (`ComeBackTest`).
-- **Never fully off:** while the wall is in front it holds the screen on (`FLAG_KEEP_SCREEN_ON`; dimming
-  only lowers the window brightness, never below `WallBrightness.FLOOR`). Any other app in front (Alexa's
-  screen, Silk, Settings) gets Fire OS's own screen timeout instead — and a dark tablet falls into deep
-  sleep (Doze), where its battery check-ins don't get out. So when the screen goes off (`SCREEN_OFF`)
-  while another app is in front, the wall comes back **at once**, whatever the settings above or
-  anything playing (music carries on behind it): it brings itself to the front and turns the screen on
-  with a short `SCREEN_DIM_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` (plus the activity's `setTurnScreenOn` /
-  `setShowWhenLocked`), straight into its **dimmed** screen (the date and time) rather than full
-  brightness; a touch wakes it as usual. A return that didn't happen is tried again after a minute at
-  the earliest. The screen going off with the wall itself in front can only be the power button: that's
-  honoured — it stays off until someone wakes it (then the wall shows, awake). With `keepAwake(false)`
-  from the page the screen may sleep normally and none of this applies.
+- **The screen never stays off:** while the wall is in front it holds the screen on (`FLAG_KEEP_SCREEN_ON`;
+  dimming only lowers the window brightness, never below `WallBrightness.FLOOR`). Any other app in front
+  (Alexa's screen, Silk, Settings) gets Fire OS's own screen timeout instead — and a dark tablet falls into
+  deep sleep (Doze), where its battery check-ins don't get out. So whenever the screen goes off
+  (`SCREEN_OFF`), for **any** reason — the power button with the wall in front too, a timeout over another
+  app, Fire OS's charging / Show Mode screen — the wall comes back **at once**, whatever the settings above
+  or anything playing (music carries on behind it): `bringWallBack` brings it to the front and turns the
+  screen on with a short `SCREEN_DIM_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` (plus the activity's
+  `setTurnScreenOn` / `setShowWhenLocked`), straight into its **dimmed** screen (the date and time) rather
+  than full brightness; a touch wakes it as usual. While the screen stays off it tries again every 30 s
+  (`ComeBack.SCREEN_OFF_RETRY_MS`; a partial wake lock until then, so deep sleep doesn't hold the retry
+  back); a return that worked resets that. The charger being plugged in or out (`POWER_CONNECTED` /
+  `DISCONNECTED`, and again 10 s later) does the same, and over another app with the screen on brings the
+  wall back at once (unless *Come back after leaving* is off or something plays). Every background
+  check-in (the alarm, WorkManager) does too (`keepWallUp`): screen off → back on, dimmed; and if the
+  wall's process was killed (the alarm starts it again), the wall is started — dimmed — unless someone is
+  busy in another app with the screen on (`ComeBack.notRunning`). After a restart or an update
+  `BootReceiver` starts it the same way. All of this needs *Display over other apps* (or device owner):
+  each battery report says `canComeBack` (and the app's `appVersion`), and the hub shows "Allow 'Display
+  over other apps' for Newman Wall so it can keep its screen on" on the tablet's health when it's
+  missing. Only `keepAwake(false)` from the page lets the screen sleep normally.
 - The pure parts (framing, levels, end of speech, the wake-score trigger, openWakeWord's buffering,
   the config, when to give up the microphone and when to come back) are in `:core` (`core/voice/`)
   with unit tests (`VoiceTest`, `MicShareTest`).
@@ -629,7 +639,8 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
    away until that stops (plus the minutes). `adb logcat -s NewmanWall` shows *Come back: …*.
 8. **Screen timing out over another app:** open Silk (or ask Alexa something that leaves its card up)
    and leave it: when Fire OS turns the screen off, it comes straight back on, dimmed, with the wall's
-   date and time. Press the power button with the wall in front: it stays off until woken.
+   date and time. Press the power button with the wall in front: it comes straight back on, dimmed.
+   Unplug and plug the charger: the screen stays on with the wall in front.
 
 ## Connecting (both apps)
 

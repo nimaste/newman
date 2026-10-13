@@ -313,137 +313,159 @@ class SmartChargingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
         self.assertEqual(self.pushes(), [])
 
-    async def test_a_tablet_that_stops_reporting_is_told_once(self):
-        await self.report(50)
-        # Without smart charging: nobody is told.
-        await self.h.hub.update(self.eid, available=False)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes(), [])
-        await self.report(50)
-        await self.setup(enabled=True, charger="fake.plug")
-        # 15 minutes without a report: the tablets integration marks it offline -> one alert.
-        await self.h.hub.update(self.eid, available=False)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes(), ["Kitchen tablet stopped reporting its battery"])
-        self.assertIn(("Kitchen tablet stopped reporting its battery", self.eid), self.activity("problem"))
-        await self.h.hub.update(self.eid, available=False)  # still silent: no more
-        await asyncio.sleep(0.02)
-        self.assertEqual(len(self.pushes()), 1)
-        # It reports again, then goes silent again within the hour: not again yet.
-        await self.report(50)
-        await self.h.hub.update(self.eid, available=False)
-        await asyncio.sleep(0.02)
-        self.assertEqual(len(self.pushes()), 1)
-        # An hour later, after another report: told again.
-        await self.report(50)
-        real = time.time
-        self.ch.clock = lambda: real() + 3601
-        await self.h.hub.update(self.eid, available=False)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes()[-1], "Kitchen tablet stopped reporting its battery")
-        self.assertEqual(len(self.pushes()), 2)
+    # -- going quiet --------------------------------------------------------------------------------------
 
     def tablets(self):
         return next(i for i in self.h.integrations.instances.values() if i.type == "tablets")
 
-    async def test_screen_off_within_its_time_is_not_stopped_reporting(self):
-        # On its charger Android doesn't hold its check-ins back: it should get through.
-        await self.report(50, charging=True, screen="off", background=True)
+    async def test_a_tablet_that_goes_quiet_gets_its_charger_on_and_nobody_is_told(self):
+        self.ch.start_wait = 0.1
+        await self.report(50)
+        # Without smart charging: nothing happens.
+        await self.h.hub.update(self.eid, available=False)
+        await asyncio.sleep(0.02)
+        self.assertEqual((self.plugs.calls, self.pushes()), ([], []))
+        await self.report(50)
         await self.setup(enabled=True, charger="fake.plug")
-        now = time.time()
-        await self.tablets().check_offline(now=now + 30 * 60)  # an Android wall asleep, checking in late
+        # 15 minutes without a report: the tablets integration marks it offline -> its charger goes on.
+        await self.h.hub.update(self.eid, available=False)
+        await asyncio.sleep(0.2)  # past the wrong-plug wait: no question from a tablet that isn't reporting
+        self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
+        self.assertIn(("Turned Tablet charger on: Kitchen tablet went quiet", self.eid), self.activity())
+        self.assertEqual((self.pushes(), self.activity("problem")), ([], []))
+        await self.plug("on")
+        await self.h.hub.update(self.eid, available=False)  # still quiet: nothing more
         await asyncio.sleep(0.02)
+        self.assertEqual(len(self.plugs.calls), 1)
+        # Back, charging: the band as usual.
+        await self.report(52, charging=True)
+        await self.report(81, charging=True)
+        self.assertEqual(self.plugs.calls[-1], ("fake.plug", "turn_off"))
+        await self.plug("off")
+        # Quiet above the band: on, and its next report (still above) turns it off again - not left at 100%.
+        await self.h.hub.update(self.eid, available=False)
+        await asyncio.sleep(0.02)
+        self.assertEqual(self.plugs.calls[-1], ("fake.plug", "turn_on"))
+        await self.plug("on")
+        await self.report(82, charging=True)
+        self.assertEqual(self.plugs.calls[-1], ("fake.plug", "turn_off"))
+        self.assertEqual(len(self.plugs.calls), 4)
         self.assertEqual(self.pushes(), [])
-        await self.tablets().check_offline(now=now + 36 * 60)  # truly silent: told
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes(), ["Kitchen tablet stopped reporting its battery"])
 
     async def asleep_on_battery(self, level, **more):
         await self.report(level, screen="off", background=True, nextReportIn=900, dozeExempt=False, **more)
 
-    async def test_asleep_on_battery_is_expected_silence_until_8_hours(self):
-        # Screen off, on battery, not exempt from Doze: deep sleep may hold its check-ins back for hours.
+    async def test_deep_sleep_and_an_unknown_battery_turn_the_charger_on_too(self):
+        # Screen off on battery, not exempt from Doze: deep sleep holds its check-ins back (not a problem).
         await self.setup(enabled=True, charger="fake.plug", startBelow=21, stopAbove=80)
         await self.asleep_on_battery(60)
-        now = time.time()
-        for minutes in (36, 120, 300, 7.9 * 60):
-            await self.tablets().check_offline(now=now + minutes * 60)
-            await asyncio.sleep(0.02)
-            e = self.h.hub.get(self.eid)
-            self.assertTrue(e.available, minutes)
-            self.assertTrue(e.attrs["deepSleep"], minutes)
-        self.assertEqual(self.pushes(), [])
-        self.assertEqual(self.activity("problem"), [])
-        self.assertEqual(self.plugs.calls, [])  # 60% is nowhere near the bottom of the band
-        # Eight hours without a word, even asleep: something's wrong.
-        await self.tablets().check_offline(now=now + 8.1 * 3600)
-        await asyncio.sleep(0.02)
-        self.assertFalse(self.h.hub.get(self.eid).available)
-        self.assertEqual(self.pushes(), ["Kitchen tablet hasn't checked in for 8 hours"])
-        # It reports again: no longer asleep or offline.
-        await self.asleep_on_battery(58)
-        e = self.h.hub.get(self.eid)
-        self.assertEqual((e.available, e.attrs["deepSleep"]), (True, False))
-
-    async def test_silent_when_it_should_report_is_told(self):
-        await self.setup(enabled=True, charger="fake.plug")
-        # Exempt from Doze: its check-ins get through, so missing one is a problem.
-        await self.report(50, screen="off", background=True, nextReportIn=900, dozeExempt=True)
-        now = time.time()
-        await self.tablets().check_offline(now=now + 34 * 60)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes(), [])
-        await self.tablets().check_offline(now=now + 36 * 60)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes(), ["Kitchen tablet stopped reporting its battery"])
-        # Screen on: 15 minutes.
-        real = time.time
-        self.ch.clock = lambda: real() + 3601
-        await self.report(50, screen="on", background=True)
-        now = time.time()
-        await self.tablets().check_offline(now=now + 16 * 60)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes()[-1], "Kitchen tablet stopped reporting its battery")
-        self.assertEqual(len(self.pushes()), 2)
-
-    async def test_asleep_near_the_bottom_of_the_band_turns_the_charger_on_early(self):
-        self.ch.start_wait = 0.1
-        await self.setup(enabled=True, charger="fake.plug", startBelow=21, stopAbove=80)
-        await self.asleep_on_battery(30)  # within 10 points of 21
         now = time.time()
         await self.tablets().check_offline(now=now + 20 * 60)  # not due yet: nothing
         await asyncio.sleep(0.02)
         self.assertEqual(self.plugs.calls, [])
         await self.tablets().check_offline(now=now + 36 * 60)  # missed its check-in: deep sleep
         await asyncio.sleep(0.02)
+        self.assertTrue(self.h.hub.get(self.eid).attrs["deepSleep"])
         self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
-        self.assertIn(("Turned Tablet charger on: early, Kitchen tablet is asleep at 30%", self.eid), self.activity())
-        await self.plug("on")
-        await self.tablets().check_offline(now=now + 60 * 60)  # still asleep: once
-        await asyncio.sleep(0.2)  # past the wrong-plug wait: no question from a level from before it slept
-        self.assertEqual(len(self.plugs.calls), 1)
+        self.assertIn(("Turned Tablet charger on: Kitchen tablet went quiet", self.eid), self.activity())
         self.assertEqual(self.pushes(), [])
         # Charging, it reports again and smart charging carries on as usual.
-        await self.report(33, charging=True, screen="off", background=True, nextReportIn=900)
+        await self.plug("on")
+        await self.report(62, charging=True, screen="off", background=True, nextReportIn=900)
         await self.report(81, charging=True, screen="off", background=True, nextReportIn=900)
         self.assertEqual(self.plugs.calls[-1], ("fake.plug", "turn_off"))
-        self.assertEqual(self.pushes(), [])
-        # Higher up when it went quiet: left alone (the usual crossing will do).
         await self.plug("off")
-        await self.asleep_on_battery(32)
-        await self.tablets().check_offline(now=time.time() + 36 * 60)
+        # An iPad (no reports with its screen off): its battery is unknown after 15 minutes - charger on.
+        await self.report(50, screen="off")
+        await self.tablets().check_offline(now=time.time() + 2 * 3600)
         await asyncio.sleep(0.02)
-        self.assertEqual(self.plugs.calls[-1], ("fake.plug", "turn_off"))
-        self.assertTrue(self.h.hub.get(self.eid).attrs["deepSleep"])
+        self.assertTrue(self.h.hub.get(self.eid).attrs["batteryStale"])
+        self.assertEqual(self.plugs.calls[-1], ("fake.plug", "turn_on"))
+        self.assertEqual(self.pushes(), [])
+
+    async def test_three_hours_quiet_with_its_charger_on_is_told_once(self):
+        await self.setup(enabled=True, charger="fake.plug")
+        await self.report(50)
+        now = time.time()
+        await self.tablets().check_offline(now=now + 16 * 60)
+        await asyncio.sleep(0.02)
+        self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
+        await self.plug("on")
+        await self.tablets().check_offline(now=now + 2.9 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertEqual(self.pushes(), [])
+        await self.tablets().check_offline(now=now + 3.1 * 3600)
+        await asyncio.sleep(0.02)
+        text = "Kitchen tablet has been off for 3 hours even with its charger on - it may be dead or frozen"
+        self.assertEqual(self.pushes(), [text])
+        self.assertIn((text, self.eid), self.activity("problem"))
+        await self.tablets().check_offline(now=now + 6 * 3600)  # the same silence: once
+        await asyncio.sleep(0.02)
+        self.assertEqual(len(self.pushes()), 1)
+        # It reports again; a new silence is told again.
+        await self.report(50, charging=True)
+        self.assertFalse(self.h.hub.get(self.eid).attrs["longSilent"])
+        await self.tablets().check_offline(now=time.time() + 3.1 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertEqual(self.pushes(), [text, text])
+        # Asleep on battery (deep sleep, not offline yet): the same after 3 hours.
+        await self.asleep_on_battery(60)
+        await self.tablets().check_offline(now=time.time() + 3.1 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertTrue(self.h.hub.get(self.eid).available)
+        self.assertEqual(len(self.pushes()), 3)
+
+    async def test_three_hours_quiet_with_the_charger_off_or_not_responding(self):
+        await self.setup(enabled=True, charger="fake.plug")
+        await self.report(50)
+        await self.plug("off", available=False)
+        now = time.time()
+        await self.tablets().check_offline(now=now + 16 * 60)
+        await asyncio.sleep(0.2)  # the charger's grace period
+        self.assertEqual(self.pushes(), ["Kitchen tablet couldn't turn on Tablet charger: it's not responding"])
+        await self.tablets().check_offline(now=now + 3.1 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertEqual(len(self.pushes()), 1)  # its charger isn't on: the plug's alert says what's wrong
+        # The charger is back and goes on: now a tablet still silent is worth telling.
+        await self.plug("off", available=True)
+        self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
+        await self.plug("on")
+        self.assertEqual(self.pushes()[0],  # (newest first)
+                         "Kitchen tablet has been off for 3 hours even with its charger on - it may be dead or frozen")
+        self.assertEqual(len(self.pushes()), 2)
+
+    async def test_three_hours_quiet_without_a_charger_and_a_sleeping_ipad(self):
+        await self.setup(enabled=True)
+        await self.report(50)
+        await self.tablets().check_offline(now=time.time() + 3.1 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertEqual(self.pushes(), ["Kitchen tablet has been off for 3 hours - it may be dead or frozen"])
+        # An iPad asleep (no reports with its screen off) is quiet all night: told only once it's offline.
+        await self.setup(charger="fake.plug")
+        await self.report(50, screen="off")
+        now = time.time()
+        await self.tablets().check_offline(now=now + 3.1 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
+        await self.plug("on")
+        await self.tablets().check_offline(now=now + 11 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertEqual(len(self.pushes()), 1)
+        await self.tablets().check_offline(now=now + 12.5 * 3600)
+        await asyncio.sleep(0.02)
+        self.assertFalse(self.h.hub.get(self.eid).available)
+        self.assertEqual(self.pushes()[0],
+                         "Kitchen tablet has been off for 12 hours even with its charger on - it may be dead or frozen")
 
     async def test_a_sleeping_ipad_has_an_unknown_battery(self):
         await self.report(50, screen="off")  # no background reports
-        await self.setup(enabled=True, charger="fake.plug")
+        await self.setup(enabled=True)
         now = time.time()
         await self.tablets().check_offline(now=now + 2 * 3600)
         await asyncio.sleep(0.02)
         self.assertTrue(self.h.hub.get(self.eid).attrs["batteryStale"])
-        self.assertEqual(self.pushes(), [])  # not "stopped reporting": it's asleep
+        await self.setup(charger="fake.plug")
+        self.assertEqual(self.plugs.calls, [])  # its last level is unknown now: no switching from it
         # Its last level crossing (as an admin changes the band) does nothing while it's unknown.
         await self.setup(startBelow=60, stopAbove=90)
         await asyncio.sleep(0.02)
@@ -455,11 +477,6 @@ class SmartChargingTests(unittest.IsolatedAsyncioTestCase):
         # Woken: known again, and acted on.
         await self.report(50, screen="on")
         self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
-        # After 12 hours silent it is offline: then told.
-        await self.report(70, screen="off")
-        await self.tablets().check_offline(now=time.time() + 12.5 * 3600)
-        await asyncio.sleep(0.02)
-        self.assertEqual(self.pushes()[-1], "Kitchen tablet stopped reporting its battery")
 
     async def test_a_new_charger_acts_at_once_even_in_the_same_zone(self):
         await self.report(50)

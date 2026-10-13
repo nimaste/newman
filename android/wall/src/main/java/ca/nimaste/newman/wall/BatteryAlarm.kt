@@ -84,12 +84,15 @@ object BatteryAlarm {
 
 /**
  * The check-in alarm went off: set the next one first, then report within Doze's network window
- * (goAsync: the alarm's wake lock is held until finish(); a short one of our own too).
+ * (goAsync: the alarm's wake lock is held until finish(); a short one of our own too). It also keeps the
+ * wall up (keepWallUp): the screen back on, dimmed, if it's off; the wall started again if its process
+ * was killed (this alarm starts the process).
  */
 class BatteryAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val c = context.applicationContext
         BatteryAlarm.arm(c)
+        keepWallUp(c, "check-in alarm", charger = false)
         val done = goAsync()
         val wake = c.getSystemService(PowerManager::class.java)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NewmanWall:battery")
         wake?.acquire(WAKE_MS)

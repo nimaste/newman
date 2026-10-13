@@ -12,8 +12,10 @@ import kotlin.math.roundToInt
  * {"level": 0-100, "charging": bool, "plugged": "ac"|"usb"|"wireless"|"none",
  *  "temperatureC": float|null, "voltageMv": int|null}, plus - from a wall that says so - "screen": "on"|"off",
  * "background": true (its check-in alarm is set: it keeps reporting with the screen off, so the hub waits
- * longer before calling it offline), "nextReportIn" (seconds until the next check-in at the latest) and
- * "dozeExempt" (Android lets it ignore battery optimisation).
+ * longer before calling it offline), "nextReportIn" (seconds until the next check-in at the latest),
+ * "dozeExempt" (Android lets it ignore battery optimisation), "canComeBack" (it may bring itself to the
+ * front with the screen on: "Display over other apps" or device owner - without it the screen can stay
+ * off) and "appVersion" (the wall app's version name, at most [APP_VERSION_MAX] characters).
  */
 data class TabletBattery(
     val level: Int,
@@ -22,7 +24,14 @@ data class TabletBattery(
     val temperatureC: Double?,
     val voltageMv: Int?,
 ) {
-    fun json(screen: Boolean? = null, background: Boolean = false, nextReportIn: Int? = null, dozeExempt: Boolean? = null): String =
+    fun json(
+        screen: Boolean? = null,
+        background: Boolean = false,
+        nextReportIn: Int? = null,
+        dozeExempt: Boolean? = null,
+        canComeBack: Boolean? = null,
+        appVersion: String? = null,
+    ): String =
         buildJsonObject {
             put("level", level)
             put("charging", charging)
@@ -33,14 +42,19 @@ data class TabletBattery(
             if (background) put("background", true)
             if (background && nextReportIn != null) put("nextReportIn", nextReportIn)
             if (dozeExempt != null) put("dozeExempt", dozeExempt)
+            if (canComeBack != null) put("canComeBack", canComeBack)
+            appVersion?.trim()?.take(APP_VERSION_MAX)?.takeIf { it.isNotEmpty() }?.let { put("appVersion", it) }
         }.toString()
 
-    /** The body with where the background check-in stands ([CheckInState]). */
-    fun json(screen: Boolean, checkIn: CheckInState): String =
-        json(screen = screen, background = checkIn.armed, nextReportIn = checkIn.nextReportInS, dozeExempt = checkIn.dozeExempt)
+    /** The body with where the background check-in stands ([CheckInState]), and whether the wall can come back. */
+    fun json(screen: Boolean, checkIn: CheckInState, canComeBack: Boolean? = null, appVersion: String? = null): String =
+        json(screen = screen, background = checkIn.armed, nextReportIn = checkIn.nextReportInS, dozeExempt = checkIn.dozeExempt,
+            canComeBack = canComeBack, appVersion = appVersion)
 
     companion object {
         const val PATH = "api/tablet/battery"
+        /** The hub takes an appVersion of up to this many characters. */
+        const val APP_VERSION_MAX = 32
         const val MISSING = Int.MIN_VALUE
 
         // android.os.BatteryManager values (copied so this stays plain, unit-testable Kotlin).

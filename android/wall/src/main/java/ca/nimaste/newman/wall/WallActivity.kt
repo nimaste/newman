@@ -71,9 +71,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * "Hey Newman" when the page turns voice on (VoiceListener) - giving the microphone to Alexa or any
  * other app that starts recording, coming back after an assistant took over the screen (AssistantWatch), and coming back after
  * leaving the front any other way, when the screen wakes, or - dimmed, the screen turned back on - when
- * the screen goes off over another app (ComeBackWatch). While the wall is in front the screen never goes
- * off by itself (FLAG_KEEP_SCREEN_ON; dimming only lowers the brightness); only the power button turns it
- * off there, and that is honoured until the screen is woken.
+ * the screen goes off (ComeBackWatch). While the wall is in front the screen never goes off by itself
+ * (FLAG_KEEP_SCREEN_ON; dimming only lowers the brightness), and whatever turns it off - the power
+ * button too - it comes straight back on into the dimmed screen (unless the page calls keepAwake(false)).
  */
 class WallActivity : ComponentActivity() {
 
@@ -160,7 +160,7 @@ class WallActivity : ComponentActivity() {
         assistant = AssistantWatch(applicationContext, voice, settings) { pinPrompt.skipNextResume() }
         assistant.start()
         // Coming back after Home / Recents / another app, or when the screen wakes (no new pin prompt either).
-        // Also the screen going off over another app: back at once, the screen on and dimmed.
+        // Also the screen going off, for any reason: back at once, the screen on and dimmed.
         comeBack = ComeBackWatch(application, settings, keepsScreenOn = { keepAwake }) { pinPrompt.skipNextResume() }
         comeBack.start()
         turnScreenOnWhenShown() // (a return with the screen off: ComeBackWatch)
@@ -207,7 +207,7 @@ class WallActivity : ComponentActivity() {
             }
         })
         applyKeepAwake()
-        // The screen coming back on (power button, or after a timeout with keepAwake off): fully bright.
+        // The screen coming back on by hand (with keepAwake off it may have slept): fully bright.
         ContextCompat.registerReceiver(this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
         battery.start()
         if (!connection.hasHub) openServer() // first start: connect to a Newman before anything else
@@ -266,7 +266,7 @@ class WallActivity : ComponentActivity() {
             if (loadedServer != null || webOrigin != hubOrigin()) createWebView()
             load()
         }
-        // Back because the screen went off over another app: on, but dimmed (the date and time).
+        // Back because the screen went off (or the wall was started again): on, but dimmed (the date and time).
         if (dimmedReturnPending()) returnedDimmed() else wake()
         scheduleDimCheck()
         voice.setPermitted(hasMic()) // (it may have been allowed in Android's settings meanwhile)
@@ -689,7 +689,7 @@ class WallActivity : ComponentActivity() {
     }
 
     /**
-     * Back in front with the screen just turned on by ComeBackWatch (it went off over another app):
+     * Back in front with the screen just turned on by ComeBackWatch / keepWallUp (it went off):
      * the dimmed screen, as if nobody had touched the wall for a while - never full brightness, and
      * the window holds the screen on (FLAG_KEEP_SCREEN_ON) as always.
      */
@@ -845,10 +845,10 @@ class WallActivity : ComponentActivity() {
         /** How long after [returnDimmed] the wall's showing (and the screen coming on) counts as that return. */
         private const val DIMMED_RETURN_MS = 15_000L
 
-        /** When ComeBackWatch last brought the wall back with the screen off (elapsedRealtime), or -1. */
+        /** When the wall was last brought back dimmed (bringWallBack, elapsedRealtime), or -1. */
         @Volatile private var dimmedReturnAt = -1L
 
-        /** ComeBackWatch, just before bringing the wall back and turning the screen on: show it dimmed. */
+        /** bringWallBack, just before bringing the wall back and turning the screen on: show it dimmed. */
         fun returnDimmed() {
             dimmedReturnAt = SystemClock.elapsedRealtime()
         }

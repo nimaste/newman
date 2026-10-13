@@ -144,6 +144,22 @@ class TabletBatteryTest {
     }
 
     @Test
+    fun canComeBackAndTheAppVersionGoInTheReport() {
+        val b = TabletBattery(60, false, "none", null, null)
+        val o = Json.parseToJsonElement(b.json(true, CheckInState(true, 900, false), canComeBack = false, appVersion = "1.4.2")).jsonObject
+        assertEquals("false", o["canComeBack"]!!.jsonPrimitive.content)
+        assertEquals("1.4.2", o["appVersion"]!!.jsonPrimitive.content)
+        // Not said: not sent (the hub assumes nothing).
+        val none = Json.parseToJsonElement(b.json(true, CheckInState(true, 900, false))).jsonObject
+        assertFalse("canComeBack" in none)
+        assertFalse("appVersion" in none)
+        // The hub takes up to 32 characters; blank is left out.
+        val long = Json.parseToJsonElement(b.json(screen = true, appVersion = "1".repeat(40))).jsonObject
+        assertEquals(TabletBattery.APP_VERSION_MAX, long["appVersion"]!!.jsonPrimitive.content.length)
+        assertFalse("appVersion" in Json.parseToJsonElement(b.json(screen = true, appVersion = " ")).jsonObject)
+    }
+
+    @Test
     fun checkInTiming() {
         val min = 60_000L
         // Fire OS 8 (Android 11): exact, no permission needed; 12+: only when allowed.

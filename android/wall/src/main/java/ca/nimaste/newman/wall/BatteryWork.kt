@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -33,6 +35,8 @@ import java.util.concurrent.TimeUnit
 class BatteryWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
         val event = inputData.getBoolean(EVENT, false)
+        // The periodic check-in also keeps the wall up (the events' receiver already did for theirs).
+        if (!event) keepWallUp(applicationContext, "background check-in", charger = false)
         val outcome = BatteryPost.background(applicationContext, event)
         // A one-off (the screen just went off) is worth a retry; the periodic one simply comes again.
         return if (outcome == BatteryPost.Outcome.FAILED && event && runAttemptCount < 2) Result.retry() else Result.success()
@@ -67,20 +71,37 @@ object BatteryWork {
         WorkManager.getInstance(context).enqueueUniqueWork(NOW, ExistingWorkPolicy.REPLACE, b.build())
     }
 
-    /** While the process lives: the screen going off, or the charger changing with the screen off. */
+    /**
+     * While the process lives: the screen going off, or the charger changing with the screen off - a report.
+     * And the wall kept up (keepWallUp): the charger plugged in or out turns the screen back on and brings
+     * the wall over Fire OS's charging screen - again [CHARGER_AGAIN_MS] later, as that screen may come
+     * after the broadcast; the screen going off with no wall running starts it (a running wall's
+     * ComeBackWatch sees the screen go off itself).
+     */
     fun watch(context: Context) {
         val f = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_POWER_CONNECTED)
             addAction(Intent.ACTION_POWER_DISCONNECTED)
         }
+        val main = Handler(Looper.getMainLooper())
         ContextCompat.registerReceiver(context, object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
+                val off = intent.action == Intent.ACTION_SCREEN_OFF
                 // The check-in alarm counts from here (set again, so its state in the report is fresh).
-                if (intent.action == Intent.ACTION_SCREEN_OFF) BatteryAlarm.arm(c)
+                if (off) BatteryAlarm.arm(c)
                 // Screen on, the wall's own reporter sends the charger change itself.
-                if (intent.action == Intent.ACTION_SCREEN_OFF || !BatteryPost.screenOn(c)) now(c)
+                if (off || !BatteryPost.screenOn(c)) now(c)
+                if (off) {
+                    if (ComeBackWatch.running == null) keepWallUp(c, "the screen went off", charger = false)
+                } else {
+                    val why = if (intent.action == Intent.ACTION_POWER_CONNECTED) "the charger was plugged in" else "the charger was unplugged"
+                    keepWallUp(c, why, charger = true)
+                    main.postDelayed({ keepWallUp(c, "$why (a moment later)", charger = true) }, CHARGER_AGAIN_MS)
+                }
             }
         }, f, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
+
+    private const val CHARGER_AGAIN_MS = 10_000L
 }

@@ -254,7 +254,7 @@ page as it does in a browser.
 
   The hub's wall alerts use `wake()` (e.g. the doorbell's camera full screen).
 - **Battery reports.** `POST /api/tablet/battery {level, charging, plugged, temperatureC, voltageMv,
-  screen, background?, nextReportIn?, dozeExempt?}` (204) with the wall page's own session (its cookies
+  screen, background?, nextReportIn?, dozeExempt?, canComeBack?, appVersion?}` (204) with the wall page's own session (its cookies
   for the hub, read from the web view, else the tablet's token) and the usual certificate / Cloudflare
   headers: when the wall starts and is signed in, every 5 minutes while the screen is on, and at once when
   charging starts or stops or the level moves 5 points. Signed out, 401, 404 (older hub) or no network:

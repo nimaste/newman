@@ -14,8 +14,9 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Voice: "Hey Newman" is listened for on the tablet, only while the wall is on screen. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- Lets the boot receiver bring the wall up after a restart on Android 10+ when granted
-         (adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow). -->
+    <!-- Lets the wall bring itself to the front from the background on Android 10+ when granted
+         (adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow): after a restart, when
+         its screen went off (back on, dimmed), and when its process was killed (the check-in starts it). -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Scanning the hub's QR code on "Connect to your Newman" (asked for only when scanning). -->
     <uses-permission android:name="android.permission.CAMERA" />

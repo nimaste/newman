@@ -78,9 +78,13 @@ object BatteryPost {
         return b.build()
     }
 
-    /** The body for [battery] now, with where the background check-in stands (BatteryAlarm). */
+    /**
+     * The body for [battery] now, with where the background check-in stands (BatteryAlarm), whether the
+     * wall can bring itself back with the screen on (canComeBack: the hub shows it on the device's health
+     * when not) and the app's version.
+     */
     fun body(context: Context, battery: TabletBattery, screen: Boolean): String =
-        battery.json(screen, BatteryAlarm.state(context))
+        battery.json(screen, BatteryAlarm.state(context), canComeBack = canComeBack(context), appVersion = BuildConfig.VERSION_NAME)
 
     enum class Outcome { SENT, SKIPPED, FAILED }
 

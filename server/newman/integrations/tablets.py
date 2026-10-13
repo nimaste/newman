@@ -12,18 +12,25 @@ reporting with the screen off ("background": true - the Android wall sends it on
 alarm is set, every 15 minutes even in Doze), when its next check-in is due ("nextReportIn": seconds)
 and whether Android lets it ignore battery optimisation ("dozeExempt"). A tablet whose screen is off
 shows as "Screen off" (the kind's state note), not offline - and so does its music player
-(navidrome.py asks tablet_asleep()). Offline (which smart charging tells the admins about) is:
+(navidrome.py asks tablet_asleep()). Offline is:
  - screen on (or not said): no report for 15 minutes;
  - screen off, reporting in the background, and able to get through (charging or plugged in - Android
    never holds an app back on the charger - or exempt from Doze): no report for 35 minutes (background
    check-ins run late), or its next check-in plus 20 minutes when it said that's later;
  - screen off, reporting in the background, on battery and not exempt from Doze (silence_expected):
    Android's deep sleep may hold its check-ins back for hours - expected, not a problem. It stays
-   "Screen off" for up to 8 hours; past its announced check-in it is marked "deepSleep" (smart charging
-   turns its charger on early when its last level was near the bottom of the band), and only after 8
-   hours without a word is it offline;
+   "Screen off" for up to 8 hours; past its announced check-in it is marked "deepSleep", and only after
+   8 hours without a word is it offline;
  - screen off, no background reports (an iPad can't): no report for 12 hours. Its battery is unknown
-   after 15 minutes though ("batteryStale"), so smart charging leaves it alone until it reports again.
+   after 15 minutes though ("batteryStale").
+Going quiet (offline, deepSleep or batteryStale) is not a problem by itself: smart charging (charging.py)
+just turns the tablet's charger on. A tablet quiet for LONG_SILENT_S (3 hours; one that never reports
+with its screen off: once offline, 12 hours) is marked "longSilent" - then something is wrong, and smart
+charging tells the admins if its charger is on.
+
+The wall app also says whether it can bring itself back to the front with its screen on
+("canComeBack": Android's "Display over other apps" allowed, or device owner) and its version
+("appVersion"). Without it the wall can't keep its screen on, which shows on the device's health.
 """
 from __future__ import annotations
 
@@ -43,6 +50,8 @@ SCREEN_OFF_AFTER_S = 35 * 60           # screen off, still checking in (late che
 SCREEN_OFF_SILENT_AFTER_S = 12 * 3600  # screen off, no background reports: "Screen off" this long
 LATE_GRACE_S = 20 * 60                 # a check-in it announced may come this late before it's offline
 DEEP_SLEEP_MAX_S = 8 * 3600            # screen off on battery, Doze may hold check-ins back: offline after this
+LONG_SILENT_S = 3 * 3600               # quiet this long: something's wrong (dead or frozen)
+APP_VERSION_MAX = 32
 PLUGGED = ("ac", "usb", "wireless", "none")
 SCREEN = ("on", "off")
 
@@ -98,6 +107,18 @@ def reporting(attrs: dict[str, Any], age: float) -> tuple[bool, bool]:
     return available, stale
 
 
+def long_silent_after(attrs: dict[str, Any]) -> float:
+    """Quiet this long, the tablet is probably dead or frozen: LONG_SILENT_S - except one that never
+    reports with its screen off (an iPad), whose night's silence is normal: only once it's offline."""
+    if attrs.get("screen") == "off" and not attrs.get("backgroundReports"):
+        return SCREEN_OFF_SILENT_AFTER_S
+    return LONG_SILENT_S
+
+
+def long_silent(attrs: dict[str, Any], age: float) -> bool:
+    return age >= long_silent_after(attrs)
+
+
 def clean_report(body: Any) -> dict[str, Any]:
     """The wall app's report -> attrs, or ValueError with what's wrong."""
     if not isinstance(body, dict):
@@ -125,7 +146,7 @@ def clean_report(body: Any) -> dict[str, Any]:
         raise ValueError("screen must be on or off")
     if not isinstance(background, bool):
         raise ValueError("background must be true or false")
-    out.update(screen=screen, backgroundReports=background, batteryStale=False, deepSleep=False)
+    out.update(screen=screen, backgroundReports=background, batteryStale=False, deepSleep=False, longSilent=False)
     nxt = body.get("nextReportIn")
     if nxt is not None:
         if isinstance(nxt, bool) or not isinstance(nxt, (int, float)) or not 0 <= nxt <= 86400:
@@ -136,6 +157,16 @@ def clean_report(body: Any) -> dict[str, Any]:
         if not isinstance(exempt, bool):
             raise ValueError("dozeExempt must be true or false")
         out["dozeExempt"] = exempt
+    come_back = body.get("canComeBack")
+    if come_back is not None:
+        if not isinstance(come_back, bool):
+            raise ValueError("canComeBack must be true or false")
+        out["canComeBack"] = come_back
+    version = body.get("appVersion")
+    if version is not None:
+        if not isinstance(version, str) or not version.strip() or len(version) > APP_VERSION_MAX:
+            raise ValueError(f"appVersion must be text of up to {APP_VERSION_MAX} characters")
+        out["appVersion"] = version.strip()
     return out
 
 
@@ -186,7 +217,8 @@ class TabletsIntegration(Integration):
             age = time.time() - float(t.get("at") or 0)
             available, stale = reporting(attrs, age)
             await self.hub.update(eid, state=t.get("state"), available=available,
-                                  attrs={**attrs, "batteryStale": stale, "deepSleep": deep_sleep(attrs, age)})
+                                  attrs={**attrs, "batteryStale": stale, "deepSleep": deep_sleep(attrs, age),
+                                         "longSilent": long_silent(attrs, age)})
         self.set_status("connected", self._detail())
         while True:
             await asyncio.sleep(60)
@@ -229,13 +261,21 @@ class TabletsIntegration(Integration):
         now = now or time.time()
         for uid, t in self.tablets.items():
             ent = self.hub.get(self.entity_id(uid))
-            if not ent or not ent.available:
-                continue  # offline until it reports again
+            if not ent:
+                continue
             attrs, age = t.get("attrs") or {}, now - float(t.get("at") or 0)
+            # Quiet so long it's probably dead or frozen (smart charging watches for this), offline or not.
+            silent = {"longSilent": True} if long_silent(attrs, age) and not ent.attrs.get("longSilent") else None
+            if not ent.available:
+                if silent:
+                    await self.hub.update(ent.id, attrs=silent)
+                continue  # offline until it reports again
             available, stale = reporting(attrs, age)
             if not available:
-                await self.hub.update(ent.id, available=False)
+                await self.hub.update(ent.id, available=False, attrs=silent)
                 continue
+            if silent:
+                await self.hub.update(ent.id, attrs=silent)
             if stale and not ent.attrs.get("batteryStale"):
                 await self.hub.update(ent.id, attrs={"batteryStale": True})
             if deep_sleep(attrs, age) and not ent.attrs.get("deepSleep"):

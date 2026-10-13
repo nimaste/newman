@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.PowerManager
 import ca.nimaste.newman.core.mtls.MTLSStore
 import ca.nimaste.newman.core.net.HubConnection
 import ca.nimaste.newman.core.net.HubHttp
@@ -85,19 +86,22 @@ class WallSettings(context: Context) {
         set(v) = prefs.edit().putBoolean("come_back_on_wake", v).apply()
 }
 
-/** Restart the wall after the tablet boots (or the app is updated), and its battery check-ins with it. */
+/**
+ * Restart the wall after the tablet boots (or the app is updated), and its battery check-ins with it.
+ * Started dimmed with the screen turned on when it's off (keepWallUp's rule for a wall that isn't running);
+ * should that be refused, the next check-in alarm tries again.
+ */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         // (WallApp.onCreate set them as this process started; again here in case it was already running.)
         BatteryAlarm.arm(context)
         BatteryWork.schedule(context)
-        try {
-            context.startActivity(Intent(context, WallActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) {
-            // Android 10+ may refuse a start from the background unless the app is the home app,
-            // the device owner, or has "display over other apps" - see the README.
-        }
+        val screenOn = context.getSystemService(PowerManager::class.java)?.isInteractive != false
+        // Android 10+ may refuse a start from the background unless the app is the home app, the device
+        // owner, or has "display over other apps" - see the README (bringWallToFront logs it).
+        bringWallBack(context.applicationContext, "Starting the wall after ${if (intent.action == Intent.ACTION_BOOT_COMPLETED) "a restart" else "an update"}",
+            dimmed = !screenOn)
     }
 }
 

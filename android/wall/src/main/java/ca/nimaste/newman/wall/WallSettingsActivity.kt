@@ -83,7 +83,7 @@ class WallSettingsActivity : ComponentActivity() {
         const val ACTION_CLEAR_WEB = "clear_web"
     }
 
-    /** "Display over other apps" (needed to come back after Alexa unless device owner); checked on every resume. */
+    /** "Display over other apps" (needed to come back, and to keep the screen on, unless device owner); checked on every resume. */
     private val overlayAllowed = mutableStateOf(false)
     /** The adb command, shown when no settings screen on this tablet opens for it. */
     private val overlayAdb = mutableStateOf<String?>(null)
@@ -271,7 +271,7 @@ class WallSettingsActivity : ComponentActivity() {
                     Switch(comeBackOnWake, { comeBackOnWake = it })
                     Text("Come back when the screen wakes", color = Ink)
                 }
-                Text("If the screen turns off while another app is in front, the wall always comes back dimmed and keeps the screen on.", color = Muted)
+                Text("If the screen turns off for any reason, the wall always turns it straight back on, dimmed.", color = Muted)
                 // (That return is always on, so the permission it needs always matters.)
                 if (!owner && !overlay) {
                     Text("Coming back needs Android's “Display over other apps” for Newman Wall.", color = Coral)

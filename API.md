@@ -299,18 +299,21 @@ any role, wall tablets included):
 
 ```json
 {"level": 54, "charging": true, "plugged": "ac", "temperatureC": 31.5, "voltageMv": 4012,
- "screen": "off", "background": true, "nextReportIn": 900, "dozeExempt": false}
+ "screen": "off", "background": true, "nextReportIn": 900, "dozeExempt": false, "canComeBack": true,
+ "appVersion": "1.4.2"}
 ```
 
 `level` 0–100, `charging` bool, `plugged` `ac|usb|wireless|none`, `temperatureC` / `voltageMv` number or
 null; optional `screen` `on|off` (default `on`) and `background` bool (default false: the tablet keeps
 reporting with its screen off - the Android wall does while its check-in alarm is armed, every 15 minutes
 even in Doze; an iPad can't), `nextReportIn` (seconds until its next check-in at the latest, 0–86400, or
-null) and `dozeExempt` bool (Android lets it ignore battery optimisation). → 204; 400 for a
+null), `dozeExempt` bool (Android lets it ignore battery optimisation), `canComeBack` bool (the wall may
+bring itself to the front with its screen on: *Display over other apps* or device owner; false shows on
+the device's `health.issues`) and `appVersion` (text, up to 32 characters). → 204; 400 for a
 bad body; 401 signed out. The account becomes one device `tablets.<account id>` (kind `tablet`: state
 `charging` / `battery`; attrs `batteryLevel`, `charging`, `plugged`, `temperature` °C, `voltage` V,
 `screen`, `backgroundReports`, `batteryStale`, `nextReportIn`, `nextReportAt` (epoch s), `dozeExempt`,
-`deepSleep`). While `screen` is `off` its `stateLabel` is "Screen off"
+`deepSleep`, `longSilent`, `canComeBack`, `appVersion`). While `screen` is `off` its `stateLabel` is "Screen off"
 (the kind's `notes` in `/api/meta`: `[{"attr": "screen", "value": "off", "label": "Screen off"}]` - shown
 instead of the state's label while an attr has that value; the state itself stays). Offline after 15
 minutes without a report with the screen on; after a screen-off report with `background`: when it was
@@ -318,8 +321,11 @@ charging / plugged in or `dozeExempt` (its check-ins should get through) 35 minu
 20 minutes when that's later, up to 12 hours), otherwise - on battery, not exempt, so Doze may hold its
 check-ins back - 8 hours, with `deepSleep` true once it's past that 35 minutes / `nextReportIn` + 20
 (asleep, expected - not offline); 12 hours after one without `background`; `batteryStale` is true once a
-screen-off tablet without background reports has been quiet 15 minutes (its level is unknown: smart
-charging leaves it alone). Any report sets `deepSleep` false again. While such a tablet is
+screen-off tablet without background reports has been quiet 15 minutes (its level is unknown). Going
+quiet (offline, `deepSleep` or `batteryStale`) has smart charging turn its charger on, silently;
+`longSilent` is true once it has been quiet 3 hours (12 hours, i.e. offline, for one without background
+reports) - then the admins are told once if its charger is on or none is set. Any report sets
+`deepSleep` and `longSilent` false again. While such a tablet is
 asleep (screen off, background, not overdue) its music player stays available with `screen` `off`
 ("Screen off") instead of going offline when its page stops reporting.
 

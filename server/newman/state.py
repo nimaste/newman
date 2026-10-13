@@ -70,6 +70,8 @@ class Entity:
             issues.append(f"Ignored {a['commandFailures']} remote command{'s' if a['commandFailures'] != 1 else ''}")
         if self.state == JAMMED:
             issues.append("Jammed")
+        if a.get("canComeBack") is False:  # a wall tablet that can't bring itself back with its screen on
+            issues.append("Allow 'Display over other apps' for Newman Wall so it can keep its screen on")
         return issues
 
 

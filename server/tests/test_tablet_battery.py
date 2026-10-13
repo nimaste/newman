@@ -129,12 +129,32 @@ class TabletBatteryTests(unittest.IsolatedAsyncioTestCase):
                     {"level": 50, "charging": True, "plugged": "mains"},
                     {"level": 50, "charging": True, "temperatureC": "hot"},
                     {"level": 50, "charging": True, "screen": "dim"}, {"level": 50, "charging": True, "screen": False},
-                    {"level": 50, "charging": True, "background": "yes"}, [1, 2]):
+                    {"level": 50, "charging": True, "background": "yes"},
+                    {"level": 50, "charging": True, "canComeBack": "yes"},
+                    {"level": 50, "charging": True, "appVersion": 3},
+                    {"level": 50, "charging": True, "appVersion": "x" * 33},
+                    {"level": 50, "charging": True, "appVersion": " "}, [1, 2]):
             r = await self.report(bad)
             self.assertEqual(r.status, 400, bad)
         r = await self.tab.post("/api/tablet/battery", data="not json", headers=self.auth)
         self.assertEqual(r.status, 400)
         self.assertIsNone(self.h.hub.get(self.eid))
+
+    async def test_a_wall_that_cannot_keep_its_screen_on_shows_on_its_health(self):
+        self.assertEqual((await self.report({**GOOD, "canComeBack": True, "appVersion": "1.4.2"})).status, 204)
+        e = self.h.hub.get(self.eid)
+        self.assertEqual((e.attrs["canComeBack"], e.attrs["appVersion"], e.health_issues), (True, "1.4.2", []))
+        # "Display over other apps" not allowed: on the device's health (no push).
+        await self.report({**GOOD, "canComeBack": False, "appVersion": "1.4.2"})
+        e = self.h.hub.get(self.eid)
+        self.assertEqual(e.health_issues, ["Allow 'Display over other apps' for Newman Wall so it can keep its screen on"])
+        self.assertEqual(list(self.h.notifier.outbox), [])
+        # An older app that doesn't say: nothing assumed.
+        await self.report(GOOD)
+        self.assertEqual(self.h.hub.get(self.eid).attrs["canComeBack"], False)  # (its last word stands)
+        self.h.hub.upsert("tablets.other", kind="tablet", name="Old wall", integration="tablets")
+        await self.h.hub.update("tablets.other", state="charging", attrs={"batteryLevel": 50, "charging": True})
+        self.assertEqual(self.h.hub.get("tablets.other").health_issues, [])
 
     async def test_the_wall_apps_cookie_session_is_enough(self):
         # The wall apps send the web view's session cookie, no Bearer token; a tablet account may report.

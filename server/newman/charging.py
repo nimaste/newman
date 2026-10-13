@@ -13,21 +13,18 @@ tablet's charger. "Switchable" comes from the kind's metadata (turn_on / turn_of
 list of kinds.
 
 Admins get one push - at most once an hour per tablet, again once it has charged - when a tablet is
-below CRITICAL_LEVEL and not charging, or its charger isn't responding when it should turn on. And one
-(when it goes silent - so again only after it reported in between - and at most once an hour) when a tablet
-with smart charging on stops reporting its battery: when the tablets integration marks it offline (see
-integrations/tablets.py) - only when it should have been able to report (screen on: 15 minutes; screen off
-but charging, plugged in or exempt from Doze: its announced check-in plus 20 minutes), or after 8 hours
-without a word even where silence is expected. Screen off on battery and not exempt from Doze, Android's
-deep sleep may hold its check-ins back for hours: no alert. A tablet whose battery is unknown (attr
-batteryStale: screen off, no background reports, quiet for a while - an iPad) is left alone: no switching,
-no alerts, until it reports again.
+below CRITICAL_LEVEL and not charging, or its charger isn't responding when it should turn on.
 
-Deep sleep (attr deepSleep: quiet past its check-in where that's expected): the hub can't see the battery
-fall, so when its last level was within EARLY_MARGIN points of "start" (or below it) the charger is turned
-on then, early, as smart charging would at the crossing - logged like any switch. Once it charges, the
-tablet gets its reports through again and smart charging carries on as usual (off above "stop"). No
-"nearly flat" alert or wrong-plug question from a level it reported before it went quiet.
+A tablet going quiet - offline, deep sleep (attr deepSleep: past its check-in where Android may hold it
+back) or its battery unknown (attr batteryStale: screen off, no background reports - an iPad), see
+integrations/tablets.py - is not a problem by itself: the hub can't see its battery any more, so its
+charger is simply turned on (logged like any switch, "…: <tablet> went quiet"; nobody is told). On its
+charger Android lets its check-ins through again; its next report is a fresh look at the band (off above
+"stop"). Its zone is otherwise left alone while it's quiet, and no "nearly flat" alert or wrong-plug
+question comes from a level it reported before it went quiet. Only a tablet quiet so long it's probably
+dead or frozen (attr longSilent: 3 hours, or offline for one that never reports with its screen off) with
+its charger on (or no charger set) is told to the admins - once per silence. A charger that doesn't
+respond has its own alert instead (after PLUG_GRACE_S).
 
 The wrong plug: when Newman turns the charger on and the tablet, still reporting, hasn't started charging
 within START_WAIT_S, the plug is probably not the one it's on. The admins get one question per attempt
@@ -44,7 +41,7 @@ import time
 from typing import Any
 
 from .automations.engine import PRESS_COMMAND_S, ActionError, category_for
-from .integrations.tablets import DEEP_SLEEP_MAX_S, silence_expected
+from .integrations.tablets import long_silent_after
 from .kinds import KINDS
 from .push.notifier import Notification
 from .state import Entity
@@ -59,7 +56,6 @@ ALERT_EVERY_S = 3600.0    # at most one alert an hour per tablet
 CRITICAL_LEVEL = 10       # below this and not charging: tell the admins
 START_WAIT_S = 60.0       # after turning the charger on: this long without charging = probably the wrong plug
 MAX_GUESSES = 3           # plugs offered when asking which one the tablet is on
-EARLY_MARGIN = 10         # in deep sleep within this many points of "start" (or below): the charger goes on early
 NONE_OF_THESE = "charger_none"
 DEFAULTS: dict[str, Any] = {"enabled": False, "startBelow": 20, "stopAbove": 80, "charger": None,
                             "learned": False, "learnedAt": None, "chosenBy": None}  # chosenBy: "user" | "learned"
@@ -95,6 +91,11 @@ def powered(attrs: dict[str, Any]) -> bool | None:
     if not isinstance(attrs.get("charging"), bool):
         return None
     return attrs["charging"] or attrs.get("plugged") not in (None, "none")
+
+
+def quiet(tablet: Entity) -> bool:
+    """Not reporting now: offline, in deep sleep, or its battery unknown (see integrations/tablets.py)."""
+    return not tablet.available or bool(tablet.attrs.get("deepSleep")) or bool(tablet.attrs.get("batteryStale"))
 
 
 def _level(v: Any) -> int | None:
@@ -145,7 +146,7 @@ class SmartCharging:
         self._zone: dict[str, str] = {}             # account id -> "low" | "mid" | "high" (last seen)
         self._pending: dict[str, dict[str, Any]] = {}  # account id -> {"command", "at"}: the charger wasn't responding
         self._alerted: dict[str, float] = {}         # account id -> when the admins were last told
-        self._silent: dict[str, float] = {}          # account id -> when the admins were told it stopped reporting
+        self._silent: dict[str, float] = {}          # account id -> when the admins were told it's gone silent (this silence)
         self._switch_flips: list[dict[str, Any]] = []   # {"at", "id", "on"}
         self._tablet_flips: list[dict[str, Any]] = []   # {"at", "uid", "on", "done"}
         self._tasks: set[asyncio.Task] = set()
@@ -201,34 +202,38 @@ class SmartCharging:
         if now is True:
             self._watch.pop(uid, None)    # it did start: the plug was right (or someone plugged it in)
             self._question.pop(uid, None)
-        if not new.available and old is not None and old.available:  # once per silence (and at most hourly)
-            await self._stopped_reporting(uid, new)
-        if new.available and new.attrs.get("deepSleep") and not (old is not None and old.attrs.get("deepSleep")):
-            await self._deep_sleep(uid, new)
+        was_quiet, is_quiet = old is not None and quiet(old), quiet(new)
+        if is_quiet and not was_quiet:
+            await self._went_quiet(uid, new)
+        elif was_quiet and not is_quiet:
+            self._zone.pop(uid, None)  # reporting again: a fresh look at the band (its charger went on meanwhile)
+        if new.attrs.get("longSilent"):
+            await self._long_silent(uid, new)
+        else:
+            self._silent.pop(uid, None)  # it reported: the next silence is a new one
         await self.evaluate(uid, new)
 
-    async def _stopped_reporting(self, uid: str, tablet: Entity) -> None:
-        if not self.settings(uid)["enabled"]:
-            return
-        now = self.clock()
-        if now - self._silent.get(uid, -1e18) < ALERT_EVERY_S:
-            return
-        self._silent[uid] = now
-        if silence_expected(tablet.attrs):  # asleep on battery: offline only after this long without a word
-            text = f"{tablet.name} hasn't checked in for {DEEP_SLEEP_MAX_S // 3600} hours"
-        else:
-            text = f"{tablet.name} stopped reporting its battery"
-        await self._tell_admins(uid, tablet, text, "stopped")
+    async def _went_quiet(self, uid: str, tablet: Entity) -> None:
+        """Gone quiet: its battery may run down unseen, so the charger goes on now (no alert - a tablet
+        asleep or briefly off the network isn't a problem; on its charger it can report again)."""
+        s = self.settings(uid)
+        if s["enabled"] and s["charger"]:
+            await self._act(uid, s, tablet, "turn_on", f"{tablet.name} went quiet")
 
-    async def _deep_sleep(self, uid: str, tablet: Entity) -> None:
-        """Gone quiet in deep sleep (expected): its battery may run down unseen, so near the bottom of the
-        band the charger goes on now rather than at a crossing the hub would never hear about."""
-        s, level = self.settings(uid), tablet.attrs.get("batteryLevel")
-        if not s["enabled"] or not s["charger"] or isinstance(level, bool) or not isinstance(level, (int, float)):
+    async def _long_silent(self, uid: str, tablet: Entity) -> None:
+        """Quiet so long it's probably dead or frozen: tell the admins once - if its charger is on (or there
+        is none). A charger that's off or not responding has its own handling (_went_quiet, _unresponsive)."""
+        s = self.settings(uid)
+        if not s["enabled"] or uid in self._silent:
             return
-        if level > s["startBelow"] + EARLY_MARGIN:
+        plug = self.hub.get(s["charger"]) if s["charger"] else None
+        if s["charger"] and (not plug or not plug.available or is_on(plug) is not True):
             return
-        await self._act(uid, s, tablet, "turn_on", f"early, {tablet.name} is asleep at {level:g}%")
+        self._silent[uid] = self.clock()
+        hours = int(long_silent_after(tablet.attrs) // 3600)
+        text = (f"{tablet.name} has been off for {hours} hours even with its charger on - it may be dead or frozen"
+                if plug else f"{tablet.name} has been off for {hours} hours - it may be dead or frozen")
+        await self._tell_admins(uid, tablet, text, "stopped")
 
     async def _switch_changed(self, old: Entity | None, new: Entity) -> None:
         if old is None or (old.state is None and new.state is not None):
@@ -243,6 +248,11 @@ class SmartCharging:
             self._spawn(self._learn_later())
         if new.available and not old.available:
             await self._retry_pending(new.id)  # a charger that wasn't responding is back
+        if now is True and was is not True:  # a long-silent tablet's charger is on now: worth telling
+            for t in self.hub.all("tablet"):
+                uid = t.id.split(".", 1)[-1]
+                if t.attrs.get("longSilent") and self.settings(uid)["charger"] == new.id:
+                    await self._long_silent(uid, t)
 
     async def _retry_pending(self, plug_id: str) -> None:
         """Do what a charger couldn't do while it wasn't there (if still wanted)."""
@@ -272,7 +282,7 @@ class SmartCharging:
             if zone != "mid":
                 await self._act(uid, s, ent, "turn_on" if zone == "low" else "turn_off")
         if ent.attrs.get("deepSleep"):
-            return  # a level from before it went quiet (its charger went on early, _deep_sleep)
+            return  # a level from before it went quiet (its charger went on then, _went_quiet)
         if ent.available and level < CRITICAL_LEVEL and ent.attrs.get("charging") is not True:
             await self._alert(uid, ent, f"{ent.name} is at {level:g}% and not charging")
 
