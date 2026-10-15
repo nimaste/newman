@@ -13,7 +13,7 @@ import { Check, Loading, ErrorBox, MoreMenu, Switch } from '../components/Contro
 import { DeviceBlanks } from '../components/DevicePicker.jsx';
 import { Icon } from '../icons.jsx';
 import { DAY_LETTERS, DAY_NAMES, fmtClock, fmtHHMM, fmtWhen, initial, platformLabel, plural } from '../format.js';
-import { activeLabel, automationBody, choiceItems, eventsFor, stateChoices, valueText } from '../model.js';
+import { actionCommands, activeLabel, automationBody, choiceItems, eventsFor, stateChoices, valueText } from '../model.js';
 import { ChoiceChips } from '../components/ChoiceChips.jsx';
 import {
   ALL_DAYS,
@@ -835,11 +835,11 @@ function OnlyIfSection({ auto, patch, hub }) {
 
 /* ---------------- What happens ---------------- */
 
-/** Commands that every chosen device supports. */
+/** Commands that every chosen device supports (automation-only ones included). */
 function commonCommands(ids, hub) {
   const ents = ids.map((i) => hub.entitiesById[i]).filter(Boolean);
   if (!ents.length) return [];
-  const lists = ents.map((e) => ((hub.kindsById[e.kind] && hub.kindsById[e.kind].commands) || []));
+  const lists = ents.map((e) => actionCommands(hub.kindsById[e.kind]));
   return lists[0].filter((c) => lists.every((l) => l.some((x) => x.id === c.id)));
 }
 
@@ -909,11 +909,11 @@ function ActionRow({ action, onChange, onRemove, hub, idx }) {
     const pick = keep || next.find((c) => !c.sensitive) || next[0];
     const e = ids.map((i) => hub.entitiesById[i]).find(Boolean);
     const value = pick && pick.takesValue ? (keep && a.value !== undefined ? a.value : defaultActionValue(pick, e, e && hub.kindsById[e.kind])) : undefined;
-    onChange({ entities: ids, command: pick ? pick.id : '', ...(value !== undefined ? { value } : {}), ...(a.for ? { for: a.for } : {}) });
+    onChange({ entities: ids, command: pick ? pick.id : '', ...(value !== undefined ? { value } : {}), ...(a.for && pick && !pick.automationOnly ? { for: a.for } : {}) });
   };
   const setCommand = (id) => {
     const c = cmds.find((x) => x.id === id);
-    onChange({ entities: a.entities, command: id, ...(c && c.takesValue ? { value: defaultActionValue(c, first, kind) } : {}), ...(a.for ? { for: a.for } : {}) });
+    onChange({ entities: a.entities, command: id, ...(c && c.takesValue ? { value: defaultActionValue(c, first, kind) } : {}), ...(a.for && !(c && c.automationOnly) ? { for: a.for } : {}) });
   };
   const include = (e, k) => !!(k && (k.commands || []).length);
   const value = a.value;
@@ -949,7 +949,7 @@ function ActionRow({ action, onChange, onRemove, hub, idx }) {
           <ValueInput cmd={cmd} kind={kind} entity={first} value={value} onChange={(v) => onChange({ ...a, value: v })} />
         </>
       ) : null}
-      {cmd ? (
+      {cmd && !cmd.automationOnly ? (
         a.for ? (
           <span className="blank-seq">
             for

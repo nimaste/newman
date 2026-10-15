@@ -67,7 +67,7 @@ object HubModel {
         } ?: emptyList()
 
     fun shortEventLabel(label: String): String {
-        Regex("^[“\"](.+)[”\"]\\s+is pressed$", RegexOption.IGNORE_CASE).find(label)?.let { return it.groupValues[1] }
+        Regex("^[“\"](.+)[”\"]\\s+is\\s.*pressed$", RegexOption.IGNORE_CASE).find(label)?.let { return it.groupValues[1] }
         return label.replace(Regex("\\s+(pressed|detected|entered|comes in)$", RegexOption.IGNORE_CASE), "").ifEmpty { label }
     }
 
@@ -81,7 +81,7 @@ object HubModel {
         val label = e.stateLabel.ifEmpty { e.state ?: "—" }
 
         if (isRemote(e, k)) {
-            val names = eventsFor(e, k).map { shortEventLabel(it.label) }
+            val names = eventsFor(e, k).map { shortEventLabel(it.label) }.distinct()  // a long press is the same button
             val word = if (eventsFor(e, k).all { it.label.contains("pressed", ignoreCase = true) }) "button" else "event"
             if (names.isEmpty()) return "No ${word}s"
             if (long || names.size <= 2) return word.replaceFirstChar { it.uppercase() } + "s: " + names.joinToString(", ")

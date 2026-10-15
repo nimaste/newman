@@ -49,6 +49,9 @@ class Command:
     unit: str = ""
     default: float | str | None = None
     attr: str = ""  # the device attribute holding the current value (e.g. "brightness")
+    # An automation-only "…while held" action: +1 steps attr up, -1 down, until the button that started
+    # the automation is let go (its event's `ends`); see Kind.automation_commands.
+    ramp: int = 0
 
     def to_json(self) -> dict:
         return {"id": self.id, "label": self.label, "past": self.past, "icon": self.icon,
@@ -70,10 +73,11 @@ class Event:
     body: str = ""    # notification body
     sound: str = ""   # "doorbell" = the distinct doorbell alert
     what: str = ""    # the object for {what}/{a_what} (defaults to the id)
+    ends: str = ""    # a button held down: the event that says it was let go (ends a "…while held" action)
 
     def to_json(self) -> dict:
         return {"id": self.id, "label": self.label, "phrase": self.phrase, "title": self.title,
-                "body": self.body, "sound": self.sound}
+                "body": self.body, "sound": self.sound, "ends": self.ends}
 
 
 def detection_events(verb: str, phrase: str, title: str, body: str) -> list[Event]:
@@ -86,6 +90,19 @@ def detection_events(verb: str, phrase: str, title: str, body: str) -> list[Even
         else:
             out.append(Event(obj, f"{what.capitalize()} {verb}", phrase, title, body, what=what))
     return out
+
+
+def remote_button_events(b: str, name: str) -> list[Event]:
+    """One remote button's events: pressed, and - where the button can tell them apart - double-pressed,
+    long-pressed (held down) and let go after that. Every label says "pressed", so the remote still counts
+    its buttons rather than its events."""
+    return [Event(b, f"“{name}” is pressed", f"the {name} button on {{device}} is pressed", "", f"{name} pressed on {{device}}"),
+            Event(f"{b}_double", f"“{name}” is double-pressed", f"the {name} button on {{device}} is double-pressed", "",
+                  f"{name} double-pressed on {{device}}"),
+            Event(f"{b}_long", f"“{name}” is long-pressed", f"the {name} button on {{device}} is pressed and held", "",
+                  f"{name} held on {{device}}", ends=f"{b}_released"),
+            Event(f"{b}_released", f"“{name}” is let go after being long-pressed",
+                  f"the {name} button on {{device}} is let go after a long press", "", f"{name} let go on {{device}}")]
 
 
 # Descriptive details integrations report about a device. They never change in a way worth
@@ -156,6 +173,10 @@ class Kind:
     # Shown instead of the state's label while an attr has a value: (attr, value, label) - a wall
     # tablet with its screen off shows "Screen off" (its state stays charging / on battery).
     notes: tuple[tuple[str, Any, str], ...] = ()
+    # What only an automation can do with one, because it needs the automation's "When" ("Brighten while
+    # held" stops when the button that started it is let go): offered in the automation editor's "Do",
+    # never as one of the device's own controls.
+    automation_commands: list[Command] = field(default_factory=list)
 
     def label_for(self, state: str | None, attrs: dict | None) -> str:
         """The device's label: a note that applies (in order), else its state's label."""
@@ -174,7 +195,9 @@ class Kind:
     def command(self, command_id: str) -> Command | None:
         return next((c for c in self.commands if c.id == command_id), None)
 
-
+    def action(self, command_id: str) -> Command | None:
+        """What an automation's "Do" may name: a command, or one of the automation-only ones."""
+        return self.command(command_id) or next((c for c in self.automation_commands if c.id == command_id), None)
 
     def event(self, event_id: str) -> Event:
         return next((e for e in self.events if e.id == event_id), None) or \
@@ -186,6 +209,7 @@ class Kind:
             "states": [{"id": s, "label": label} for s, label in self.states],
             "activeState": self.active_state,
             "commands": [c.to_json() for c in self.commands],
+            "automationCommands": [c.to_json() for c in self.automation_commands],
             "events": [e.to_json() for e in self.events], "hasCamera": self.has_camera,
             "transitional": list(self.transitional), "unit": self.unit,
             "secureState": self.secure_state, "isMode": self.is_mode, "urgent": self.urgent,
@@ -225,7 +249,12 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
          commands=[Command("turn_on", "Turn on", "turned on", "bulb", "on"),
                    Command("turn_off", "Turn off", "turned off", "bulb-off", "off"),
                    Command("set_brightness", "Set brightness", "dimmed", "sun", "on", takes_value=True,
-                           value_type="percent", min=1, max=100, step=1, unit="%", default=50, attr="brightness")]),
+                           value_type="percent", min=1, max=100, step=1, unit="%", default=50, attr="brightness")],
+         # step = how much each step moves; dimming stops at min (it never turns the light off).
+         automation_commands=[Command("brighten_while_held", "Brighten while held", "brightened", "sun", "",
+                                      min=1, max=100, step=10, unit="%", attr="brightness", ramp=1),
+                              Command("dim_while_held", "Dim while held", "dimmed", "sun", "",
+                                      min=1, max=100, step=10, unit="%", attr="brightness", ramp=-1)]),
     Kind("garage", "Garage door", "Garage doors", "garage",
          [("open", "Open"), ("closed", "Closed"), ("opening", "Opening"), ("closing", "Closing"),
           ("stopped", "Stopped")],
@@ -263,14 +292,15 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
          properties=[Property("count", "{sub} count", "", "counts.*", "number")],
          events=detection_events("comes in", "{a_what} enters {device}", "{what} in {device}", "{what} entered {device}")),
     # A remote (e.g. a Lutron Pico): one device, one event per button. An entity's
-    # attrs["events"] lists which of these its model actually has.
+    # attrs["events"] lists which of these its model actually has. Numbered buttons may also tell a
+    # double press and a long press (held down, then let go) apart from a plain press.
     Kind("remote", "Remote", "Remotes", "lighting",
          [("idle", "Idle")], noun="remote",
          events=[Event(b, f"“{name}” is pressed", f"the {name} button on {{device}} is pressed", "",
                        f"{name} pressed on {{device}}")
                  for b, name in (("on", "On"), ("favorite", "Favorite"), ("off", "Off"), ("raise", "Raise"),
-                                 ("lower", "Lower"), ("button_1", "Button 1"), ("button_2", "Button 2"),
-                                 ("button_3", "Button 3"), ("button_4", "Button 4"))]),
+                                 ("lower", "Lower"))]
+         + [ev for n in range(1, 5) for ev in remote_button_events(f"button_{n}", f"Button {n}")]),
     # Weather for a place: the state is the condition now; readings are properties; attrs.forecast
     # (daily), attrs.hourly and attrs.alerts carry the rest for the weather tile.
     Kind("weather", "Weather", "Weather", "climate",

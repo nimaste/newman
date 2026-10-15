@@ -333,6 +333,49 @@ class MappingTests(MatterBase):
             await m.command(plug, "turn_off")
         await self.stop()
 
+    async def test_buttons_tell_a_press_from_a_long_press(self):
+        a = self.server.nodes[9]["attributes"]
+        # Button 1 is what IKEA's BILRESA reports (FeatureMap 30: release, long press, counts up to 2 presses);
+        # button 2 only reports its release; button 3 is an older one that only says it was pressed.
+        a.update({"1/59/65532": 30, "1/59/2": 2, "2/59/65532": 6, "3/29/0": [{"0": 15, "1": 1}], "3/29/1": [59, 29],
+                  "3/59/65532": 2})
+        await self.start()
+        remote = self.by_name()["Bedside button"]
+        self.assertEqual(remote.attrs["events"], ["button_1", "button_1_double", "button_1_long", "button_1_released",
+                                                  "button_2", "button_3"])
+        events = []
+
+        async def on_event(ent, event, data):
+            events.append(event)
+        self.hub.subscribe_events(on_event)
+
+        async def send(ep, *evs):
+            for ev, data in evs:
+                await self.server.event("node_event", {"node_id": 9, "endpoint_id": ep, "cluster_id": 59, "event_id": ev,
+                                                       "event_number": 1, "priority": 1, "timestamp": 0,
+                                                       "timestamp_type": 1, "data": data})
+        down, up = (1, {"newPosition": 1}), (3, {"previousPosition": 1})
+        done = lambda n: (6, {"previousPosition": 1, "totalNumberOfPressesCounted": n})  # noqa: E731
+        # A short press: nothing as it goes down, "button_1" once the button has counted it.
+        await send(1, down, up)
+        await asyncio.sleep(0.1)
+        self.assertEqual(events, [])
+        await send(1, done(1))
+        await until(lambda: events == ["button_1"], "short press")
+        # Held down, then let go - never a short press too, even if the button counts it afterwards.
+        await send(1, down, (2, {"newPosition": 1}), (4, {"previousPosition": 1}), done(1))
+        await until(lambda: events[1:] == ["button_1_long", "button_1_released"], "long press")
+        await send(1, down, up, down, up, done(2))
+        await until(lambda: events[3:] == ["button_1_double"], "double press")
+        # Release only: on the release. No release at all: on the press, as Matter buttons always did.
+        await send(2, down)
+        await send(3, down)
+        await send(2, up)
+        await until(lambda: events[4:] == ["button_3", "button_2"], "older buttons")
+        await asyncio.sleep(0.1)
+        self.assertEqual(len(events), 6)
+        await self.stop()
+
     async def test_server_not_running(self):
         await self.server.close()
         self.hub = Hub()

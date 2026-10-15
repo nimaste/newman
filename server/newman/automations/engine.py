@@ -19,7 +19,7 @@ from typing import Any
 from .. import sun
 from ..integrations.base import CommandError
 from ..integrations.manager import IntegrationManager
-from ..kinds import KINDS, find_property, format_value, join_names
+from ..kinds import KINDS, Command, find_property, format_value, join_names
 from ..push.notifier import Notification, Notifier, category_for  # noqa: F401 (charging imports it from here)
 from ..state import Entity, Hub
 from ..store import Store, new_id
@@ -46,6 +46,11 @@ FOLLOW_UP_COMBINE_S = 10.0
 # that gets there before the run has seen the change is held this long, then sent late to anyone no
 # follow-up told after all.
 ANSWERED_WINDOW_S = 15.0
+# "Brighten / Dim while held": one step this often (each step waits for the one before to be sent, so a
+# light or its connection never gets more than this), and never for longer than RAMP_MAX_S - in case the
+# button's "let go" never arrives.
+RAMP_EVERY_S = 0.4
+RAMP_MAX_S = 10.0
 
 
 class ActionError(Exception):
@@ -76,6 +81,8 @@ class Engine:
         self._holds: dict[str, dict[str, Any]] = {}   # "auto|entity" -> timed action waiting to be undone
         self._fired: set[str] = set()
         self._presses: set[asyncio.Task] = set()  # button presses whose commands are still being sent
+        self._ramps: dict[str, dict[str, Any]] = {}  # entity -> its "…while held" action: {until, stop, task}
+        self._heard: dict[tuple[str, str], float] = {}  # (entity, event) -> when it last happened (monotonic)
         # Device changes a follow-up reports (sent or queued): {entity, state, at, people, automationId, name}
         self._answered: list[dict[str, Any]] = []
         # Confirmed devices waiting to be reported together: run id -> {auto, devices, task}
@@ -311,6 +318,11 @@ class Engine:
             await self._item_fired(auto, [n], dict(trig, held=seconds))
 
     async def _on_event(self, ent: Entity, event: str, data: dict[str, Any]) -> None:
+        # Noted before anything waits: a "let go" can be handled alongside the "held" that started a ramp.
+        self._heard[(ent.id, event)] = time.monotonic()
+        for r in self._ramps.values():
+            if r["until"] == (ent.id, event):
+                r["stop"].set()
         for a in list(self.autos.values()):
             if a.get("enabled") and (hits := d.event_item_hit(a, ent.id, event)):
                 await self._item_fired(a, hits, {"type": "event", "entity": ent.id, "event": event, **data})
@@ -503,6 +515,10 @@ class Engine:
         key = f"{auto['id']}|{eid}"
         held = self._holds.get(key)
         ent = self.hub.get(eid)
+        cmd = KINDS[ent.kind].action(action["command"]) if ent else None
+        if cmd and cmd.ramp:
+            self._start_ramp(run, ent, cmd)
+            return
         # Remember how the device was *before* this automation first touched it; a re-trigger while
         # the timer runs keeps that original state and just restarts the clock.
         before = held["before"] if held else (
@@ -526,6 +542,84 @@ class Engine:
         else:
             self._holds.pop(key, None)
             self.store.remove_hold(key)
+
+    # -- "Brighten / Dim while held" -----------------------------------------------------------------
+
+    def _start_ramp(self, run: dict[str, Any], ent: Entity, cmd: Command) -> None:
+        """Step the device's level (cmd.attr) by cmd.step until the button whose event started this run is
+        let go - that event's `ends` - or RAMP_MAX_S. One ramp per device: a new one takes over."""
+        trig = run["trigger"]
+        src = self.hub.get(trig.get("entity") or "") if trig.get("type") == "event" else None
+        ends = KINDS[src.kind].event(str(trig.get("event") or "")).ends if src else ""
+        if old := self._ramps.get(ent.id):
+            old["stop"].set()
+        r: dict[str, Any] = {"until": (src.id, ends) if ends else None, "stop": asyncio.Event(),
+                             "since": self._heard.get((src.id, str(trig.get("event")))) if src else None}
+        r["task"] = asyncio.create_task(self._ramp(run, ent.id, cmd, r))
+        self._ramps[ent.id] = r
+
+    def _let_go(self, r: dict[str, Any]) -> bool:
+        if r["stop"].is_set():
+            return True
+        # Let go before this ramp even started (both were handled at once).
+        at = self._heard.get(r["until"]) if r["until"] else None
+        return at is not None and r["since"] is not None and at >= r["since"]
+
+    async def _ramp(self, run: dict[str, Any], eid: str, cmd: Command, r: dict[str, Any]) -> None:
+        try:
+            await self._ramp_steps(run, eid, cmd, r)
+        except Exception:  # noqa: BLE001 - a ramp must never take the engine down
+            log.exception("%s on %s failed", cmd.label, eid)
+        finally:
+            if self._ramps.get(eid) is r:
+                self._ramps.pop(eid)
+
+    async def _ramp_steps(self, run: dict[str, Any], eid: str, cmd: Command, r: dict[str, Any]) -> None:
+        def note(text: str) -> None:
+            run["log"].append({"ts": time.time(), "text": text})
+            self.store.save_run(run)
+        ent = self.hub.get(eid)
+        if not ent:
+            return
+        k = KINDS[ent.kind]
+        name = ent.name
+        setter = next((c for c in k.commands if c.attr == cmd.attr and c.takes_value), None)
+        if not setter or ent.attrs.get("dimmable") is False:
+            note(f"Couldn't {cmd.label.lower()}: {name} can't be dimmed")
+            return
+        lo, hi, step = cmd.min or 1, cmd.max or 100, cmd.step or 10
+        lit = ent.state == k.active_state
+        level = ent.attrs.get(cmd.attr) if lit else None
+        if lit and not isinstance(level, (int, float)):
+            level = hi  # on, but it doesn't say how bright
+        if level is None and cmd.ramp < 0:
+            note(f"{name} is off - left it off")  # dimming never turns a light on (or off)
+            return
+        self._attribution[eid] = ("Newman", time.time())
+        until, sent = time.monotonic() + RAMP_MAX_S, None
+        while True:
+            # Off and brightening: on at the first step up, then on from there.
+            nxt = max(lo, min(hi, step if level is None else level + cmd.ramp * step))
+            if nxt == level:
+                break  # as bright (or as dim) as it goes
+            try:
+                await self.integrations.command(eid, setter.id, nxt)
+            except CommandError as e:
+                note(f"Couldn't {cmd.label.lower()} {name}: {e}")
+                break
+            level = sent = nxt
+            if self._let_go(r) or time.monotonic() >= until:
+                break
+            try:
+                await asyncio.wait_for(r["stop"].wait(), RAMP_EVERY_S)
+                break
+            except asyncio.TimeoutError:
+                if self._let_go(r):
+                    break
+        if sent is not None:
+            text = f"{cmd.past.capitalize()} {name} to {sent:g}{cmd.unit}"
+            self.store.log_event("command", text, "by Newman", eid)
+            note(text)
 
     def resume_holds(self) -> None:
         """After a restart: re-arm pending "put it back" timers (overdue ones run right away)."""

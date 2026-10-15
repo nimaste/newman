@@ -773,6 +773,13 @@ temperature and humidity sensors their readings, a bulb a *light*. Battery devic
 %**, what battery they take, and a *Battery low* health warning when the device says so (or ≤ 20 %) —
 usable in automations like any other device.
 
+**Buttons** (IKEA BILRESA and other Matter remotes) are one *remote* with an event per button, and per
+button only what that button can tell apart (its Switch cluster's features): *“Button 1” is pressed*,
+*double-pressed*, *long-pressed* (held down) and *let go after being long-pressed*. A button that reports its
+release counts a press only once it's let go, so holding it down is never also a press; one that can't (older
+buttons) still fires *pressed* the moment it goes down. With a light's **Brighten while held** / **Dim while
+held** (see [Automations](#automations)), holding a button ramps a light up or down until it's let go.
+
 **One device per physical device** for its readings: a temperature + humidity sensor is one *temperature
 sensor* that also reports humidity and battery; a motion sensor that measures light is one *motion* sensor
 with a light level (lx); a leak or door sensor keeps its battery and any temperature on itself. Each device
@@ -1025,6 +1032,9 @@ Built in the dashboard as **When → Only if → Then**, read back as a plain se
 - **Then** — commands on any number of devices, optionally *for* a while (then put back —
   devices that keep more than an on/off state, like a music player's queue and spot in a song, are put
   back exactly, unless someone changed them meanwhile; see [Music](#music-navidrome));
+  **Brighten while held** / **Dim while held** on any dimmable light, for a button's *long-pressed* event:
+  a step of 10 % every 0.4 s until that button is let go (at most 10 s) — an off light comes on low, and
+  dimming stops at 1 %, never off;
   notifications with action buttons and, for camera events, a snapshot; showing it on wall tablets;
   and a **live status** on phones (below) of any devices — until they're no longer in a state, for a
   while, or until something else happens (a device changes, an event, a time).
@@ -1700,7 +1710,7 @@ docker run --rm --network none -v "$PWD/server/tests:/app/tests" newman:dev \
   python -m unittest discover -s tests
 ```
 
-The tests (655 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
+The tests (662 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
 printers, Roborock…), so they need no network or credentials. API reference: [`API.md`](API.md). The web
 page's own rules (when a page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
 App tests: [`android/README.md`](android/README.md#tests), [`ios/README.md`](ios/README.md#build-on-a-mac).

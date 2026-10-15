@@ -712,10 +712,13 @@ def expand_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def action_text(a: dict[str, Any], hub: Hub) -> str:
     ents = _ents(hub, action_targets(a))
-    cmd = KINDS[ents[0].kind].command(a.get("command", "")) if ents else None
+    cmd = KINDS[ents[0].kind].action(a.get("command", "")) if ents else None
     if not ents or not cmd:
         return "do something to a missing device"
     names = join_names([e.name for e in ents])
+    if cmd.ramp:
+        verb, _, rest = cmd.label.lower().partition(" ")  # "brighten Kitchen while held"
+        return f"{verb} {names} {rest}".strip()
     if cmd.id == "set_brightness":
         text = f"set {names} to {a.get('value')}%"
     elif cmd.value_type == "choices":
@@ -1042,13 +1045,15 @@ def errors(auto: dict[str, Any], hub: Hub) -> list[str]:
             out.append("Pick a device for each action")
         for eid in action_targets(a):
             ent = hub.get(eid)
-            cmd = KINDS[ent.kind].command(a.get("command", "")) if ent else None
+            cmd = KINDS[ent.kind].action(a.get("command", "")) if ent else None
             if not ent:
                 out.append("An action refers to a device that no longer exists")
             elif not cmd:
                 out.append(f"{ent.name} can't {str(a.get('command', '')).replace('_', ' ')}")
             elif cmd.takes_value and a.get("value") in (None, ""):
                 out.append(f"Choose a value for “{cmd.label}” on {ent.name}")
+            elif cmd.ramp and ent.attrs.get("dimmable") is False:
+                out.append(f"{ent.name} can't be dimmed, so it can't “{cmd.label.lower()}”")
         f = a.get("for") or {}
         if f and (f.get("unit", "minutes") not in UNITS or float(f.get("amount") or 0) < 0):
             out.append("“For how long” needs a positive amount in seconds, minutes, hours or days")

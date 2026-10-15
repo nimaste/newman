@@ -51,6 +51,9 @@ DESCRIPTOR, BASIC, BRIDGED, POWER_SOURCE, NETWORK = 0x1D, 0x28, 0x39, 0x2F, 0x31
 ON_OFF, LEVEL, DOOR_LOCK, COVER, THERMOSTAT, FAN = 0x06, 0x08, 0x101, 0x102, 0x201, 0x202
 BOOLEAN, OCCUPANCY, TEMPERATURE, HUMIDITY, ILLUMINANCE, SMOKE_CO = 0x45, 0x406, 0x402, 0x405, 0x400, 0x5C
 SWITCH, POWER, ENERGY = 0x3B, 0x90, 0x91
+# Switch cluster (buttons): FeatureMap bits - it reports a release, a long press, counts presses - and events.
+SW_RELEASE, SW_LONG, SW_MULTI = 0x04, 0x08, 0x10
+INITIAL_PRESS, LONG_PRESS, SHORT_RELEASE, LONG_RELEASE, MULTI_PRESS_COMPLETE = 1, 2, 3, 4, 6
 
 # Matter device types -> (role, Newman kind). The role decides which cluster is read and how; the kind is
 # what Newman shows. Types not listed fall back to the clusters the endpoint serves (CLUSTER_ROLES).
@@ -261,7 +264,9 @@ class MatterIntegration(Integration):
         self._nodes: dict[int, dict[str, Any]] = {}       # node id -> {"available", "attributes"}
         self._specs: dict[str, dict[str, Any]] = {}       # entity id -> what it reads
         self._by_node: dict[int, list[str]] = {}
-        self._buttons: dict[tuple[int, int], tuple[str, str]] = {}  # (node, endpoint) -> (remote id, event)
+        # (node, endpoint) -> (remote id, its event, what the button can tell apart - see _button)
+        self._buttons: dict[tuple[int, int], tuple[str, str, dict[str, bool]]] = {}
+        self._held: set[tuple[int, int]] = set()          # buttons in a long press (since its LongPress)
         self._moved: set[str] = set()                     # old per-reading device ids already handed over
         self.adding: dict[str, Any] = {}                  # the last "add a device": {"state", "message", …}
         self._attempt = 0                                 # which "add a device" counts; older ones are ignored
@@ -405,13 +410,38 @@ class MatterIntegration(Integration):
                 self._drop_node(nid)
                 self._refresh_status()
         elif event == "node_event" and isinstance(data, dict):
-            # Matter buttons: InitialPress (event 1) on a Switch cluster endpoint fires that button.
-            if data.get("cluster_id") == SWITCH and data.get("event_id") == 1:
-                found = self._buttons.get((data.get("node_id"), data.get("endpoint_id")))
-                if found:
-                    await self.hub.emit(found[0], found[1], {})
+            if data.get("cluster_id") == SWITCH:
+                await self._on_button(data)
         elif event == "server_shutdown" and self._ws is not None:
             await self._ws.close()
+
+    async def _on_button(self, data: dict[str, Any]) -> None:
+        """A Matter button's event -> its remote's event. A button that reports its release fires "button_N"
+        then (ShortRelease; MultiPressComplete after one press when it counts presses, two = "_double"), so
+        a long press never starts with a short one: that's "_long" (LongPress) and "_released" (LongRelease).
+        A button that can't tell any of that fires "button_N" on InitialPress, as it always did."""
+        key = (data.get("node_id"), data.get("endpoint_id"))
+        found = self._buttons.get(key)
+        if not found:
+            return
+        eid, base, can = found
+        ev, out = data.get("event_id"), None
+        if ev == INITIAL_PRESS:
+            self._held.discard(key)
+            out = None if can["release"] or can["multi"] else base
+        elif ev == LONG_PRESS and can["long"]:
+            self._held.add(key)
+            out = f"{base}_long"
+        elif ev == LONG_RELEASE and can["long"]:
+            out = f"{base}_released"  # still held: a MultiPressComplete after a long press isn't a press
+        elif ev == SHORT_RELEASE and can["release"] and not can["multi"]:
+            out = base
+        elif ev == MULTI_PRESS_COMPLETE and can["multi"] and key not in self._held:
+            n = _field(data.get("data"), 1, "totalNumberOfPressesCounted")
+            n = n if isinstance(n, int) and not isinstance(n, bool) else 1
+            out = base if n == 1 else f"{base}_double" if n == 2 and can["double"] else None
+        if out:
+            await self.hub.emit(eid, out, {})
 
     # -- what a node is ------------------------------------------------------------------------------
 
@@ -427,6 +457,16 @@ class MatterIntegration(Integration):
             if isinstance(t, int):
                 out.append(t)
         return out
+
+    @staticmethod
+    def _button(values: dict[str, Any], ep: int) -> dict[str, bool]:
+        """What one button (a Switch cluster endpoint) can tell apart, from its FeatureMap: a release, a long
+        press, presses counted - and a double press when it counts at least two (MultiPressMax)."""
+        f = values.get(_p(ep, SWITCH, 65532))
+        f = f if isinstance(f, int) else 0
+        most = values.get(_p(ep, SWITCH, 2))
+        return {"release": bool(f & SW_RELEASE), "long": bool(f & SW_LONG), "multi": bool(f & SW_MULTI),
+                "double": bool(f & SW_MULTI) and isinstance(most, int) and most >= 2}
 
     @staticmethod
     def _bridged(values: dict[str, Any], ep: int) -> bool:
@@ -624,9 +664,12 @@ class MatterIntegration(Integration):
             if (network := self._network(values)):
                 attrs["protocol"] = f"Matter over {network}"
             if spec["role"] == "buttons":
-                attrs["events"] = [f"button_{i + 1}" for i in range(len(spec["buttons"]))]
+                attrs["events"] = []
                 for i, bep in enumerate(spec["buttons"]):
-                    self._buttons[(nid, bep)] = (eid, f"button_{i + 1}")
+                    base, can = f"button_{i + 1}", self._button(values, bep)
+                    attrs["events"] += [base] + [f"{base}_{x}" for x, ok in (("double", can["double"]), ("long", can["long"]),
+                                                                            ("released", can["long"])) if ok]
+                    self._buttons[(nid, bep)] = (eid, base, can)
             attrs.update(battery)
             await self.hub.update(eid, attrs=attrs)
             await self._publish(eid)

@@ -85,17 +85,22 @@ export function countList(counts) {
     .map(([k, n]) => countLabel(k, Number(n)));
 }
 
-/** "On pressed" -> "On", "Person detected" -> "Person", "Car entered" -> "Car". */
+/** "On pressed" -> "On", "Person detected" -> "Person", "Car entered" -> "Car", "“Button 1” is long-pressed" -> "Button 1". */
 export function shortEventLabel(label) {
   const s = String(label || '');
-  const quoted = /^[“"](.+)[”"]\s+is pressed$/i.exec(s);
+  const quoted = /^[“"](.+)[”"]\s+is\s.*pressed$/i.exec(s);
   if (quoted) return quoted[1];
   return s.replace(/\s+(pressed|detected|entered|comes in)$/i, '') || label;
 }
 
-/** Button names of a remote, e.g. ['On', 'Favorite', 'Off', 'Raise', 'Lower']. */
+/** Button names of a remote, e.g. ['On', 'Favorite', 'Off', 'Raise', 'Lower'] (a button's long press is the same button). */
 export function buttonNames(entity, kind) {
-  return eventsFor(entity, kind).map((e) => shortEventLabel(e.label));
+  return [...new Set(eventsFor(entity, kind).map((e) => shortEventLabel(e.label)))];
+}
+
+/** What an automation can make a device do: its kind's commands, then the automation-only ones ("Brighten while held"). */
+export function actionCommands(kind) {
+  return [...((kind && kind.commands) || []), ...((kind && kind.automationCommands) || []).map((c) => ({ ...c, automationOnly: true }))];
 }
 
 function fmtTemp(v) {

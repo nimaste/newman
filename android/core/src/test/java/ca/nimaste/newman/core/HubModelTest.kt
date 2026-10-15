@@ -27,6 +27,14 @@ class HubModelTest {
     }
 
     @Test
+    fun aRemoteCountsButtonsNotPressKinds() {
+        assertEquals("Button 1", HubModel.shortEventLabel("“Button 1” is long-pressed"))
+        assertEquals("Button 1", HubModel.shortEventLabel("“Button 1” is let go after being long-pressed"))
+        assertEquals("Favorite", HubModel.shortEventLabel("“Favorite” is pressed"))
+        assertEquals("Person", HubModel.shortEventLabel("Person detected"))
+    }
+
+    @Test
     fun securityHelpers() {
         val lock = Fixtures.entity("lock")
         val k = meta.kind("lock")

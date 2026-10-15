@@ -703,6 +703,12 @@ class ActionTests(LightTests):
         out = self.engine.describe(dict(bell, notify={"enabled": True, "snapshot": False}))
         self.assertNotIn("snapshot", out["summary"])
 
+    async def test_brighten_or_dim_needs_a_dimmable_light(self):
+        await self.hub.update("lutron.device_5", attrs={"dimmable": False})
+        out = self.engine.describe({"trigger": {"type": "event", "entity": "lutron.remote_9", "event": "raise"},
+                                    "notify": {"enabled": False}, "actions": [{"entity": "lutron.device_5", "command": "dim_while_held"}]})
+        self.assertEqual(out["errors"], ["Porch Light can't be dimmed, so it can't “dim while held”"])
+
     async def _mixed_devices(self):
         self.hub.upsert("lutron.device_6", kind="light", name="Dining Room", integration="lutron")
         await self.hub.update("lutron.device_6", state="off", attrs={"dimmable": True, "brightness": 0})
@@ -1013,6 +1019,109 @@ class ActionTests(LightTests):
         await asyncio.sleep(0.05)
         self.assertEqual(self.calls, [])  # outside the window: nothing happens
         self.assertEqual(self.store.runs()[0]["status"], "skipped")
+
+
+class HoldToDimTests(Base):
+    """“Brighten / Dim while held”: a button's long press steps a light until that button is let go."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        calls = self.calls = []
+
+        class FakeLights:
+            async def command(self, eid, command, value=None):
+                calls.append((command, value))
+        self.integrations.instances["lutron"] = FakeLights()
+        self.hub.upsert("lutron.device_5", kind="light", name="Under Cabinet", integration="lutron")
+        await self.hub.update("lutron.device_5", state="off", attrs={"dimmable": True})
+        self.hub.upsert("matter.node9_1_buttons", kind="remote", name="Dual button", integration="matter")
+        await self.hub.update("matter.node9_1_buttons", state="idle", attrs={"events": [
+            "button_1", "button_1_long", "button_1_released", "button_2", "button_2_long", "button_2_released"]})
+        fast = mock.patch.object(engine_mod, "RAMP_EVERY_S", 0.03)
+        fast.start()
+        self.addCleanup(fast.stop)
+
+    def automation(self, event, command):
+        return self.engine.save({"name": f"{event} {command}", "notify": {"enabled": False},
+                                 "trigger": {"type": "event", "entity": "matter.node9_1_buttons", "event": event},
+                                 "actions": [{"entity": "lutron.device_5", "command": command}]})
+
+    async def settle(self):
+        """Wait until no ramp is running."""
+        await asyncio.sleep(0.05)  # the event reaches the engine first
+        for _ in range(200):
+            if not self.engine._ramps:
+                return
+            await asyncio.sleep(0.01)
+        self.fail("the ramp never stopped")
+
+    async def test_described_in_words_and_short_press_stays_on_off(self):
+        auto = {"trigger": {"type": "event", "entity": "matter.node9_1_buttons", "event": "button_1_long"},
+                "notify": {"enabled": False}, "actions": [{"entity": "lutron.device_5", "command": "brighten_while_held"}]}
+        out = self.engine.describe(auto)
+        self.assertEqual(out["errors"], [])
+        self.assertEqual(out["summary"], "When the Button 1 button on Dual button is pressed and held, "
+                                         "brighten Under Cabinet while held.")
+        self.automation("button_1", "turn_on")
+        self.automation("button_1_long", "brighten_while_held")
+        await self.hub.emit("matter.node9_1_buttons", "button_1", {})
+        await asyncio.sleep(0.05)
+        self.assertEqual(self.calls, [("turn_on", None)])  # a short press is just the short press's action
+
+    async def test_brightens_an_off_light_from_low_until_let_go(self):
+        self.automation("button_1_long", "brighten_while_held")
+        await self.hub.emit("matter.node9_1_buttons", "button_1_long", {})
+        await asyncio.sleep(0.1)
+        await self.hub.emit("matter.node9_1_buttons", "button_1_released", {})
+        await self.settle()
+        steps = [v for c, v in self.calls]
+        self.assertTrue(all(c == "set_brightness" for c, _ in self.calls), self.calls)
+        self.assertGreaterEqual(len(steps), 2)
+        self.assertEqual(steps, list(range(10, 10 * len(steps) + 1, 10)))  # on low, then up a step at a time
+        n = len(self.calls)
+        await asyncio.sleep(0.15)
+        self.assertEqual(len(self.calls), n)  # let go: no more steps
+        ev = self.store.events(5, kind="command")[0]
+        self.assertEqual((ev["title"], ev["body"]), (f"Brightened Under Cabinet to {steps[-1]}%", "by Newman"))
+
+    async def test_dims_to_the_lowest_level_and_never_turns_it_off(self):
+        await self.hub.update("lutron.device_5", state="on", attrs={"brightness": 35})
+        self.automation("button_2_long", "dim_while_held")
+        await self.hub.emit("matter.node9_1_buttons", "button_2_long", {})
+        await self.settle()  # stops by itself at the bottom, still held
+        self.assertEqual(self.calls, [("set_brightness", 25), ("set_brightness", 15), ("set_brightness", 5),
+                                      ("set_brightness", 1)])
+        # An off light stays off.
+        self.calls.clear()
+        await self.hub.update("lutron.device_5", state="off")
+        await self.hub.emit("matter.node9_1_buttons", "button_2_long", {})
+        await asyncio.sleep(0.05)
+        await self.settle()
+        self.assertEqual(self.calls, [])
+
+    async def test_stops_at_the_top_and_after_the_safety_cap(self):
+        await self.hub.update("lutron.device_5", state="on", attrs={"brightness": 85})
+        self.automation("button_1_long", "brighten_while_held")
+        await self.hub.emit("matter.node9_1_buttons", "button_1_long", {})
+        await self.settle()
+        self.assertEqual(self.calls, [("set_brightness", 95), ("set_brightness", 100)])
+        # The "let go" never arrives: it stops after RAMP_MAX_S anyway.
+        self.calls.clear()
+        await self.hub.update("lutron.device_5", attrs={"brightness": 1})
+        with mock.patch.object(engine_mod, "RAMP_MAX_S", 0.1):
+            await self.hub.emit("matter.node9_1_buttons", "button_1_long", {})
+            await self.settle()
+        self.assertTrue(2 <= len(self.calls) < 9, self.calls)
+        self.assertLess(self.calls[-1][1], 100)
+
+    async def test_let_go_at_once_is_one_step(self):
+        await self.hub.update("lutron.device_5", state="on", attrs={"brightness": 50})
+        self.automation("button_1_long", "brighten_while_held")
+        await self.hub.emit("matter.node9_1_buttons", "button_1_long", {})
+        await self.hub.emit("matter.node9_1_buttons", "button_1_released", {})  # handled alongside it
+        await asyncio.sleep(0.05)
+        await self.settle()
+        self.assertEqual(self.calls, [("set_brightness", 60)])
 
 
 class MerossSetupTests(Base):

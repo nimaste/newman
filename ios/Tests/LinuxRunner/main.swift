@@ -149,6 +149,9 @@ if let vac = entities.first(where: { $0.kind == "vacuum" }), let k = kinds["vacu
 }
 eq(DeviceLogic.humanize("linkQuality"), "Link quality", "humanize")
 eq(DeviceLogic.shortEventLabel("“Favorite” is pressed"), "Favorite", "short event label")
+eq(DeviceLogic.shortEventLabel("“Button 1” is long-pressed"), "Button 1", "a long press names its button")
+eq(DeviceLogic.shortEventLabel("“Button 1” is let go after being long-pressed"), "Button 1", "so does letting go")
+eq(DeviceLogic.shortEventLabel("Person detected"), "Person", "other events keep their wording")
 eq(DeviceLogic.countList(["person": .number(2), "car": .number(1), "dog": .number(0)]), ["1 car", "2 people"], "counts")
 
 // MARK: dashboard -> phone grid

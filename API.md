@@ -52,6 +52,11 @@ tablet's old sign-in left behind by a new one stays listed but isn't live. Expir
 * `version` — the hub's `APP_VERSION`: the release tag the image was built from (`dev` for a local build).
 * `activeState` — the state an automation condition means by "is on" (unlocked, open, motion…).
 * `sensitive` commands (unlock, disarm, open garage) need Face ID / fingerprint on a phone.
+* `automationCommands` — what only an automation's actions can do with one (never a device control):
+  lights have `brighten_while_held` / `dim_while_held` (`step`, `min`, `max`: the level moves by `step` and
+  never goes below `min`, so dimming never turns a light off).
+* An event's `ends` — for a button held down (`button_1_long`), the event that says it was let go
+  (`button_1_released`); a "…while held" action stops on it.
 
 ## Connecting an app
 
@@ -886,6 +891,11 @@ outside them is saved as `skipped` ("Outside its dates…"). `nextRun` skips ahe
 **Actions** — commands run when it fires, each on one or more devices:
 `"actions": [{"entities": ["lutron.device_5", "lutron.device_6"], "command": "turn_on", "value"?, "for"?: {"amount": 2, "unit": "minutes|hours|days|seconds"}}]`.
 With `for`, Newman puts each device back afterwards (unless someone changed it by hand). Older actions with a single `"entity"` still work.
+`"command"` may also be one of the kind's `automationCommands`: `brighten_while_held` / `dim_while_held` on a
+dimmable light step its brightness by 10 % every 0.4 s (each step sent only after the last one), from the
+event that started the automation until that event's `ends` event (`button_1_long` → `button_1_released`) or
+10 s, whichever is first, and stop at 100 % / 1 %. Brightening an off light starts it at 10 %; dimming an off
+light leaves it off. No `value` or `for`. Each run logs one `command` event ("Brightened Kitchen to 70%").
 
 **Live status** ("Show a live status on phones") — `"live": {"enabled": true, "entities": [ids], "title": "", "recipients": null | [person ids], "until": …}`
 (`title` "" = the devices' names; `recipients` null = everyone). `until` is one of

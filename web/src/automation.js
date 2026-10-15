@@ -3,7 +3,7 @@
 // per-block summaries below are only UI labels for the step cards.
 
 import { daysText, fmtHHMM, joinList } from './format.js';
-import { activeLabel, commandCurrent, eventsFor, stateChoices, stateLabelOf, valueText } from './model.js';
+import { actionCommands, activeLabel, commandCurrent, eventsFor, stateChoices, stateLabelOf, valueText } from './model.js';
 
 export const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 export const DEFAULT_FOLLOW_MESSAGE = '{person} {action} {devices}.';
@@ -321,9 +321,13 @@ function baseActionLabel(x, hub) {
   const ents = ids.map((i) => hub.entitiesById[i]);
   const e = ents.find(Boolean);
   const k = e && hub.kindsById[e.kind];
-  const c = k && (k.commands || []).find((y) => y.id === x.command);
+  const c = actionCommands(k).find((y) => y.id === x.command);
   const name = ids.length ? joinList(ents.map((d) => (d ? d.name : 'a missing device')), 'and') : 'a device';
   if (c && c.takesValue) return `${c.label} · ${name}: ${valueText(c, k, x.value, e)}`;
+  if (c && c.automationOnly) {
+    const [verb, ...rest] = c.label.split(' '); // "Brighten Kitchen while held"
+    return [verb, name, ...rest].join(' ');
+  }
   return `${c ? c.label : x.command} ${name}`;
 }
 

@@ -73,12 +73,13 @@ enum DeviceLogic {
 
     static func shortEventLabel(_ label: String) -> String {
         let s = label
-        if let open = s.first, (open == "“" || open == "\""), let r = s.range(of: " is pressed", options: [.caseInsensitive, .backwards]),
-           r.upperBound == s.endIndex {
-            var inner = String(s[s.startIndex..<r.lowerBound])
-            inner.removeFirst()
-            if let last = inner.last, last == "”" || last == "\"" { inner.removeLast() }
-            return inner
+        // "“Button 1” is pressed" / "“Button 1” is long-pressed" -> "Button 1"
+        if let open = s.first, (open == "“" || open == "\""), s.lowercased().hasSuffix("pressed") {
+            let body = s.index(after: s.startIndex)
+            if let close = s[body...].firstIndex(where: { $0 == "”" || $0 == "\"" }), close > body,
+               s[s.index(after: close)...].lowercased().hasPrefix(" is ") {
+                return String(s[body..<close])
+            }
         }
         for suffix in [" pressed", " detected", " entered", " comes in"] {
             if s.lowercased().hasSuffix(suffix) {
@@ -116,7 +117,8 @@ enum DeviceLogic {
         let label = hubLabel.isEmpty ? "—" : hubLabel
 
         if isRemote(e, kind) {
-            let names = eventsFor(e, kind).map { shortEventLabel($0.label ?? $0.id) }
+            var names: [String] = []  // a long press is the same button
+            for n in eventsFor(e, kind).map({ shortEventLabel($0.label ?? $0.id) }) where !names.contains(n) { names.append(n) }
             let allPress = eventsFor(e, kind).allSatisfy { ($0.label ?? "").lowercased().contains("pressed") }
             let word = allPress ? "button" : "event"
             if names.isEmpty { return "No \(word)s" }
