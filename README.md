@@ -112,7 +112,8 @@ bridge network.
 - **Accounts** — admin, family, guest and wall-tablet roles. Admins manage connections, accounts and settings; family
   members use devices, automations and dashboards. A **guest** uses the house like family but isn't one of
   the people — never notified, never on People, can't see where anyone is. Sessions use a cookie (browser) or a Bearer token
-  (apps); passwords are stored with scrypt.
+  (apps); passwords are stored with scrypt. The dashboard and the wall page have separate cookies, so signing in on
+  the wall page in a browser never signs that browser's dashboard out (or the other way round).
 - **Home vs. away** — a request from a private address (your LAN, your home VPN) is *home*, whether
   it comes straight to Newman or through the reverse proxy (matching the proxy's own "no certificate
   needed on the LAN" exclusion). Everything else is *away*. Only the reverse proxy's address range is
@@ -129,9 +130,11 @@ bridge network.
   it signs in only on a wall tablet, has its own dashboard (an admin lays it out), can use devices but
   never change settings, and isn't a person — never notified, never on People. Whether it can see
   where people are is its own setting (*Can see where people are*, on by default — see
-  [Where people are](#where-people-are)). Signing in on a tablet
-  with your own account also works (it then shows *your* dashboard). To switch accounts, press and
-  hold the clock on the wall screen → **Sign out**. Renaming the account (the pencil by its name, or
+  [Where people are](#where-people-are)). The wall page signs in only with a wall tablet account:
+  a person's own account is refused there (*This page is for wall tablet accounts - sign in with the
+  tablet's own account (add one under Accounts)*), and a wall sign-in left from before that, or of an
+  account whose role is changed from Wall tablet, ends (its battery and music player go). To switch
+  accounts, press and hold the clock on the wall screen → **Sign out**. Renaming the account (the pencil by its name, or
   **⋯ → Rename…**) renames its battery and music player too — unless you renamed those yourself.
   Both last only while the account is signed in on a wall tablet: signing it out there removes them
   ("Removed Chris's tablet: no longer signed in on a tablet" in Activity; see
@@ -974,8 +977,7 @@ the photo, or the first initial on their colour.
 - **Wall tablets** see people only with their account's **Can see where people are** (Household →
   Accounts → the tablet; on by default). With it on, a tablet sees everyone sharing by *their choice*,
   and *Required* people whose *Seen by* is everyone or ticks that tablet. Turned off, its Family tile
-  shows everyone as *Not sharing*. Tablets never share a location themselves, and a household member
-  signed in on a wall tablet doesn't bring their own view to the wall.
+  shows everyone as *Not sharing*. Tablets never share a location themselves.
 - **The map** (Household → Map and Places, and the wall's People map) is **Apple Maps** when the hub
   has a MapKit JS key, and OpenFreeMap otherwise (or whenever Apple's map can't load — blocked, offline,
   key refused — the page switches to it by itself). The wall's Family tile has a **Map look** setting:
@@ -1698,7 +1700,7 @@ docker run --rm --network none -v "$PWD/server/tests:/app/tests" newman:dev \
   python -m unittest discover -s tests
 ```
 
-The tests (582 of them, a little over 2 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
+The tests (655 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
 printers, Roborock…), so they need no network or credentials. API reference: [`API.md`](API.md). The web
 page's own rules (when a page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
 App tests: [`android/README.md`](android/README.md#tests), [`ios/README.md`](ios/README.md#build-on-a-mac).

@@ -41,7 +41,11 @@ DEFAULT_SETTINGS = {
     "certHeader": "X-Client-Cert-Fingerprint",
     "certSubjectHeader": "X-Client-Cert-Subject",
 }
+# The dashboard's sign-in and a wall page's are separate cookies, so signing in on the wall page in a
+# browser never replaces that browser's dashboard sign-in (or the other way round). Wall tablets signed
+# in before the wall had its own cookie keep theirs in SESSION_COOKIE; it still works (api.token_of).
 SESSION_COOKIE = "newman_session"
+WALL_COOKIE = "newman_wall"
 SESSION_DAYS = {"browser": 30, "app": 365, "tablet": 365}
 SHORT_BROWSER_HOURS = 12
 # A sign-in counts as in use ("live") when it was seen this recently. A wall tablet that signs in again
@@ -56,9 +60,17 @@ def session_live(s: dict, now: float) -> bool:
 
 
 def session_accepted(s: dict, user: dict | None, now: float) -> bool:
-    """Sign-in still accepts it: not expired (expires_at slides forward each time it's used), and its
-    account is still there and not disabled."""
-    return s["expires_at"] >= now and bool(user) and not user["disabled"]
+    """Sign-in still accepts it: not expired (expires_at slides forward each time it's used), its
+    account is still there and not disabled, and a wall-tablet sign-in is a wall tablet account's (one
+    made with a person's account before the wall page refused those, or whose account stopped being a
+    wall tablet's, no longer counts)."""
+    return s["expires_at"] >= now and bool(user) and not user["disabled"] and \
+        (s["kind"] != "tablet" or user["role"] == "tablet")
+
+
+def cookie_for(kind: str) -> str:
+    """The cookie a sign-in of this kind lives in: a wall tablet's its own, everything else the dashboard's."""
+    return WALL_COOKIE if kind == "tablet" else SESSION_COOKIE
 
 # -- passwords & PINs ---------------------------------------------------------------------------
 

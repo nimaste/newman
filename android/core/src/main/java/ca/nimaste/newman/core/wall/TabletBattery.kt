@@ -94,14 +94,15 @@ data class TabletBattery(
             )
         }
 
-        /** True when a cookie header ("a=1; newman_session=x") carries the hub's session. */
+        /** True when a cookie header ("a=1; newman_wall=x") carries the hub's session. */
         fun hasSession(cookieHeader: String?): Boolean =
             cookieHeader?.split(';')?.any { c ->
                 val parts = c.trim().split('=', limit = 2)
-                parts.size == 2 && parts[0] == SESSION_COOKIE && parts[1].isNotEmpty()
+                parts.size == 2 && parts[0] in SESSION_COOKIES && parts[1].isNotEmpty()
             } == true
 
-        const val SESSION_COOKIE = "newman_session"
+        /** The wall page's own cookie, and the dashboard's - where a wall signed in before it had its own keeps it. */
+        val SESSION_COOKIES = setOf("newman_wall", "newman_session")
     }
 }
 

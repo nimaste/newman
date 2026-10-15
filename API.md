@@ -3,8 +3,16 @@
 The contract between the hub (`server/`), the web dashboard (`web/`) and the
 iOS / Android apps. JSON everywhere; times are Unix seconds (float) unless noted.
 
-Every `/api/*` call needs a signed-in session: the `newman_session` cookie (browser) or
-`Authorization: Bearer <token>` (apps), from `POST /api/auth/login`. Open without one:
+Every `/api/*` call needs a signed-in session: the `newman_session` cookie (browser), the `newman_wall`
+cookie (the wall page, `kind: "tablet"`) or `Authorization: Bearer <token>` (apps, and the wall page), from
+`POST /api/auth/login`. A Bearer token wins; without one the dashboard's `newman_session` wins over
+`newman_wall`, so the two sign-ins share a browser without replacing each other (a wall tablet signed in
+before `newman_wall` keeps its sign-in in `newman_session`; signing the wall in again moves it).
+`kind: "tablet"` takes only an account with role `tablet` (403 "This page is for wall tablet accounts - sign
+in with the tablet's own account (add one under Accounts)"), and a `tablet` account only `kind: "tablet"`
+(403 "This is a wall tablet's account - sign in with it on the wall tablet"). A tablet sign-in of an account
+that isn't a wall tablet's (from before, or its role changed) isn't accepted and is ended.
+`POST /api/auth/logout` clears only that sign-in's own cookie. Open without one:
 `/health`, `/api/meta`, `/api/hello`, `/api/auth/state`, `/api/auth/login` and `/api/auth/setup` (first run, from
 home only). Away from home the admin's sign-in policy applies (client certificate via Caddy mTLS
 and/or a 2FA code - see README). `/api/public/*` is authenticated per request by HMAC tokens minted

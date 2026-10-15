@@ -171,7 +171,7 @@ image and the Android APKs (README → Development → Releases has every secret
   keeps retrying it every 30 s, so a hub restart can't move it to the outside address and break the
   page's session. With no
   saved hub it opens on **Connect to your Newman**; while the wall page shows its own sign-in (no
-  `newman_session` cookie for the address in use) a **Server** button sits bottom-right, and the
+  wall sign-in for the address in use) a **Server** button sits bottom-right, and the
   can't-reach screen and the hidden settings (**Change server…**) open it too. The page's session
   cookie belongs to one address, so the page asks for a sign-in once more after you change the
   wall to the other address on the Server screen. The QR scanner uses the iPad's front camera.

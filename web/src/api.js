@@ -29,9 +29,10 @@ export function toast(message, kind = 'info') {
   emit({ type: 'toast', message, kind });
 }
 
-// The wall tablet signs in as a "tablet" session: the hub sets a cookie, and the token it also returns
-// is kept as a fallback (Authorization: Bearer). Only the wall uses it — a bearer token wins over the
-// cookie, so the desktop dashboard must never send it.
+// The wall tablet signs in as a "tablet" session: the hub sets the wall's own cookie (newman_wall, apart
+// from the dashboard's newman_session, so one never replaces the other in a browser), and the token it
+// also returns is sent as Authorization: Bearer. Only the wall uses it — a bearer token wins over the
+// cookies (with none, the dashboard's cookie wins), so the desktop dashboard must never send it.
 const TABLET_TOKEN_KEY = 'newman.tablet.token';
 let useTabletToken = false;
 export function enableTabletToken(on) {

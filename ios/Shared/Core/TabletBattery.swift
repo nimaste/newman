@@ -21,7 +21,8 @@ struct TabletBattery: Equatable, Encodable {
     }
 
     static let path = "api/tablet/battery"
-    static let sessionCookie = "newman_session"
+    /// The wall page's own cookie, and the dashboard's - where a wall signed in before it had its own keeps it.
+    static let sessionCookies: Set<String> = ["newman_wall", "newman_session"]
 
     /// From UIDevice: `batteryLevel` (0...1, or -1 when unknown, e.g. monitoring off or the
     /// simulator) and `batteryState.rawValue` (0 unknown, 1 unplugged, 2 charging, 3 full). iOS

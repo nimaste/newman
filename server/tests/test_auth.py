@@ -82,6 +82,13 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status, 200)
         return r
 
+    async def add_tablet(self, username="hallway", name="Hallway"):
+        """A wall tablet's own account (what the wall page signs in with); its id."""
+        r = await self.client.post("/api/users", json={"username": username, "name": name, "role": "tablet",
+                                                       "password": "wall tablet pass"})
+        self.assertEqual(r.status, 200, await r.text())
+        return (await r.json())["id"]
+
     async def login(self, username="chris", password="correct horse", headers=None, **extra):
         # A fresh browser per sign-in, so cookies from one don't leak into the next.
         c = Browser(self.client)
@@ -181,7 +188,8 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tablet_sessions_cant_configure_and_need_a_pin_to_unlock(self):
         await self.setup_admin()
-        c, r, body = await self.login(kind="tablet", deviceName="Hallway tablet")
+        await self.add_tablet()
+        c, r, body = await self.login("hallway", "wall tablet pass", kind="tablet", deviceName="Hallway tablet")
         self.assertTrue(body["token"])
         tab = {"Authorization": "Bearer " + body["token"]}
         self.assertEqual((await c.get("/api/entities", headers=tab)).status, 200)
@@ -195,7 +203,7 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         r = await c.post("/api/entities/fake.side/command", json={"command": "unlock"}, headers=tab)
         self.assertEqual(r.status, 403)
         self.assertIn("PIN", (await r.json())["error"])
-        await self.client.post("/api/auth/pin", json={"password": "correct horse", "pin": "2468"})
+        await c.post("/api/auth/pin", json={"password": "wall tablet pass", "pin": "2468"}, headers=tab)
         r = await c.post("/api/entities/fake.side/command", json={"command": "unlock", "pin": "1111"}, headers=tab)
         self.assertEqual(r.status, 403)
         r = await c.post("/api/entities/fake.side/command", json={"command": "unlock", "pin": "2468"}, headers=tab)
@@ -205,8 +213,8 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status, 200)
         self.assertEqual(self.locks.calls, [("fake.side", "unlock"), ("fake.side", "lock")])
         await c.close()
-        # The admin sees it in their devices and can sign it out.
-        sessions = await (await self.client.get("/api/auth/sessions")).json()
+        # The admin sees it among the signed-in devices and can sign it out.
+        sessions = await (await self.client.get("/api/auth/sessions?all=1")).json()
         tablet = next(s for s in sessions if s["kind"] == "tablet")
         self.assertEqual(tablet["deviceName"], "Hallway tablet")
         await self.client.delete(f"/api/auth/sessions/{tablet['id']}")
@@ -218,14 +226,15 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         # A wall tablet that signs in again leaves its old sign-in behind (valid for a year): listed,
         # but not live, so "shown on" lists skip it. Expired sign-ins are removed altogether.
         await self.setup_admin()
+        await self.add_tablet()
         for name in ("Kitchen tablet", "Old tablet", "Expired tablet"):
-            c, r, _ = await self.login(kind="tablet", deviceName=name)
+            c, r, _ = await self.login("hallway", "wall tablet pass", kind="tablet", deviceName=name)
             self.assertEqual(r.status, 200)
             await c.close()
         now, by = time.time(), {s["device_name"]: s["id"] for s in self.h.store.sessions()}
         self.h.store._exec("UPDATE sessions SET last_seen = ? WHERE id = ?", (now - 5 * 86400, by["Old tablet"]))
         self.h.store._exec("UPDATE sessions SET expires_at = ? WHERE id = ?", (now - 60, by["Expired tablet"]))
-        sessions = await (await self.client.get("/api/auth/sessions")).json()
+        sessions = await (await self.client.get("/api/auth/sessions?all=1")).json()
         self.assertEqual({s["deviceName"]: s["live"] for s in sessions},
                          {"Browser": True, "Kitchen tablet": True, "Old tablet": False})
         self.assertNotIn("Expired tablet", {s["device_name"] for s in self.h.store.sessions()})
@@ -263,7 +272,8 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.h.hub.upsert("fake.stat", kind="thermostat", name="Main Floor", integration="fake")
         await self.h.hub.update("fake.stat", state="cool", attrs={"currentTemp": 22.6, "targetTemp": 23})
         # A tablet's first visit lays out a starter dashboard from the house's devices.
-        c, r, body = await self.login(kind="tablet", deviceName="Hallway tablet")
+        hallway = await self.add_tablet()
+        c, r, body = await self.login("hallway", "wall tablet pass", kind="tablet", deviceName="Hallway tablet")
         tab = {"Authorization": "Bearer " + body["token"]}
         d = await (await c.get("/api/dashboards/current", headers=tab)).json()
         self.assertEqual([p["name"] for p in d["pages"]], ["Today", "Overview", "Security", "Lights", "Climate"])
@@ -286,8 +296,8 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((saved["names"], saved["pages"][0]["tiles"][0]["config"]["textSize"]), ({"fake.stat": "Upstairs"}, 85))
         self.assertEqual(self.h.hub.get("fake.stat").name, "Main Floor")  # the device itself keeps its name
         # A second dashboard, pinned to the tablet.
-        other = await (await self.client.post("/api/dashboards", json={"name": "Kitchen"})).json()
-        tablet = next(s for s in await (await self.client.get("/api/auth/sessions")).json() if s["kind"] == "tablet")
+        other = await (await self.client.post("/api/dashboards", json={"name": "Kitchen", "userId": hallway})).json()
+        tablet = next(s for s in await (await self.client.get("/api/auth/sessions?all=1")).json() if s["kind"] == "tablet")
         await self.client.patch(f"/api/auth/sessions/{tablet['id']}", json={"dashboardId": other["id"]})
         self.assertEqual((await (await c.get("/api/dashboards/current", headers=tab)).json())["name"], "Kitchen")
         await c.close()

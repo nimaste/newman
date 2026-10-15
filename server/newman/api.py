@@ -228,7 +228,11 @@ def build_app(h: "Newman") -> web.Application:
                                                                                                   "/api/music/cover/")):
             if req.query.get("token"):
                 return req.query["token"]  # native apps' websockets can't always send headers
-        return req.cookies.get(A.SESSION_COOKIE)
+        # The dashboard's cookie first, so the dashboard is always its own sign-in in a browser that also
+        # has a wall page's; the wall page sends its token (above) and needs its cookie only without one
+        # (its pictures and video, storage blocked). A wall tablet signed in before the wall cookie keeps
+        # its sign-in in the dashboard's cookie - it still works.
+        return req.cookies.get(A.SESSION_COOKIE) or req.cookies.get(A.WALL_COOKIE)
 
     def find_session(req: web.Request) -> tuple[dict[str, Any], dict[str, Any]] | None:
         tok = token_of(req)
@@ -307,8 +311,12 @@ def build_app(h: "Newman") -> web.Application:
                              "remember": int(remember or kind != "browser"), "cert": o.cert})
         resp = web.json_response({"ok": True, "user": user_json(u), "token": token if kind != "browser" else None})
         if kind in ("browser", "tablet"):  # a tablet page's pictures and video authenticate by cookie too
-            resp.set_cookie(A.SESSION_COOKIE, token, httponly=True, samesite="Lax", path="/",
+            resp.set_cookie(A.cookie_for(kind), token, httponly=True, samesite="Lax", path="/",
                             secure=req.secure or o.relayed, max_age=life if remember or kind == "tablet" else None)
+        old = req.cookies.get(A.SESSION_COOKIE)
+        was = h.store.session_by_token(A.token_hash(old)) if kind == "tablet" and old else None
+        if was and was["kind"] == "tablet":
+            resp.del_cookie(A.SESSION_COOKIE, path="/")  # a wall tablet's sign-in from before the wall cookie
         return resp, token
 
     @r.get("/api/auth/state")
@@ -380,6 +388,9 @@ def build_app(h: "Newman") -> web.Application:
         kind = data.get("kind") if data.get("kind") in A.KINDS else "browser"
         if u["role"] == "tablet" and kind != "tablet":
             return _err(403, "This is a wall tablet's account - sign in with it on the wall tablet")
+        if kind == "tablet" and u["role"] != "tablet":
+            return _err(403, "This page is for wall tablet accounts - sign in with the tablet's own account "
+                             "(add one under Accounts)")
         throttle.clear(o.ip, username, o.home)
         device = str(data.get("deviceName", "")).strip() or {"browser": "Browser", "app": "Newman app",
                                                              "tablet": "Wall tablet"}[kind]
@@ -396,7 +407,10 @@ def build_app(h: "Newman") -> web.Application:
             live.tokens.prune()  # nor its live statuses
             forget_signed_out_tablets()  # the account's last wall tablet signed out: its devices go
         resp = web.json_response({"ok": True})
-        resp.del_cookie(A.SESSION_COOKIE, path="/")
+        for name in (A.SESSION_COOKIE, A.WALL_COOKIE):  # only this sign-in's: the browser's other one stays
+            tok = req.cookies.get(name)
+            if tok and A.token_hash(tok) == req["session"].get("token_hash"):
+                resp.del_cookie(name, path="/")
         return resp
 
     @r.post("/api/auth/password")
@@ -585,12 +599,19 @@ def build_app(h: "Newman") -> web.Application:
     def forget_signed_out_tablets() -> None:
         """A wall tablet's devices (its battery, its music player) belong to the account it's signed in with,
         and exist only while that account has a wall-tablet sign-in that sign-in still accepts - however
-        quiet or asleep the tablet is. Called on sign-out, an ending sign-in, an account removed or
-        disabled, at start and every hour (sign-ins that expired). Each connection that keeps devices per
-        tablet account says which accounts (tablet_accounts) and drops one's devices and saved data
-        (forget_account). Smart charging settings stay: signing the account in again brings them back."""
+        quiet or asleep the tablet is. Called on sign-out, an ending sign-in, an account removed,
+        disabled or no longer a wall tablet's, at start and every hour (sign-ins that expired). Each
+        connection that keeps devices per tablet account says which accounts (tablet_accounts) and drops
+        one's devices and saved data (forget_account). Smart charging settings stay: signing the account
+        in again brings them back. A wall-tablet sign-in of an account that isn't a wall tablet's (made
+        with a person's account before the wall page refused those, or the account's role changed) ends
+        here too."""
         now = time.time()
         users = {u["id"]: u for u in h.store.users()}
+        for s in h.store.sessions():
+            u = users.get(s["user_id"])
+            if s["kind"] == "tablet" and u and u["role"] != "tablet":
+                h.store.remove_session(s["id"])
         signed_in = {s["user_id"] for s in h.store.sessions()
                      if s["kind"] == "tablet" and A.session_accepted(s, users.get(s["user_id"]), now)}
         names: dict[str, str] = {}
@@ -684,7 +705,7 @@ def build_app(h: "Newman") -> web.Application:
             await rename_account_devices(uid, u["name"], changes["name"])
         if changes.get("disabled") or "password_hash" in changes:
             h.store.remove_sessions(uid)
-        forget_signed_out_tablets()  # disabled, a new password or a new role signs its wall tablet out
+        forget_signed_out_tablets()  # disabled, a new password or no longer a wall tablet's signs its wall tablet out
         now = h.store.user(uid)
         if was_sharing and not loc.sharing(now):
             loc.forget(u.get("person_id"))  # nothing kept once they stop sharing

@@ -273,9 +273,12 @@ class LocationTests(unittest.IsolatedAsyncioTestCase):
         st, me = await self.call("GET", "/api/me/location", kitchen)
         self.assertEqual((me["mode"], me["enabled"]), ("off", False))
         self.assertEqual(await self.call("GET", "/api/people", self.guest), (200, []))
-        # A household member signed in on a wall tablet doesn't bring their own view to the wall.
-        on_wall = await self.token("marlina", kind="tablet")
-        self.assertFalse((await self.person(on_wall, "Marlina"))["sharing"])
+        # A household member can't sign the wall page in with their own account (it takes a wall tablet's).
+        s = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(unsafe=True))
+        r = await s.post(self.client.make_url("/api/auth/login"),
+                         json={"username": "marlina", "password": "another pass", "kind": "tablet"})
+        await s.close()
+        self.assertEqual(r.status, 403)
         # A disabled tablet sees nobody.
         self.h.store.update_user(kitchen_u["id"], disabled=1)
         self.assertFalse(self.loc.can_see(self.h.store.user(kitchen_u["id"]), {"kind": "tablet"}, self.pid["Marlina"]))

@@ -62,6 +62,8 @@ class TabletBatteryTest {
     fun sessionCookie() {
         assertTrue(TabletBattery.hasSession("CF_Authorization=x; newman_session=abc"))
         assertTrue(TabletBattery.hasSession("newman_session=abc"))
+        assertTrue(TabletBattery.hasSession("CF_Authorization=x; newman_wall=abc"))
+        assertFalse(TabletBattery.hasSession("newman_wall="))
         assertFalse(TabletBattery.hasSession("newman_session="))
         assertFalse(TabletBattery.hasSession("CF_Authorization=x"))
         assertFalse(TabletBattery.hasSession(null))

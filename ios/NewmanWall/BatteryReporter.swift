@@ -6,7 +6,7 @@ import WebKit
 /// Tells the hub how the tablet's battery is doing (POST /api/tablet/battery): when the wall
 /// becomes active and the page is signed in, every 5 minutes, and early when charging starts/stops
 /// or the level moves 5 points. The session is the wall page's own: its cookies for the hub
-/// (newman_session, and Cloudflare's CF_Authorization) are read from the web view's cookie store;
+/// (newman_wall, and Cloudflare's CF_Authorization) are read from the web view's cookie store;
 /// without a session cookie for the current address (the address changed) the tablet's token is sent
 /// instead (Authorization: Bearer - kept from the page by keepToken, works on any address of the hub).
 /// Requests go through NewmanURLSession, which presents the client certificate; the Cloudflare
@@ -132,7 +132,7 @@ final class BatteryReporter {
                 && (!c.isSecure || https)
                 && (c.expiresDate.map { $0 > Date() } ?? true)
         }
-        let hasSession = cookies.contains(where: { $0.name == TabletBattery.sessionCookie && !$0.value.isEmpty })
+        let hasSession = cookies.contains(where: { TabletBattery.sessionCookies.contains($0.name) && !$0.value.isEmpty })
         // The page's session cookie when there is one for this address; else the tablet's token.
         guard hasSession || ConnectionStore.shared.token != nil else { return .notSignedIn }
         var req = NewmanURLSession.request(url, method: "POST", body: reading.json, includeToken: !hasSession)

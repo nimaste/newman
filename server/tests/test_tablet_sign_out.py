@@ -1,8 +1,8 @@
 """A wall tablet's devices (its battery and its music player) last only while its account has a wall-tablet
-sign-in that sign-in still accepts: signing out, an admin ending the sign-in, the account removed or the
-sign-in expired (the check at start and every hour) removes them and their saved data - without a smart
-charging alert or a plug switched, and keeping the account's smart charging settings. A tablet that's
-signed in keeps them, however quiet it is."""
+sign-in that sign-in still accepts: signing out, an admin ending the sign-in, the account removed, no longer
+a wall tablet's or the sign-in expired (the check at start and every hour) removes them and their saved data -
+without a smart charging alert or a plug switched, and keeping the account's smart charging settings. A
+tablet that's signed in keeps them, however quiet it is."""
 import asyncio
 import json
 import os
@@ -109,18 +109,23 @@ class TabletSignOutTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(self.h.hub.get(tab))
         self.assertEqual(self.plugs.calls, [("fake.plug", "turn_on")])
 
+    async def add_hall(self):
+        r = await self.client.post("/api/users", json={"username": "hall", "name": "Hall", "role": "tablet",
+                                                       "password": "wall tablet pass"})
+        return (await r.json())["id"]
+
     async def test_an_admin_ending_the_sign_in_removes_them(self):
-        # Someone's own account on a wall tablet for a while (as happened with the kitchen tablet).
-        c, auth = await self.sign_in("chris", "correct horse")
+        hall = await self.add_hall()
+        c, auth = await self.sign_in("hall", "wall tablet pass")
         await self.use(c, auth, {**LOW, "level": 50})
-        self.assertIsNotNone(self.h.hub.get("tablets." + self.admin))
-        sid = self.tablet_sessions(self.admin)[0]["id"]
+        self.assertIsNotNone(self.h.hub.get("tablets." + hall))
+        sid = self.tablet_sessions(hall)[0]["id"]
         r = await self.client.delete(f"/api/auth/sessions/{sid}")
         self.assertEqual(r.status, 200)
         await asyncio.sleep(0.05)
-        self.assertIsNone(self.h.hub.get("tablets." + self.admin))
-        self.assertIsNone(self.h.hub.get("navidrome." + self.admin))
-        self.assertNotIn(self.admin, self.music.players)
+        self.assertIsNone(self.h.hub.get("tablets." + hall))
+        self.assertIsNone(self.h.hub.get("navidrome." + hall))
+        self.assertNotIn(hall, self.music.players)
         # The admin's own browser sign-in is untouched (it isn't a wall tablet's).
         self.assertEqual((await self.client.get("/api/auth/state")).status, 200)
         self.assertTrue((await (await self.client.get("/api/auth/state")).json())["signedIn"])
@@ -143,7 +148,8 @@ class TabletSignOutTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await c2.post("/api/auth/logout", headers=auth2)).status, 200)
         self.assertIsNotNone(self.h.hub.get(tab))
         # Another account signing out of a wall tablet leaves them alone; so does editing the account.
-        c3, auth3 = await self.sign_in("chris", "correct horse")
+        await self.add_hall()
+        c3, auth3 = await self.sign_in("hall", "wall tablet pass")
         self.assertEqual((await c3.post("/api/auth/logout", headers=auth3)).status, 200)
         self.assertEqual((await self.client.patch(f"/api/users/{self.kitchen}", json={"name": "Kitchen"})).status, 200)
         self.assertIsNotNone(self.h.hub.get(tab))
@@ -193,6 +199,43 @@ class TabletSignOutTests(unittest.IsolatedAsyncioTestCase):
         self.h.forget_signed_out_tablets()
         self.assertIsNone(self.h.hub.get(f"{tablets_id}.{self.kitchen}"))
         self.assertNotIn(self.kitchen, self.saved(tf))
+
+    async def test_a_wall_sign_in_of_an_account_that_isnt_a_wall_tablets_stops_and_its_devices_go(self):
+        # A wall sign-in left from before the wall page took only wall tablet accounts (someone signed it
+        # in with their own): it no longer counts anywhere, and the hourly check ends it and removes its
+        # battery and music player - however long it has left.
+        c, auth = await self.sign_in("kitchen", "wall tablet pass")
+        await self.use(c, auth, {**LOW, "level": 50})
+        self.h.store.update_user(self.kitchen, role="family")  # (as such a sign-in is now)
+        self.assertEqual((await c.get("/api/auth/state", headers=auth)).status, 200)
+        self.assertFalse((await (await c.get("/api/auth/state", headers=auth)).json())["signedIn"])
+        self.assertEqual((await c.get("/api/entities", headers=auth)).status, 401)
+        self.assertEqual((await c.post("/api/tablet/battery", json=LOW, headers=auth)).status, 401)
+        self.assertIsNotNone(self.h.hub.get("tablets." + self.kitchen))
+        self.h.forget_signed_out_tablets()
+        self.assertIsNone(self.h.hub.get("tablets." + self.kitchen))
+        self.assertIsNone(self.h.hub.get("navidrome." + self.kitchen))
+        self.assertNotIn(self.kitchen, self.music.players)
+        self.assertEqual(self.tablet_sessions(self.kitchen), [])
+        self.assertIn("Removed Newman Kitchen's tablet: no longer signed in on a tablet",
+                      [e["title"] for e in self.h.store.events(kind="system")])
+        # The admin's own sign-in is untouched.
+        self.assertTrue((await (await self.client.get("/api/auth/state")).json())["signedIn"])
+
+    async def test_an_account_no_longer_a_wall_tablets_is_signed_out_of_the_wall(self):
+        c, auth = await self.sign_in("kitchen", "wall tablet pass")
+        await self.use(c, auth, {**LOW, "level": 50})
+        r = await self.client.patch(f"/api/users/{self.kitchen}", json={"role": "family"})
+        self.assertEqual(r.status, 200, await r.text())
+        self.assertEqual(self.tablet_sessions(self.kitchen), [])
+        self.assertEqual((await c.get("/api/entities", headers=auth)).status, 401)
+        self.assertIsNone(self.h.hub.get("tablets." + self.kitchen))
+        self.assertIsNone(self.h.hub.get("navidrome." + self.kitchen))
+        # As a family member it signs in on the dashboard, not the wall page.
+        r = await c.post("/api/auth/login", json={"username": "kitchen", "password": "wall tablet pass", "kind": "tablet"})
+        self.assertEqual(r.status, 403)
+        r = await c.post("/api/auth/login", json={"username": "kitchen", "password": "wall tablet pass"})
+        self.assertEqual(r.status, 200)
 
     async def test_removing_or_disabling_the_account_removes_them(self):
         c, auth = await self.sign_in("kitchen", "wall tablet pass")

@@ -418,6 +418,8 @@ export default function WallApp() {
     setState((s) => ({ ...(s || {}), signedIn: false, user: null }));
   };
 
+  // Signed in as a wall tablet: a person's dashboard sign-in in the same browser isn't the wall's.
+  const wallSignedIn = !!(state && state.signedIn && state.user && state.session && state.session.kind === 'tablet');
   let body;
   if (!state) body = <div className="wall"><div className="wt-loading">Connecting to the hub…</div></div>;
   else if (state.setupNeeded)
@@ -426,7 +428,7 @@ export default function WallApp() {
         <div className="wt-loading">Set Newman up on the dashboard first, then sign this tablet in.</div>
       </div>
     );
-  else if (!state.signedIn || !state.user) body = <WallSignIn where={state.where} onDone={refresh} />;
+  else if (!wallSignedIn) body = <WallSignIn where={state.where} onDone={refresh} />;
   else body = <WallHub auth={state} signOut={signOut} refresh={refresh} />;
   return (
     <ConfirmProvider>
