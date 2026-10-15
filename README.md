@@ -1018,18 +1018,14 @@ the photo, or the first initial on their colour.
     client-certificate proxy, and an area already seen still shows when the internet is down.
 ## Automations
 
-Built in the dashboard as **When → Only if → Then**, read back as a plain sentence
+Built in the dashboard as **When → What happens → Only if**, read back as a plain sentence
 ("When Side Door stays unlocked for 10 minutes, lock Side Door and notify Chris").
 
 - **When** — any mix of: a time, or sunrise / sunset (± minutes: “30 min before sunset”); a device changing state (optionally *staying* that way for a while);
   a device event (doorbell pressed, person detected, vacuum finished, container crashed, printer
   needs attention…); any reading a device reports going above / below / to a value (optionally for a
   while). *Any* of them, or *all* of them within a time window.
-- **Only if** — device states and readings (any / all / none), between times, on certain days, only when
-  it's dark (sunset to sunrise, each ± minutes, across midnight) or only during daylight, and
-  between dates — every year (“December 1 to January 6” wraps over New Year; February 29 counts as
-  the 28th in other years) or just once in a given year. Dates use the hub's own date.
-- **Then** — commands on any number of devices, optionally *for* a while (then put back —
+- **What happens** — commands on any number of devices, optionally *for* a while (then put back —
   devices that keep more than an on/off state, like a music player's queue and spot in a song, are put
   back exactly, unless someone changed them meanwhile; see [Music](#music-navidrome));
   **Brighten while held** / **Dim while held** on any dimmable light, for a button's *long-pressed* event:
@@ -1038,6 +1034,14 @@ Built in the dashboard as **When → Only if → Then**, read back as a plain se
   notifications with action buttons and, for camera events, a snapshot; showing it on wall tablets;
   and a **live status** on phones (below) of any devices — until they're no longer in a state, for a
   while, or until something else happens (a device changes, an event, a time).
+- **Only if** (optional) — device states and readings (any / all / none), between times, on certain days, only when
+  it's dark (sunset to sunrise, each ± minutes, across midnight) or only during daylight, and
+  between dates — every year (“December 1 to January 6” wraps over New Year; February 29 counts as
+  the 28th in other years) or just once in a given year. Dates use the hub's own date.
+
+A new blank automation starts with one empty *Do* row and no notification (*+ Add something that
+happens* → *Send a notification* adds one); *Only if* starts empty, and a device row left without a
+device is left out when it's saved. Recipes and *Create automation* from a device keep their own starts.
 
 **Follow-ups, one per change.** A notification waiting on devices tells you about each one as it's
 taken care of: with Side Door and Laundry both unlocked, locking Laundry (the *Lock* button, by hand, or

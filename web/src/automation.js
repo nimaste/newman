@@ -291,7 +291,8 @@ export function cleanForSend(a) {
       }),
     condition: {
       ...cond,
-      devices: conditionRows(a.condition, a.trigger).map((r) =>
+      // An "Only if" row nobody picked a device for checks nothing: leave it out.
+      devices: conditionRows(a.condition, a.trigger).filter((r) => r.entities.length).map((r) =>
         isValueRow(r) ? { entities: r.entities, property: r.property, op: r.op, value: r.value, match: r.match } : { entities: r.entities, state: r.state, match: r.match },
       ),
       between: b && b.after && b.before ? { after: b.after, before: b.before } : null,

@@ -1,5 +1,5 @@
 // Automation builder: "fill-in-the-blank" rows in three sections that read as
-// a sentence — When · Only if · What happens. Devices are picked in a popover.
+// a sentence — When · What happens · Only if. Devices are picked in a popover.
 // The header, the live sentence and the right column never move; only the
 // builder pane scrolls.
 
@@ -1579,7 +1579,9 @@ export default function AutomationEditor({ id, templateId, query }) {
             a = { ...a, name: `${ent ? ent.name : 'Device'} ` + (startTrigger === 'time' ? 'check' : 'changes') };
           }
         } else {
-          a = newAutomation();
+          // A blank one: one empty "Do" row to fill in, and no notification until it's added.
+          const base = newAutomation();
+          a = { ...base, notify: { ...base.notify, enabled: false }, actions: [{ entities: [], command: '' }] };
         }
         setSavedJson(null);
       } else {
@@ -1741,11 +1743,11 @@ export default function AutomationEditor({ id, templateId, query }) {
   const acts = (auto.actions || []).map(toMulti).filter((x) => x.entities.length && x.command);
   const whatHappens = [
     { step: 'when', text: summaries.when },
-    ...(summaries.if && summaries.if !== 'Every time' ? [{ step: 'if', text: summaries.if }] : []),
     ...acts.map((x) => ({ step: 'then', text: '→ ' + actionLabel(x, hub) })),
     ...(auto.notify.enabled ? [{ step: 'then', text: '→ Notify ' + (summaries.who || '') }] : []),
     ...(auto.wall && auto.wall.enabled ? [{ step: 'then', text: '→ Show on ' + ((auto.wall.tablets || []).length ? plural(auto.wall.tablets.length, 'wall tablet') : 'every wall tablet') }] : []),
     ...(auto.live && auto.live.enabled ? [{ step: 'then', text: '→ Live status of ' + plural((auto.live.entities || []).length, 'device') }] : []),
+    ...(summaries.if && summaries.if !== 'Every time' ? [{ step: 'if', text: summaries.if }] : []),
   ].filter((x) => x.text);
   const runList = (runs.data || []).slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, 6).map((r) => ({ id: r.id, ...runLine(r) }));
 
@@ -1817,11 +1819,11 @@ export default function AutomationEditor({ id, templateId, query }) {
             <div ref={sections.when}>
               <WhenSection auto={auto} patch={patch} hub={hub} />
             </div>
-            <div ref={sections.if}>
-              <OnlyIfSection key={triggerKind(auto.trigger) === 'time' ? 'time' : 'other'} auto={auto} patch={patch} hub={hub} />
-            </div>
             <div ref={sections.then}>
               <ThenSection auto={auto} patch={patch} hub={hub} people={people} choices={choices} />
+            </div>
+            <div ref={sections.if}>
+              <OnlyIfSection key={triggerKind(auto.trigger) === 'time' ? 'time' : 'other'} auto={auto} patch={patch} hub={hub} />
             </div>
           </fieldset>
         </div>
