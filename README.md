@@ -162,7 +162,7 @@ tried on real hardware.
 | ✅ **MQTT devices** | locks, alarms, sensors, leak/smoke, sirens, plugs, lights, blinds, fans, garage doors, buttons | Home Assistant–style MQTT discovery: ring-mqtt, Zigbee2MQTT, Z-Wave JS UI, Tasmota, ratgdo… | An MQTT broker (Mosquitto) |
 | ✅ **Reolink** | cameras, doorbells, NVRs; button presses, motion and AI detection, snapshots, floodlights | Directly to each device (Baichuan push) | Camera address, user, password |
 | ✅ **Frigate** | cameras and zones; detections with snapshots, live counts, live video, alerts | Frigate's API + its MQTT events | Frigate's address |
-| ✅ **Lutron Caséta** | dimmers, switches, Pico remotes | Locally to the Smart Bridge (LEAP) | Press the bridge's button once |
+| ✅ **Lutron Caséta** | dimmers, switches, Pico remotes (press, long press, let go) | Locally to the Smart Bridge (LEAP) | Press the bridge's button once |
 | ✅ **Meross garage opener** | garage doors | Locally; the cloud is used once to fetch the device key | Meross sign-in once (the password isn't kept) |
 | ✅ **HomeKit device** | e.g. Ecobee thermostat + room sensors | HomeKit Accessory Protocol, locally | The 8-digit HomeKit code; remove it from other hubs first |
 | ✅ **Weather** | conditions, hourly / 7-day forecast, Environment Canada warnings | Open-Meteo (free, no account) | Nothing |
@@ -1028,7 +1028,9 @@ Built in the dashboard as **When → What happens → Only if**, read back as a 
 - **What happens** — commands on any number of devices, optionally *for* a while (then put back —
   devices that keep more than an on/off state, like a music player's queue and spot in a song, are put
   back exactly, unless someone changed them meanwhile; see [Music](#music-navidrome));
-  **Brighten while held** / **Dim while held** on any dimmable light, for a button's *long-pressed* event:
+  **Brighten while held** / **Dim while held** on any dimmable light, for a button's *long-pressed* event
+  (a Matter button's, or a Lutron Pico's: *“Raise” is long-pressed* once it's been down half a second, and
+  *“Raise” is pressed* only when it's let go sooner, so a hold is never also a press):
   the light ramps until that button is let go (at most 10 s). Zigbee2MQTT and Matter lights ramp smoothly by
   themselves, like their own dimmer remotes (one "start moving" when it's held, "stop" when it's let go,
   bottom to top in about 3.5 s); other lights go in steps of 10 % every 0.4 s, each fading into the next
@@ -1716,7 +1718,7 @@ docker run --rm --network none -v "$PWD/server/tests:/app/tests" newman:dev \
   python -m unittest discover -s tests
 ```
 
-The tests (666 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
+The tests (673 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
 printers, Roborock…), so they need no network or credentials. API reference: [`API.md`](API.md). The web
 page's own rules (when a page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
 App tests: [`android/README.md`](android/README.md#tests), [`ios/README.md`](ios/README.md#build-on-a-mac).

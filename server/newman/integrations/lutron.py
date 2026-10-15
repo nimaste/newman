@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from pylutron_caseta import BUTTON_STATUS_PRESSED
+from pylutron_caseta import BUTTON_STATUS_PRESSED, BUTTON_STATUS_RELEASED
 from pylutron_caseta.pairing import async_pair
 from pylutron_caseta.smartbridge import Smartbridge
 
@@ -23,6 +23,8 @@ log = logging.getLogger(__name__)
 
 PAIR_WINDOW_S = 180
 LIGHT_TYPES = {"light", "switch"}
+# A Pico button still down this long is a long press ("raise_long"); let go sooner, it's a plain press.
+HOLD_S = 0.5
 
 # LEAP button_number -> event, per Pico model (same mapping Home Assistant uses).
 PICO_BUTTONS = {
@@ -64,6 +66,9 @@ class LutronIntegration(Integration):
         self._bridge: Smartbridge | None = None
         self._dir = self.ctx.data_dir / "integrations" / self.id
         self._device_ids: dict[str, str] = {}  # entity id -> bridge device id
+        # Pico buttons that are down: (remote id, event) -> the timer that makes it a long press, or None once
+        # it is one (see _on_button).
+        self._down: dict[tuple[str, str], asyncio.TimerHandle | None] = {}
 
     @classmethod
     def from_discovery(cls, name: str, host: str, props: dict[str, str]) -> dict[str, Any] | None:
@@ -145,7 +150,7 @@ class LutronIntegration(Integration):
                                  area=areas.get(str(dev.get("area")), ""))
                 bridge.add_subscriber(dev_id, self._on_update(eid, dev_id, domain == "light"))
                 lights += 1
-        # One "remote" device per Pico; each physical button becomes one of its events.
+        # One "remote" device per Pico; each physical button becomes its events: pressed, long-pressed and let go.
         remotes: dict[str, list[str]] = {}
         for btn_id, btn in bridge.get_buttons().items():
             parent_id = str(btn.get("parent_device"))
@@ -159,7 +164,7 @@ class LutronIntegration(Integration):
             if parent_id not in remotes:
                 remotes[parent_id] = []
                 self.hub.upsert(eid, kind="remote", name=names.get(parent_id, "Remote"), integration=self.id)
-            remotes[parent_id].append(event)
+            remotes[parent_id] += [event, f"{event}_long", f"{event}_released"]
             bridge.add_button_subscriber(btn_id, self._on_button(eid, event))
         for parent_id, events in remotes.items():
             await self.hub.update(self.entity_id(f"remote_{parent_id}"), state="idle", available=True, attrs={
@@ -171,6 +176,10 @@ class LutronIntegration(Integration):
 
     async def _close(self) -> None:
         bridge, self._bridge = self._bridge, None
+        for timer in self._down.values():
+            if timer:
+                timer.cancel()
+        self._down.clear()
         for eid in self._device_ids:
             await self.hub.update(eid, available=False)
         if bridge:
@@ -196,9 +205,30 @@ class LutronIntegration(Integration):
         return cb
 
     def _on_button(self, eid: str, event: str):
+        """A Pico button's Press / Release -> its remote's events. Let go within HOLD_S, it's a press ("raise",
+        fired on the release); still down after HOLD_S, it's a long press ("raise_long") and letting go is
+        "raise_released" - so holding a button is never also a press."""
+        key = (eid, event)
+
+        def emit(name: str) -> None:
+            asyncio.get_running_loop().create_task(self.hub.emit(eid, name, {}))
+
+        def held() -> None:
+            if key in self._down:
+                self._down[key] = None
+                emit(f"{event}_long")
+
         def cb(event_type: str) -> None:
             if event_type == BUTTON_STATUS_PRESSED:
-                asyncio.get_running_loop().create_task(self.hub.emit(eid, event, {}))
+                if key not in self._down:  # a repeated Press while it's down changes nothing
+                    self._down[key] = asyncio.get_running_loop().call_later(HOLD_S, held)
+            elif event_type == BUTTON_STATUS_RELEASED and key in self._down:
+                timer = self._down.pop(key)
+                if timer:
+                    timer.cancel()
+                    emit(event)
+                else:
+                    emit(f"{event}_released")
         return cb
 
     # -- commands -------------------------------------------------------------------------

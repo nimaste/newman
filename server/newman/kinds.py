@@ -292,14 +292,13 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
          properties=[Property("count", "{sub} count", "", "counts.*", "number")],
          events=detection_events("comes in", "{a_what} enters {device}", "{what} in {device}", "{what} entered {device}")),
     # A remote (e.g. a Lutron Pico): one device, one event per button. An entity's
-    # attrs["events"] lists which of these its model actually has. Numbered buttons may also tell a
-    # double press and a long press (held down, then let go) apart from a plain press.
+    # attrs["events"] lists which of these its model actually has. A button may also tell a double press
+    # and a long press (held down, then let go) apart from a plain press.
     Kind("remote", "Remote", "Remotes", "lighting",
          [("idle", "Idle")], noun="remote",
-         events=[Event(b, f"“{name}” is pressed", f"the {name} button on {{device}} is pressed", "",
-                       f"{name} pressed on {{device}}")
-                 for b, name in (("on", "On"), ("favorite", "Favorite"), ("off", "Off"), ("raise", "Raise"),
-                                 ("lower", "Lower"))]
+         events=[ev for b, name in (("on", "On"), ("favorite", "Favorite"), ("off", "Off"), ("raise", "Raise"),
+                                    ("lower", "Lower"))
+                 for ev in remote_button_events(b, name)]
          + [ev for n in range(1, 5) for ev in remote_button_events(f"button_{n}", f"Button {n}")]),
     # Weather for a place: the state is the condition now; readings are properties; attrs.forecast
     # (daily), attrs.hourly and attrs.alerts carry the rest for the weather tile.

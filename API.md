@@ -55,8 +55,11 @@ tablet's old sign-in left behind by a new one stays listed but isn't live. Expir
 * `automationCommands` — what only an automation's actions can do with one (never a device control):
   lights have `brighten_while_held` / `dim_while_held` (`step`, `min`, `max`: a light stepped rather than
   ramping by itself moves by `step` and never goes below `min`, so dimming never turns a light off).
-* An event's `ends` — for a button held down (`button_1_long`), the event that says it was let go
-  (`button_1_released`); a "…while held" action stops on it.
+* An event's `ends` — for a button held down (`button_1_long`, a Pico's `raise_long`), the event that says it
+  was let go (`button_1_released`, `raise_released`); a "…while held" action stops on it.
+* A remote's `attrs.events` — the events that device really has. A Lutron Pico lists, per button (`on`,
+  `favorite`, `off`, `raise`, `lower`), the button, `<button>_long` and `<button>_released`: `raise` once
+  it's let go within 0.5 s, `raise_long` once it's been down 0.5 s, `raise_released` when that's let go.
 
 ## Connecting an app
 
@@ -893,7 +896,7 @@ outside them is saved as `skipped` ("Outside its dates…"). `nextRun` skips ahe
 With `for`, Newman puts each device back afterwards (unless someone changed it by hand). Older actions with a single `"entity"` still work.
 `"command"` may also be one of the kind's `automationCommands`: `brighten_while_held` / `dim_while_held` on a
 dimmable light ramp its brightness from the event that started the automation until that event's `ends` event
-(`button_1_long` → `button_1_released`) or 10 s, whichever is first. A light that can ramp by itself
+(`button_1_long` → `button_1_released`, a Pico's `raise_long` → `raise_released`) or 10 s, whichever is first. A light that can ramp by itself
 (Zigbee2MQTT lights, Matter lights: Level Control *move*) gets one "start moving" and one "stop" and ramps
 smoothly, bottom to top in about 3.5 s: Zigbee2MQTT `{"brightness_move_onoff": 73}` up /
 `{"brightness_move": -73}` down / `{"brightness_move": "stop"}`; Matter `MoveWithOnOff` / `Move` / `Stop`.
