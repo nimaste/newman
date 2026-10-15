@@ -210,3 +210,16 @@ class IntegrationManager:
 
     async def command(self, entity_id: str, command: str, value: Any = None) -> None:
         await self.owner(entity_id).command(entity_id, command, value)
+
+    # Gradual changes - see Integration.can_move / move / command_fading.
+    def can_move(self, entity_id: str, attr: str) -> bool:
+        try:
+            return self.owner(entity_id).can_move(entity_id, attr)
+        except CommandError:
+            return False
+
+    async def move(self, entity_id: str, attr: str, direction: int, full_s: float) -> None:
+        await self.owner(entity_id).move(entity_id, attr, direction, full_s)
+
+    async def command_fading(self, entity_id: str, command: str, value: Any, seconds: float) -> None:
+        await self.owner(entity_id).command_fading(entity_id, command, value, seconds)

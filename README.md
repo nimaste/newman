@@ -1029,8 +1029,10 @@ Built in the dashboard as **When → What happens → Only if**, read back as a 
   devices that keep more than an on/off state, like a music player's queue and spot in a song, are put
   back exactly, unless someone changed them meanwhile; see [Music](#music-navidrome));
   **Brighten while held** / **Dim while held** on any dimmable light, for a button's *long-pressed* event:
-  a step of 10 % every 0.4 s until that button is let go (at most 10 s) — an off light comes on low, and
-  dimming stops at 1 %, never off;
+  the light ramps until that button is let go (at most 10 s). Zigbee2MQTT and Matter lights ramp smoothly by
+  themselves, like their own dimmer remotes (one "start moving" when it's held, "stop" when it's let go,
+  bottom to top in about 3.5 s); other lights go in steps of 10 % every 0.4 s, each fading into the next
+  where the light can fade. An off light comes on low, and dimming stops at the lowest level, never off;
   notifications with action buttons and, for camera events, a snapshot; showing it on wall tablets;
   and a **live status** on phones (below) of any devices — until they're no longer in a state, for a
   while, or until something else happens (a device changes, an event, a time).
@@ -1714,7 +1716,7 @@ docker run --rm --network none -v "$PWD/server/tests:/app/tests" newman:dev \
   python -m unittest discover -s tests
 ```
 
-The tests (662 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
+The tests (666 of them, a little under 3 minutes) fake every device and service (MQTT, Home Connect, LG, Docker,
 printers, Roborock…), so they need no network or credentials. API reference: [`API.md`](API.md). The web
 page's own rules (when a page may reload itself for a new build) have plain-node tests: `cd web && npm test`.
 App tests: [`android/README.md`](android/README.md#tests), [`ios/README.md`](ios/README.md#build-on-a-mac).

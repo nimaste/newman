@@ -20,7 +20,7 @@ os.environ.setdefault("TOKEN_SECRET", "test-secret")
 from newman import tokens  # noqa: E402
 from newman.automations import engine as engine_mod  # noqa: E402
 from newman.automations.engine import ActionError, Engine  # noqa: E402
-from newman.integrations.base import Context  # noqa: E402
+from newman.integrations.base import Context, Integration  # noqa: E402
 from newman.integrations.manager import IntegrationManager  # noqa: E402
 from newman.integrations.mqtt import MqttIntegration  # noqa: E402
 from newman.push.notifier import Notifier  # noqa: E402
@@ -48,6 +48,9 @@ class FakeClient:
 
     async def publish(self, topic, payload):
         self.published.append((topic, payload))
+
+    async def subscribe(self, topic):
+        pass
 
 
 def nightly(**over):
@@ -1028,7 +1031,10 @@ class HoldToDimTests(Base):
         await super().asyncSetUp()
         calls = self.calls = []
 
-        class FakeLights:
+        class FakeLights(Integration):  # can't ramp or fade by itself: plain steps
+            def __init__(self):
+                pass
+
             async def command(self, eid, command, value=None):
                 calls.append((command, value))
         self.integrations.instances["lutron"] = FakeLights()
@@ -1041,10 +1047,10 @@ class HoldToDimTests(Base):
         fast.start()
         self.addCleanup(fast.stop)
 
-    def automation(self, event, command):
+    def automation(self, event, command, entity="lutron.device_5"):
         return self.engine.save({"name": f"{event} {command}", "notify": {"enabled": False},
                                  "trigger": {"type": "event", "entity": "matter.node9_1_buttons", "event": event},
-                                 "actions": [{"entity": "lutron.device_5", "command": command}]})
+                                 "actions": [{"entity": entity, "command": command}]})
 
     async def settle(self):
         """Wait until no ramp is running."""
@@ -1122,6 +1128,89 @@ class HoldToDimTests(Base):
         await asyncio.sleep(0.05)
         await self.settle()
         self.assertEqual(self.calls, [("set_brightness", 60)])
+
+    # -- over MQTT: a Zigbee2MQTT light ramps by itself; other lights are stepped, fading where they can --
+
+    async def light(self, **cfg):
+        """An MQTT light, announced the way the Zigbee2MQTT IKEA LED driver is (unless cfg says otherwise)."""
+        body = {"availability": [{"topic": "zigbee2mqtt/bridge/state", "value_template": "{{ value_json.state }}"}],
+                "brightness": True, "brightness_scale": 254, "command_topic": "zigbee2mqtt/Under Cabinet/set",
+                "device": {"identifiers": ["zigbee2mqtt_0x84fd27fffe3278cd"], "manufacturer": "IKEA",
+                           "model": "TRADFRI LED driver, 30 w", "name": "Under Cabinet"},
+                "name": None, "origin": {"name": "Zigbee2MQTT", "sw": "2.14.2", "url": "https://www.zigbee2mqtt.io"},
+                "schema": "json", "state_topic": "zigbee2mqtt/Under Cabinet", "supported_color_modes": ["brightness"],
+                "unique_id": "0x84fd27fffe3278cd_light_zigbee2mqtt", **cfg}
+        await self.msg("homeassistant/light/0x84fd27fffe3278cd/light/config", json.dumps(body))
+        self.mqtt._client.published.clear()
+        return "mqtt.0x84fd27fffe3278cd_light_zigbee2mqtt"
+
+    def sent(self):
+        return [p for _, p in self.mqtt._client.published]
+
+    async def until_sent(self, payload):
+        for _ in range(200):
+            if payload in self.sent():
+                return
+            await asyncio.sleep(0.01)
+        self.fail(f"{payload} never sent: {self.sent()}")
+
+    async def test_zigbee2mqtt_light_brightens_from_off_by_itself_until_let_go(self):
+        eid = await self.light()
+        await self.msg("zigbee2mqtt/Under Cabinet", '{"state":"OFF","brightness":254}')
+        self.automation("button_1_long", "brighten_while_held", eid)
+        await self.hub.emit("matter.node9_1_buttons", "button_1_long", {})
+        await asyncio.sleep(0.1)
+        # One "start moving up" - turning it on, low - with a rate (Zigbee level units a second) that goes
+        # from bottom to top in RAMP_FULL_S; nothing more while it's held.
+        self.assertEqual(self.mqtt._client.published, [("zigbee2mqtt/Under Cabinet/set", '{"brightness_move_onoff": 73}')])
+        await self.hub.emit("matter.node9_1_buttons", "button_1_released", {})
+        await self.until_sent('{"brightness_move": "stop"}')
+        # Zigbee2MQTT reads the light back after a stop and publishes where it is: Newman shows that.
+        await self.msg("zigbee2mqtt/Under Cabinet", '{"state":"ON","brightness":127}')
+        await self.settle()
+        self.assertEqual(self.sent(), ['{"brightness_move_onoff": 73}', '{"brightness_move": "stop"}'])
+        self.assertEqual((self.hub.get(eid).state, self.hub.get(eid).attrs["brightness"]), ("on", 50))
+        ev = self.store.events(5, kind="command")[0]
+        self.assertEqual((ev["title"], ev["body"]), ("Brightened Under Cabinet to 50%", "by Newman"))
+
+    async def test_zigbee2mqtt_light_dims_by_itself_and_stops_after_the_safety_cap(self):
+        eid = await self.light()
+        await self.msg("zigbee2mqtt/Under Cabinet", '{"state":"ON","brightness":200}')
+        self.automation("button_2_long", "dim_while_held", eid)
+        with mock.patch.object(engine_mod, "RAMP_MAX_S", 0.1), mock.patch.object(engine_mod, "RAMP_SETTLE_S", 0.05):
+            await self.hub.emit("matter.node9_1_buttons", "button_2_long", {})  # never let go
+            await self.settle()
+        # Down is a plain move (never turns it off), and "stop" is sent anyway once the cap is up.
+        self.assertEqual(self.sent(), ['{"brightness_move": -73}', '{"brightness_move": "stop"}'])
+        # An off light isn't touched by dimming.
+        self.mqtt._client.published.clear()
+        await self.msg("zigbee2mqtt/Under Cabinet", '{"state":"OFF"}')
+        await self.hub.emit("matter.node9_1_buttons", "button_2_long", {})
+        await self.settle()
+        self.assertEqual(self.sent(), [])
+
+    async def test_other_json_lights_step_with_a_fade_into_each_next_step(self):
+        eid = await self.light(origin={"name": "Some bridge"})  # not Zigbee2MQTT: no brightness_move
+        await self.msg("zigbee2mqtt/Under Cabinet", '{"state":"ON","brightness":89}')  # 35 %
+        self.automation("button_2_long", "dim_while_held", eid)
+        await self.hub.emit("matter.node9_1_buttons", "button_2_long", {})
+        await self.settle()
+        t = engine_mod.RAMP_EVERY_S
+        self.assertEqual([json.loads(p) for p in self.sent()],
+                         [{"state": "ON", "brightness": b, "transition": t} for b in (64, 38, 13, 3)])  # 25/15/5/1 %
+
+    async def test_lights_that_cant_fade_step_plainly(self):
+        await self.msg("homeassistant/light/tasmota_1/light/config", json.dumps({
+            "name": "Porch", "unique_id": "tasmota_porch", "command_topic": "cmnd/porch/POWER", "state_topic": "stat/porch/POWER",
+            "brightness_command_topic": "cmnd/porch/Dimmer", "brightness_state_topic": "stat/porch/RESULT",
+            "brightness_scale": 100, "payload_on": "ON", "payload_off": "OFF"}))
+        await self.msg("stat/porch/POWER", "ON")
+        await self.msg("stat/porch/RESULT", "85")
+        self.mqtt._client.published.clear()
+        self.automation("button_1_long", "brighten_while_held", "mqtt.tasmota_porch")
+        await self.hub.emit("matter.node9_1_buttons", "button_1_long", {})
+        await self.settle()
+        self.assertEqual(self.mqtt._client.published, [("cmnd/porch/Dimmer", "95"), ("cmnd/porch/Dimmer", "100")])
 
 
 class MerossSetupTests(Base):

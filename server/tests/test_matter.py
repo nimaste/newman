@@ -326,6 +326,19 @@ class MappingTests(MatterBase):
                          [(1, 1, 6, "Off"), (1, 1, 6, "On"), (2, 1, 8, "MoveToLevelWithOnOff"), (10, 1, 257, "UnlockDoor")])
         self.assertEqual(sent[2]["payload"]["level"], 127)
         self.assertEqual(sent[3]["timed_request_timeout_ms"], 1000)
+        # Hold to brighten / dim: the light's own Level Control move - up with on/off, down without, stop.
+        self.assertTrue(m.can_move(bulb, "brightness"))
+        self.assertFalse(m.can_move(plug, "brightness"))
+        n = len(sent)
+        for direction in (1, -1, 0):
+            await m.move(bulb, "brightness", direction, 3.5)
+        sent = [a for c, a in self.server.calls if c == "device_command"][n:]
+        opts = {"optionsMask": 0, "optionsOverride": 0}
+        self.assertEqual([(a["node_id"], a["endpoint_id"], a["cluster_id"], a["command_name"], a["payload"]) for a in sent],
+                         [(2, 1, 8, "MoveWithOnOff", {"moveMode": 0, "rate": 73, **opts}),
+                          (2, 1, 8, "Move", {"moveMode": 1, "rate": 73, **opts}), (2, 1, 8, "Stop", opts)])
+        with self.assertRaises(CommandError):
+            await m.move(plug, "brightness", 1, 3.5)
         with self.assertRaises(CommandError):
             await m.command(lock, "set_brightness", 5)
         self.server.command_error = (3, "Node 1 is not (yet) available")

@@ -10,6 +10,7 @@ lets the action endpoint refuse any button the run didn't offer.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -51,6 +52,11 @@ ANSWERED_WINDOW_S = 15.0
 # button's "let go" never arrives.
 RAMP_EVERY_S = 0.4
 RAMP_MAX_S = 10.0
+# A light that ramps by itself (Integration.can_move) is started once and stopped on "let go" instead, at a
+# speed that takes it from lowest to brightest in RAMP_FULL_S (about a dimmer remote's own hold); where it
+# stopped is waited for up to RAMP_SETTLE_S afterwards, for the run's log.
+RAMP_FULL_S = 3.5
+RAMP_SETTLE_S = 2.0
 
 
 class ActionError(Exception):
@@ -546,15 +552,17 @@ class Engine:
     # -- "Brighten / Dim while held" -----------------------------------------------------------------
 
     def _start_ramp(self, run: dict[str, Any], ent: Entity, cmd: Command) -> None:
-        """Step the device's level (cmd.attr) by cmd.step until the button whose event started this run is
-        let go - that event's `ends` - or RAMP_MAX_S. One ramp per device: a new one takes over."""
+        """Ramp the device's level (cmd.attr) - by itself where it can, else in steps of cmd.step - until the
+        button whose event started this run is let go (that event's `ends`) or RAMP_MAX_S. One ramp per
+        device: a new one takes over."""
         trig = run["trigger"]
         src = self.hub.get(trig.get("entity") or "") if trig.get("type") == "event" else None
         ends = KINDS[src.kind].event(str(trig.get("event") or "")).ends if src else ""
         if old := self._ramps.get(ent.id):
             old["stop"].set()
         r: dict[str, Any] = {"until": (src.id, ends) if ends else None, "stop": asyncio.Event(),
-                             "since": self._heard.get((src.id, str(trig.get("event")))) if src else None}
+                             "since": self._heard.get((src.id, str(trig.get("event")))) if src else None,
+                             "done": asyncio.Event(), "after": old}  # done: it sent its last command
         r["task"] = asyncio.create_task(self._ramp(run, ent.id, cmd, r))
         self._ramps[ent.id] = r
 
@@ -567,12 +575,27 @@ class Engine:
 
     async def _ramp(self, run: dict[str, Any], eid: str, cmd: Command, r: dict[str, Any]) -> None:
         try:
+            if (old := r.pop("after", None)) and not old["done"].is_set():
+                # The ramp this one takes over stops first (its "stop" never lands after this one's start).
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(old["done"].wait(), RAMP_SETTLE_S)
             await self._ramp_steps(run, eid, cmd, r)
         except Exception:  # noqa: BLE001 - a ramp must never take the engine down
             log.exception("%s on %s failed", cmd.label, eid)
         finally:
+            r["done"].set()
             if self._ramps.get(eid) is r:
                 self._ramps.pop(eid)
+
+    async def _held_down(self, r: dict[str, Any], seconds: float) -> bool:
+        """Wait up to `seconds` for the button to be let go; True if it's still held after that."""
+        if self._let_go(r):
+            return False
+        try:
+            await asyncio.wait_for(r["stop"].wait(), seconds)
+            return False
+        except asyncio.TimeoutError:
+            return not self._let_go(r)
 
     async def _ramp_steps(self, run: dict[str, Any], eid: str, cmd: Command, r: dict[str, Any]) -> None:
         def note(text: str) -> None:
@@ -595,6 +618,9 @@ class Engine:
         if level is None and cmd.ramp < 0:
             note(f"{name} is off - left it off")  # dimming never turns a light on (or off)
             return
+        if self.integrations.can_move(eid, cmd.attr):
+            await self._ramp_moving(eid, cmd, r, level, note)
+            return
         self._attribution[eid] = ("Newman", time.time())
         until, sent = time.monotonic() + RAMP_MAX_S, None
         while True:
@@ -603,23 +629,52 @@ class Engine:
             if nxt == level:
                 break  # as bright (or as dim) as it goes
             try:
-                await self.integrations.command(eid, setter.id, nxt)
+                # Each step fades into the next where the light can fade (it then never jumps).
+                await self.integrations.command_fading(eid, setter.id, nxt, RAMP_EVERY_S)
             except CommandError as e:
                 note(f"Couldn't {cmd.label.lower()} {name}: {e}")
                 break
             level = sent = nxt
-            if self._let_go(r) or time.monotonic() >= until:
+            if time.monotonic() >= until or not await self._held_down(r, RAMP_EVERY_S):
                 break
-            try:
-                await asyncio.wait_for(r["stop"].wait(), RAMP_EVERY_S)
-                break
-            except asyncio.TimeoutError:
-                if self._let_go(r):
-                    break
+        r["done"].set()
         if sent is not None:
             text = f"{cmd.past.capitalize()} {name} to {sent:g}{cmd.unit}"
             self.store.log_event("command", text, "by Newman", eid)
             note(text)
+
+    async def _ramp_moving(self, eid: str, cmd: Command, r: dict[str, Any], level: float | None, note: Any) -> None:
+        """A light that ramps by itself: one "start moving" when the button goes down and "stop" when it's
+        let go (or after RAMP_MAX_S) - smooth, like a dimmer remote's own hold. Up turns an off light on,
+        low; down stops at the light's lowest level and never turns it off."""
+        ent = self.hub.get(eid)
+        name = ent.name
+        if level is not None and (level >= (cmd.max or 100) if cmd.ramp > 0 else level <= (cmd.min or 1)):
+            return  # already as bright (or as dim) as it goes
+        before = (ent.state, ent.attrs.get(cmd.attr))
+        self._attribution[eid] = ("Newman", time.time())
+        try:
+            await self.integrations.move(eid, cmd.attr, cmd.ramp, RAMP_FULL_S)
+        except CommandError as e:
+            note(f"Couldn't {cmd.label.lower()} {name}: {e}")
+            return
+        await self._held_down(r, RAMP_MAX_S)
+        try:
+            await self.integrations.move(eid, cmd.attr, 0, RAMP_FULL_S)
+        except CommandError as e:
+            note(f"Couldn't stop {name} where it was: {e}")
+            return
+        finally:
+            r["done"].set()
+        # Where it stopped comes back from the light itself: wait a moment for it, for the log.
+        until = time.monotonic() + RAMP_SETTLE_S
+        while (ent := self.hub.get(eid)) and (ent.state, ent.attrs.get(cmd.attr)) == before \
+                and time.monotonic() < until:
+            await asyncio.sleep(0.05)
+        now = ent.attrs.get(cmd.attr) if ent and ent.state == KINDS[ent.kind].active_state else None
+        text = f"{cmd.past.capitalize()} {name}" + (f" to {now:g}{cmd.unit}" if isinstance(now, (int, float)) else "")
+        self.store.log_event("command", text, "by Newman", eid)
+        note(text)
 
     def resume_holds(self) -> None:
         """After a restart: re-arm pending "put it back" timers (overdue ones run right away)."""

@@ -53,8 +53,8 @@ tablet's old sign-in left behind by a new one stays listed but isn't live. Expir
 * `activeState` — the state an automation condition means by "is on" (unlocked, open, motion…).
 * `sensitive` commands (unlock, disarm, open garage) need Face ID / fingerprint on a phone.
 * `automationCommands` — what only an automation's actions can do with one (never a device control):
-  lights have `brighten_while_held` / `dim_while_held` (`step`, `min`, `max`: the level moves by `step` and
-  never goes below `min`, so dimming never turns a light off).
+  lights have `brighten_while_held` / `dim_while_held` (`step`, `min`, `max`: a light stepped rather than
+  ramping by itself moves by `step` and never goes below `min`, so dimming never turns a light off).
 * An event's `ends` — for a button held down (`button_1_long`), the event that says it was let go
   (`button_1_released`); a "…while held" action stops on it.
 
@@ -892,10 +892,16 @@ outside them is saved as `skipped` ("Outside its dates…"). `nextRun` skips ahe
 `"actions": [{"entities": ["lutron.device_5", "lutron.device_6"], "command": "turn_on", "value"?, "for"?: {"amount": 2, "unit": "minutes|hours|days|seconds"}}]`.
 With `for`, Newman puts each device back afterwards (unless someone changed it by hand). Older actions with a single `"entity"` still work.
 `"command"` may also be one of the kind's `automationCommands`: `brighten_while_held` / `dim_while_held` on a
-dimmable light step its brightness by 10 % every 0.4 s (each step sent only after the last one), from the
-event that started the automation until that event's `ends` event (`button_1_long` → `button_1_released`) or
-10 s, whichever is first, and stop at 100 % / 1 %. Brightening an off light starts it at 10 %; dimming an off
-light leaves it off. No `value` or `for`. Each run logs one `command` event ("Brightened Kitchen to 70%").
+dimmable light ramp its brightness from the event that started the automation until that event's `ends` event
+(`button_1_long` → `button_1_released`) or 10 s, whichever is first. A light that can ramp by itself
+(Zigbee2MQTT lights, Matter lights: Level Control *move*) gets one "start moving" and one "stop" and ramps
+smoothly, bottom to top in about 3.5 s: Zigbee2MQTT `{"brightness_move_onoff": 73}` up /
+`{"brightness_move": -73}` down / `{"brightness_move": "stop"}`; Matter `MoveWithOnOff` / `Move` / `Stop`.
+Any other light is stepped by 10 % every 0.4 s (each step sent only after the last one), each step fading
+into the next where the light can fade (a JSON-schema MQTT light gets `"transition": 0.4`), stopping at
+100 % / 1 %. Either way brightening an off light turns it on low; dimming never turns a light off, and an off
+light stays off. No `value` or `for`. Each run logs one `command` event ("Brightened Kitchen to 70%" - for a
+light that ramps by itself, the level it reports once it stops).
 
 **Live status** ("Show a live status on phones") — `"live": {"enabled": true, "entities": [ids], "title": "", "recipients": null | [person ids], "until": …}`
 (`title` "" = the devices' names; `recipients` null = everyone). `until` is one of

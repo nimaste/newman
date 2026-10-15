@@ -49,13 +49,14 @@ ABBREVIATIONS = {"stat_t": "state_topic", "cmd_t": "command_topic", "avty_t": "a
                  "pl_stop": "payload_stop", "pl_prs": "payload_press", "avty_tpl": "availability_template",
                  "bri_val_tpl": "brightness_value_template", "pct_val_tpl": "percentage_value_template",
                  "pos_tpl": "position_template", "pos_open": "position_open", "pos_clsd": "position_closed",
-                 "ent_cat": "entity_category"}
+                 "ent_cat": "entity_category", "o": "origin"}
 ATTR_KEYS = ("batteryLevel", "batteryStatus", "tamperStatus", "acStatus", "commStatus", "linkQuality", "battery",
              "linkquality", "power", "energy", "voltage", "current")
 # Who-did-it fields a device may report (ring-mqtt's alarm panel), each with its time.
 WHO_KEYS = (("lastDisarmedBy", "lastDisarmedTime"), ("lastArmedBy", "lastArmedTime"),
             ("alarmClearedBy", "alarmClearedTime"))
 HOLD_FOR_WHO_S = 1.5
+ZIGBEE_LEVEL_MAX = 254  # a Zigbee light's Level Control range (brightness_move rates are in these units)
 
 _TEMPLATE = re.compile(r"\{\{\s*(value_json|value)((?:\.\w+|\[\s*['\"][^'\"]+['\"]\s*\]|\[\d+\])*)\s*((?:\|\s*\w+(?:\([^)]*\))?\s*)*)\}\}")
 
@@ -187,22 +188,66 @@ class MqttIntegration(Integration):
     # -- commands -------------------------------------------------------------------
 
     async def command(self, entity_id: str, command: str, value: Any = None) -> None:
+        spec = self._spec(entity_id)
+        await self._send(entity_id, *self._payload_for(spec, command, value))
+
+    def _spec(self, entity_id: str) -> dict[str, Any]:
         spec = self._specs.get(entity_id)
         if not spec:
             raise CommandError(f"{self.hub.name(entity_id)} isn't an MQTT device Newman knows")
+        return spec
+
+    async def _send(self, entity_id: str, topic: str, payload: str) -> None:
         if not self._client:
             raise CommandError("MQTT broker is not connected")
-        topic, payload = self._payload_for(spec, command, value)
         await self._client.publish(topic, payload)
         log.info("Sent %s to %s", payload, self.hub.name(entity_id))
 
-    def _payload_for(self, spec: dict[str, Any], command: str, value: Any) -> tuple[str, str]:
+    # A JSON-schema light always takes a "transition" (seconds), as in Home Assistant.
+    @staticmethod
+    def _fades(spec: dict[str, Any]) -> bool:
+        return spec["component"] == "light" and spec["cfg"].get("schema") == "json"
+
+    @staticmethod
+    def _moves(spec: dict[str, Any]) -> bool:
+        """A dimmable Zigbee2MQTT light (its discovery's origin says so): Zigbee2MQTT starts the light's own
+        Level Control move with "brightness_move" / "brightness_move_onoff" (a rate) and stops it with
+        "brightness_move": "stop", then reads the light back and publishes its state."""
+        cfg = spec["cfg"]
+        origin = cfg.get("origin") if isinstance(cfg.get("origin"), dict) else {}
+        return MqttIntegration._fades(spec) and bool(cfg.get("brightness")) and bool(cfg.get("command_topic")) \
+            and _same(origin.get("name", ""), "Zigbee2MQTT")
+
+    def can_move(self, entity_id: str, attr: str) -> bool:
+        spec = self._specs.get(entity_id)
+        return bool(spec) and attr == "brightness" and self._moves(spec)
+
+    async def move(self, entity_id: str, attr: str, direction: int, full_s: float) -> None:
+        spec = self._spec(entity_id)
+        if not self.can_move(entity_id, attr):
+            await super().move(entity_id, attr, direction, full_s)
+        # Rate: Zigbee level units (0-254) per second. Up turns an off light on (moveWithOnOff); down is a
+        # plain move, which stops at the light's lowest level rather than turning it off.
+        rate = max(1, round(ZIGBEE_LEVEL_MAX / max(full_s, 0.1)))
+        body = {"brightness_move": "stop"} if direction == 0 else \
+            {"brightness_move_onoff": rate} if direction > 0 else {"brightness_move": -rate}
+        await self._send(entity_id, spec["cfg"]["command_topic"], json.dumps(body))
+
+    async def command_fading(self, entity_id: str, command: str, value: Any, seconds: float) -> None:
+        spec = self._spec(entity_id)
+        fade = seconds if self._fades(spec) and command == "set_brightness" else None
+        await self._send(entity_id, *self._payload_for(spec, command, value, fade))
+
+    def _payload_for(self, spec: dict[str, Any], command: str, value: Any,
+                     transition: float | None = None) -> tuple[str, str]:
         cfg, comp, cmd_t = spec["cfg"], spec["component"], spec["cfg"].get("command_topic")
         if comp == "light" and cfg.get("schema") == "json":
             scale = float(cfg.get("brightness_scale") or 255)
             body: dict[str, Any] = {"state": "OFF" if command == "turn_off" else "ON"}
             if command == "set_brightness":
                 body["brightness"] = round(max(1, min(100, float(value))) / 100 * scale)
+            if transition:
+                body["transition"] = transition
             return cmd_t, json.dumps(body)
         if command == "set_brightness":
             topic = cfg.get("brightness_command_topic") or cmd_t

@@ -1070,9 +1070,36 @@ class MatterIntegration(Integration):
                 await write(THERMOSTAT, 0x11 if ent and ent.state == "cool" else 0x12, round(float(value) * 100))
             else:
                 raise CommandError(f"{self.hub.name(entity_id)} can't {command.replace('_', ' ')}")
-        except MatterError as e:
+        except (MatterError, asyncio.TimeoutError, TimeoutError) as e:
+            raise self._command_error(entity_id, e) from e
+
+    def _command_error(self, entity_id: str, e: Exception) -> CommandError:
+        if isinstance(e, MatterError):
             if e.code in (NODE_NOT_READY, NODE_NOT_RESOLVING) or "timeout" in e.details.lower():
-                raise CommandError(f"{self.hub.name(entity_id)} isn't answering right now") from e
-            raise CommandError(f"The device didn't accept that ({e.details or e.code})") from e
-        except (asyncio.TimeoutError, TimeoutError) as e:
-            raise CommandError(f"{self.hub.name(entity_id)} didn't answer in time") from e
+                return CommandError(f"{self.hub.name(entity_id)} isn't answering right now")
+            return CommandError(f"The device didn't accept that ({e.details or e.code})")
+        return CommandError(f"{self.hub.name(entity_id)} didn't answer in time")
+
+    # A dimmable light ramps its own level (Level Control Move, in level units 0-254 per second): up with
+    # MoveWithOnOff (an off light comes on), down with a plain Move (it stops at the lowest level, never
+    # off), Stop where it is. Its new level comes back through the node's subscription.
+    def can_move(self, entity_id: str, attr: str) -> bool:
+        spec = self._specs.get(entity_id)
+        return bool(spec) and attr == "brightness" and spec["role"] == "onoff" and bool(spec.get("dimmable"))
+
+    async def move(self, entity_id: str, attr: str, direction: int, full_s: float) -> None:
+        if not self.can_move(entity_id, attr):
+            await super().move(entity_id, attr, direction, full_s)
+        if self._ws is None:
+            raise CommandError("The Matter server isn't connected right now")
+        spec = self._specs[entity_id]
+        opts = {"optionsMask": 0, "optionsOverride": 0}
+        rate = max(1, round(254 / max(full_s, 0.1)))
+        name, payload = ("Stop", opts) if direction == 0 else \
+            ("MoveWithOnOff", {"moveMode": 0, "rate": rate, **opts}) if direction > 0 else \
+            ("Move", {"moveMode": 1, "rate": rate, **opts})
+        try:
+            await self._call("device_command", {"node_id": spec["node"], "endpoint_id": spec["ep"], "cluster_id": LEVEL,
+                                                "command_name": name, "payload": payload}, timeout=30)
+        except (MatterError, asyncio.TimeoutError, TimeoutError) as e:
+            raise self._command_error(entity_id, e) from e

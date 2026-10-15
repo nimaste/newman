@@ -177,6 +177,22 @@ class Integration:
     async def command(self, entity_id: str, command: str, value: Any = None) -> None:
         raise CommandError(f"{self.name} can't {command}")
 
+    # Changing a level gradually ("Brighten / Dim while held"). A device that can ramp a level by itself,
+    # smoothly (a Zigbee or Matter light's Level Control "move"), says so in can_move(); move() starts it
+    # going (+1 up - turning it on, low, if it's off - or -1 down, never turning it off) at a speed that
+    # takes `full_s` seconds from bottom to top, and move(…, 0) stops it where it is. Its new level comes
+    # back as an ordinary state update. Anything else is stepped, each step with command_fading().
+    def can_move(self, entity_id: str, attr: str) -> bool:
+        return False
+
+    async def move(self, entity_id: str, attr: str, direction: int, full_s: float) -> None:
+        raise CommandError(f"{self.hub.name(entity_id)} can't change its {attr} by itself")
+
+    async def command_fading(self, entity_id: str, command: str, value: Any, seconds: float) -> None:
+        """command(), fading to the new value over `seconds` where the device can (by default it can't:
+        the value changes at once)."""
+        await self.command(entity_id, command, value)
+
     # "Do this for N minutes, then put it back" (automations). A device whose whole setup can't be
     # read back from its state (a music player's queue and spot in a song) keeps its own snapshot:
     # snapshot() before the command, marker() right after it (what "still ours" looks like), and
