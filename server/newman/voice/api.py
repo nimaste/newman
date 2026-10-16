@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+STT_CHECK_S = 60  # how often Newman checks that speech to text answers (the tablets listen only while it does)
+
 MAX_AUDIO_BYTES = 30 * 16000 * 2  # 30 s of 16 kHz 16-bit mono
 SENSITIVITY = {"low": 0.15, "normal": 0.0, "high": -0.15}  # added to the model's threshold
 DEFAULTS = {"enabled": True, "sensitivity": "normal", "volume": 80, "voice": "", "allowSensitive": False,
@@ -279,6 +281,9 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     (recipes.Kitchen), when the hub has it."""
     stt_addr = parse_address(config.voice_stt, 10300)
     tts_addr = parse_address(config.voice_tts, 10200)
+    # Speech to text Newman reaches itself (VOICE_STT): the wall tablets listen for the wake word only
+    # while it answers - with nothing to hear what's said after it, listening only uses the battery.
+    watch_stt = stt is None and stt_addr is not None
     stt = stt or (WyomingClient(*stt_addr) if stt_addr else None)
     voice_dir = Path(config.data_dir) / "voice"
 
@@ -290,6 +295,25 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     async def stt_ready() -> bool:
         info = await WyomingClient(*stt_addr, timeout=5.0).describe()  # type: ignore[misc]
         return bool(info.get("asr"))
+
+    heard = {"ok": not watch_stt}
+
+    async def watch_speech() -> None:
+        """Checks speech to text every STT_CHECK_S; when it starts or stops answering, the tablets hear
+        it ("voice-settings") and start or stop listening for the wake word."""
+        while True:
+            try:
+                ok = await stt_ready()
+            except Exception:  # noqa: BLE001 - not answering, whatever the reason
+                ok = False
+            if ok != heard["ok"]:
+                heard["ok"] = ok
+                log.info("Voice: speech to text %s", "answers - the wall tablets listen for the wake word" if ok
+                         else "isn't answering - the wall tablets stop listening for the wake word")
+                for u in h.store.users():
+                    if u.get("role") == "tablet":
+                        await send_to_user(u["id"], {"type": "voice-settings"})
+            await asyncio.sleep(STT_CHECK_S)
 
     # Whisper reads the hint only when it starts: restarted when it changes and nobody is talking.
     restarter = WhisperRestarter(voice_dir / "whisper_prompt.txt", config.voice_stt_container, docker_connection,
@@ -457,7 +481,7 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     @r.get("/api/voice")
     async def voice_info(req: web.Request) -> web.Response:
         v = viewer(req)
-        return web.json_response({"available": stt is not None, "speaks": tts is not None, "settings": v.settings,
+        return web.json_response({"available": stt is not None and heard["ok"], "speaks": tts is not None, "settings": v.settings,
                                   "wakeword": wake_json(v.settings)})
 
     @r.get("/api/voice/wakeword")
@@ -627,11 +651,13 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
         task["h"] = loop.create_task(hint.run(warm=warm_music), name="voice-hint-file")
         if restarter.enabled:
             task["r"] = loop.create_task(restarter.run(), name="voice-whisper-restart")
+        if watch_stt:
+            task["s"] = loop.create_task(watch_speech(), name="voice-speech-watch")
 
     async def cleanup(_: web.Application) -> None:
         hint.stop()
         for t in (task.pop("t", None), task.pop("w", None), task.pop("v", None), task.pop("h", None),
-                  task.pop("r", None)):
+                  task.pop("r", None), task.pop("s", None)):
             if t:
                 t.cancel()
 

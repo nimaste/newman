@@ -8,6 +8,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from unittest import mock
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from newman.api import build_app  # noqa: E402
 from newman.config import config  # noqa: E402
 from newman.integrations.base import Integration  # noqa: E402
 from newman.kinds import KINDS  # noqa: E402
+from newman.voice import api as VA  # noqa: E402
 from newman.voice import intents as I  # noqa: E402
 from newman.voice import wyoming as W  # noqa: E402
 from newman.voice.timers import Timers  # noqa: E402
@@ -495,6 +497,64 @@ class FakeTTS:
     async def synthesize(self, text, voice=None, speaker=None):
         self.said.append((text, voice))
         return W.Audio(b"\0\0" * 2205, 22050)
+
+
+class SpeechWatchTests(unittest.IsolatedAsyncioTestCase):
+    """The wall tablets listen for "Hey Newman" only while speech to text answers (seen live: VOICE_STT
+    set, no Whisper running, and the kitchen tablet listening all night for nothing)."""
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        data = Path(self.tmp.name)
+        self.saved = {k: getattr(config, k) for k in ("data_dir", "voice_stt", "voice_stt_restart")}
+        self.whisper = FakeWyoming()
+        self.port = await self.whisper.start()
+        await self.whisper.stop()  # not running (yet)
+        for k, v in (("data_dir", data), ("voice_stt", f"127.0.0.1:{self.port}"), ("voice_stt_restart", False)):
+            object.__setattr__(config, k, v)
+        self.fast = mock.patch.object(VA, "STT_CHECK_S", 0.05)
+        self.fast.start()
+        self.h = H(data)
+        self.h.voice_tts = FakeTTS()
+        self.client = TestClient(TestServer(build_app(self.h)))
+        await self.client.start_server()
+        await self.client.post("/api/auth/setup", json={"username": "chris", "name": "Chris", "password": "correct horse"})
+        await self.client.post("/api/users", json={"username": "hall", "name": "Hallway tablet", "role": "tablet",
+                                                   "password": "wall tablet pass"})
+        self.tab = Browser(self.client)
+        r = await self.tab.post("/api/auth/login", json={"username": "hall", "password": "wall tablet pass", "kind": "tablet"})
+        self.auth = {"Authorization": "Bearer " + (await r.json())["token"]}
+
+    async def asyncTearDown(self):
+        await self.tab.close()
+        await self.client.close()
+        if self.whisper.server:
+            self.whisper.server.close()
+        self.fast.stop()
+        for k, v in self.saved.items():
+            object.__setattr__(config, k, v)
+        self.tmp.cleanup()
+
+    async def available(self):
+        return (await (await self.tab.get("/api/voice", headers=self.auth)).json())["available"]
+
+    async def test_listening_follows_whether_speech_to_text_answers(self):
+        await asyncio.sleep(0.2)
+        self.assertFalse(await self.available())
+        self.whisper.server = await asyncio.start_server(self.whisper.handle, "127.0.0.1", self.port)
+        for _ in range(60):
+            if await self.available():
+                break
+            await asyncio.sleep(0.05)
+        self.assertTrue(await self.available())
+        self.whisper.server.close()
+        await self.whisper.server.wait_closed()
+        self.whisper.server = None
+        for _ in range(60):
+            if not await self.available():
+                break
+            await asyncio.sleep(0.05)
+        self.assertFalse(await self.available())
 
 
 class PipelineApiTests(unittest.IsolatedAsyncioTestCase):
