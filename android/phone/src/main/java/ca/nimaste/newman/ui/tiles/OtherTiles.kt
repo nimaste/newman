@@ -2,7 +2,9 @@ package ca.nimaste.newman.ui.tiles
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -83,8 +84,15 @@ fun CameraTile(tile: Tile, entities: Map<String, Entity>, kind: (Entity) -> Kind
             return@GlassCard
         }
         if (cams.size > 1) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                cams.forEach { c -> Pill(c.name, c.id == cam.id) { pick = c.id } }
+            // Every camera of the tile in order, starting at the left; the one shown is kept in view.
+            val pills = rememberLazyListState()
+            LaunchedEffect(cam.id) {
+                val i = cams.indexOfFirst { it.id == cam.id }
+                if (i >= 0 && pills.layoutInfo.visibleItemsInfo.none { it.index == i && it.offset >= 0 &&
+                        it.offset + it.size <= pills.layoutInfo.viewportEndOffset }) pills.animateScrollToItem(i)
+            }
+            LazyRow(Modifier.fillMaxWidth().padding(top = 6.dp), state = pills, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(cams, key = { it.id }) { c -> Pill(c.name, c.id == cam.id) { pick = c.id } }
             }
         }
         // A placed tile: the picture takes the room its cell leaves.

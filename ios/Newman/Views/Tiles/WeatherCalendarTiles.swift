@@ -38,8 +38,9 @@ struct WeatherTile: View {
         HStack(spacing: 12) {
             Image(systemName: Symbols.weather(w.condition, isDay: w.isDay)).font(.system(size: 30)).foregroundColor(Color(hex: 0xC9D4F5))
                 .accessibilityHidden(true)
-            Text(WeatherModel.deg(w.temperature)).font(AppFont.sora(30 * scale)).foregroundColor(Theme.text)
-                .lineLimit(1).layoutPriority(1)
+            // One row of cells high: Larger Text grows it only so far, so it stays inside the row.
+            Text(WeatherModel.deg(w.temperature)).font(AppFont.sora(min(30 * scale, 34))).foregroundColor(Theme.text)
+                .lineLimit(1).minimumScaleFactor(0.7).layoutPriority(1)
             VStack(alignment: .leading, spacing: 1) {
                 Text(w.label).font(AppFont.manrope(14 * scale, .heavy)).foregroundColor(Theme.text).lineLimit(1)
                 Text("H \(WeatherModel.deg(w.high)) · L \(WeatherModel.deg(w.low))").font(AppFont.manrope(12 * scale, .bold))
@@ -61,6 +62,7 @@ struct WeatherTile: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     ForEach(w.wetToday(), id: \.self) { s in
                         Text(s).font(AppFont.manrope(12 * scale, .bold)).foregroundColor(Theme.muted).lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                 }
             }

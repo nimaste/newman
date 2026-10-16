@@ -113,8 +113,9 @@ fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact:
         )
         if (!compact) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                WeatherIcon(e.state, a.bool("isDay") != false, size = 40.dp)
-                Text(deg(a.number("temperature")), style = T.number.copy(fontSize = 32.sp * textScale))
+                WeatherIcon(e.state, a.bool("isDay") != false, size = 32.dp)
+                // One row of cells high: a larger text size grows it only so far, so it stays inside the row.
+                Text(deg(a.number("temperature")), style = T.number.copy(fontSize = minOf(30f * textScale, 34f).sp), maxLines = 1)
                 Column(Modifier.weight(1f)) {
                     Text(label, style = T.label.copy(fontSize = 15.sp * textScale), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("H ${deg(a.number("high"))} · L ${deg(a.number("low"))}", style = T.small.copy(fontSize = 13.sp * textScale, color = N.Muted), maxLines = 1)

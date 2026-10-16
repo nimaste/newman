@@ -28,13 +28,22 @@ struct CameraTile: View {
             }
             if let cam {
                 if cams.count > 1 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(cams) { c in
-                                Button(c.name) { pick = c.id }
-                                    .buttonStyle(PillButtonStyle(selected: c.id == cam.id, height: 34))
-                                    .accessibilityHint("Shows this camera in the tile")
+                    // Every camera of the tile in order, starting at the left; the one shown is kept in view.
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(cams) { c in
+                                    Button(c.name) { pick = c.id }
+                                        .buttonStyle(PillButtonStyle(selected: c.id == cam.id, height: 34))
+                                        .id(c.id)
+                                        .accessibilityHint("Shows this camera in the tile")
+                                }
                             }
+                        }
+                        .defaultScrollAnchor(.leading)
+                        .onAppear { proxy.scrollTo(cam.id, anchor: cam.id == cams.first?.id ? .leading : .center) }
+                        .onChange(of: cam.id) { _, id in
+                            withAnimation { proxy.scrollTo(id, anchor: id == cams.first?.id ? .leading : .center) }
                         }
                     }
                 }

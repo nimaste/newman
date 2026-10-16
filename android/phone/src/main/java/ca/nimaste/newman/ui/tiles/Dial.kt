@@ -317,7 +317,7 @@ fun HorizontalDial(m: DialModel, onOpen: () -> Unit, textScale: Float) {
     val run = rememberRunner()
     val fill = LocalFillHeight.current // read before the card takes it
     val (target, _, bump) = rememberDialTarget(m)
-    val ring = if (fill == Dp.Unspecified) 140.dp else (fill - 74.dp).coerceIn(96.dp, 140.dp)
+    val ring = if (fill == Dp.Unspecified) 140.dp else (fill - 74.dp).coerceIn(56.dp, 140.dp) // as big as the row allows, 140 at most
     GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(m.e.name.uppercase(), style = T.caps, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))

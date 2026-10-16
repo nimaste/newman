@@ -122,7 +122,8 @@ struct DialRow: View {
             }
             GeometryReader { g in
                 HStack(spacing: 16) {
-                    ring(size: max(84, min(140, g.size.height)))
+                    // As big as the row allows (never past its height or half its width), 140 at most.
+                    ring(size: max(56, min(140, g.size.height, g.size.width * 0.45)))
                     controls
                 }
                 .frame(width: g.size.width, height: g.size.height)
