@@ -197,7 +197,7 @@ image and the Android APKs (README → Development → Releases has every secret
 
 - Phone layouts (`GET /api/phone-layout`, `PhoneGrid` in Shared/Core, `PlacedGrid.swift`): the hub
   sends the signed-in person's layout (their own, or the house default). Pages marked `tab` are the
-  tabs, in order, at most three, then **People** and **Alerts**; other pages are links at the bottom
+  tabs, in order, at most three, then **People** and **More**; other pages are links at the bottom
   of the first tab and open from their thermostat tile. Each page is a scrolling grid of 4 columns
   of square cells with tiles exactly at their `x`/`y`/`w`/`h` (no reflow, empty cells stay empty),
   drawn by the usual tile views sized to their rectangle (a tile with more than fits scrolls inside
@@ -214,8 +214,32 @@ image and the Android APKs (README → Development → Releases has every secret
   rectangle and on one line when it's too short for two. The Today card shows on the first tab only when
   the layout's `today` is on. A live `{"type":"dashboard"}` reloads the layout. Nothing is cached:
   the layout loads with the rest of the house. Older hubs (404) get the flowed dashboard below.
+- Tiles across the whole phone get a shape of their own: a **weather** tile one row high is one line
+  (icon, temperature, sky, H/L; today's rain or snow on the right, or the weather-alert button); a
+  **dial** (thermostat) 4 wide but under 4 rows high is the dial on the left (tap = the big one) with
+  − / + and the device's own modes on the right; a **camera** tile has "CAMERAS" and "All N" (every
+  camera full screen; a zone - attr `camera` - isn't one), the camera pills above the picture, which
+  fills the rest of the tile, with LIVE and the time on it; an untitled **devices** tile 4 wide and
+  2+ rows high is headed "QUICK CONTROLS". Every card heading is the same small-capitals label
+  (`CardHeader`) with its one action on the right. The status chips under the greeting wrap onto more
+  lines, and leave out the weather when the page has a weather tile. A To do row about a device with
+  problems shows the device's name and every problem the hub reports ("Battery failed · No AC power ·
+  Not responding to the hub"), and tints the card.
+- **More** (the fifth tab, `MoreScreen.swift`; its count is the alerts badge): **Alerts** (below),
+  **Devices** and **Automations**, pushed in a navigation stack (`AppModel.morePath`; a tapped
+  notification opens More › Alerts). Devices lists every device the hub has, by category in
+  `/api/meta`'s order (`DeviceDirectory` in Shared/Core): a name search, chips All / Needs attention
+  (`health.ok == false` or offline) / On now (the kind's active state, not a secure kind), five rows a
+  category with "Show all", each row with its problems or state and its quick control (a switch for an
+  on/off pair, else the one action that makes sense now); tap = the device sheet. Automations lists
+  `GET /api/automations` most recently run first (`AutomationList`): name, the hub's summary, "Ran today
+  2:54 PM" / "Sent …" / "Checked … · nothing to do" / "Hasn't run yet", and a switch (`PATCH
+  /api/automations/{id}` `{"enabled"}`, shown at once and put back if refused); tap = its recent runs
+  (`GET /api/runs?automationId=`) and Run now (`POST /api/automations/{id}/run`). Only admin accounts
+  may switch or run them: the hub's 403 text shows as a toast. Making and editing automations stays
+  on the web dashboard.
 - Tabs on older hubs: the dashboard's first three pages (icon + name; Overview, Security, Lights on the starter
-  dashboard), **People** and **Alerts** (`PhoneTabs` in Shared/Core). A Today page (greeting / To do /
+  dashboard), **People** and **More** (`PhoneTabs` in Shared/Core). A Today page (greeting / To do /
   calendar / weather) isn't a tab: the first tab shows the Today card (`GET /api/today`: To do with
   Done / Remind tomorrow / Open, today's events, heads-up) and today's summary under the greeting.
   Pages beyond the third (Climate) open from their thermostat tile, or from a link at the bottom of
@@ -241,7 +265,7 @@ image and the Android APKs (README → Development → Releases has every secret
   still being recorded has no byte ranges on the hub: that first request then brings the whole mp4,
   which plays from a temporary file. The snapshot shows until the video is ready to play, with
   Retry if the hub has no video yet or loading fails. Tapping a camera notification (`clip`, `frigate_event_id`)
-  opens the Alerts tab and that alert's video (looked up in `GET /api/alerts`).
+  opens More › Alerts and that alert's video (looked up in `GET /api/alerts`).
 - Sensitive commands (`sensitive: true`) ask for Face ID / Touch ID with passcode fallback first;
   the switch is in Me. Notification buttons marked sensitive use `.authenticationRequired`.
 - Notification buttons (`PushManager.perform`) post `{button, subject, deviceId, exp, token}` to

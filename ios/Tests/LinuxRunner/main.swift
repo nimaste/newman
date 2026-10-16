@@ -1141,5 +1141,6 @@ eq(TodayView.greetingFit(height: .infinity), TodayView.GreetingFit(size: 26, two
 runVoiceTests()
 runWallScreenTests()
 runLiveStatusTests()
+runMoreTests()
 print("\(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

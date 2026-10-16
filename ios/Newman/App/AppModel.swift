@@ -26,6 +26,10 @@ final class AppModel: ObservableObject {
     @Published var openCamera: CameraTarget?
     @Published var selectedTab = "page:0"
     @Published var unseenAlerts = 0
+    /// The More tab's screens (Alerts, Devices, Automations), pushed in order.
+    @Published var morePath: [MoreRoute] = []
+    /// GET /api/automations for More › Automations; nil until first loaded.
+    @Published var automations: [AutomationSummary]?
     /// A newman://connect link (or QR code) waiting for the Server screen.
     @Published var incomingLink: HubCandidate?
     /// The Server screen over the signed-in app (opened by a link).
@@ -226,6 +230,8 @@ final class AppModel: ObservableObject {
         refreshes = [:]
         today = nil
         todayDone = [:]
+        automations = nil
+        morePath = []
         user = nil
         phase = .onboarding
     }
@@ -268,9 +274,19 @@ final class AppModel: ObservableObject {
         unseenAlerts = 0
     }
 
+    /// Alerts on screen: More › Alerts is the top of the More tab, and that tab is showing.
+    var alertsShowing: Bool { selectedTab == "more" && morePath.last == .alerts }
+
+    /// A tapped notification: More › Alerts (the camera alert itself opens over it, openAlert).
+    func showAlerts() {
+        selectedTab = "more"
+        morePath = [.alerts]
+        markAlertsSeen()
+    }
+
     private func recountUnseen() {
         if alertsSeenAt == 0 { alertsSeenAt = Date().timeIntervalSince1970 }
-        unseenAlerts = selectedTab == "alerts" ? 0 : events.filter { $0.ts > alertsSeenAt }.count
+        unseenAlerts = alertsShowing ? 0 : events.filter { $0.ts > alertsSeenAt }.count
     }
 
     // MARK: lookups

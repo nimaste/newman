@@ -17,6 +17,15 @@ struct DialTile: View {
             if let dial = DialModel(entity: e, kind: model.kind(of: e), tile: tile) {
                 if wide {
                     DialControl(dial: dial, size: 300)
+                } else if acrossThePhone {
+                    DialRow(dial: dial) { openBig(dial) }
+                        .sheet(isPresented: $sheet) {
+                            DialSheet(entityId: dial.entity.id, tile: tile).environmentObject(model)
+                        }
+                        .fullScreenCover(item: $page) { p in
+                            PageScreen(page: p, isFirst: false, onClose: { page = nil }).environmentObject(model)
+                                .fullDynamicType()
+                        }
                 } else {
                     Button {
                         openBig(dial)
@@ -42,6 +51,11 @@ struct DialTile: View {
                     .glassCard()
             }
         }
+    }
+
+    /// Placed across the whole phone but shorter than the big dial (4 rows): the dial beside its controls.
+    private var acrossThePhone: Bool {
+        model.phoneLayout != nil && PhoneGrid.clamp(tile).w >= PhoneGrid.columns
     }
 
     /// The thermostat's own page (Climate) when it has no tab; else the big dial.
@@ -80,6 +94,132 @@ struct DialTile: View {
             .frame(width: 130, height: 124)
         }
         .glassCard()
+    }
+}
+
+/// The thermostat across the phone's width, a few rows high (Overview): its name and what it's doing
+/// on top; the dial on the left (tap for the big one); − / + and the modes (the device's own) on the right.
+struct DialRow: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.tileScale) var scale
+    let dial: DialModel
+    let open: () -> Void
+    @State private var target: Double?
+    @State private var pending: Task<Void, Never>?
+
+    var body: some View {
+        let color = Color(hex: dial.colorHex)
+        VStack(alignment: .leading, spacing: 10) {
+            CardHeader(text: dial.entity.name) {
+                if !dial.status.isEmpty {
+                    Text(dial.status)
+                        .font(AppFont.manrope(12 * scale, .heavy)).foregroundColor(color)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 24)
+                        .background(Capsule().fill(color.opacity(0.18)))
+                }
+            }
+            GeometryReader { g in
+                HStack(spacing: 16) {
+                    ring(size: max(84, min(140, g.size.height)))
+                    controls
+                }
+                .frame(width: g.size.width, height: g.size.height)
+            }
+        }
+        .glassCard(padding: 14)
+        .onChange(of: dial.current) {
+            if pending == nil { target = nil }
+        }
+    }
+
+    private func ring(size: CGFloat) -> some View {
+        let shown = target ?? dial.current
+        return Button(action: open) {
+            ZStack {
+                DialRing(dial: dial, value: shown, lineWidth: size > 110 ? 13 : 10, knob: size > 110 ? 10 : 8, nowValue: dial.nowValue)
+                VStack(spacing: 0) {
+                    Text(dial.text(shown)).font(AppFont.sora((size > 110 ? 30 : 24) * scale)).foregroundColor(Theme.text)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                    if let n = dial.nowProperty {
+                        Text("Now " + DeviceLogic.formatProp(n, n.value).replacingOccurrences(of: " °C", with: "°").replacingOccurrences(of: " °F", with: "°"))
+                            .font(AppFont.manrope(11 * scale, .bold)).foregroundColor(Theme.muted)
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                }
+                .padding(.horizontal, size * 0.16)
+            }
+            .frame(width: size, height: size)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(dial.entity.name), \(dial.command.label.lowercased())")
+        .accessibilityValue([dial.text(shown), dial.mode.map { DeviceLogic.stateLabel(dial.kind, $0) },
+                             dial.nowProperty.map { "now " + DeviceLogic.formatProp($0, $0.value) }]
+            .compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens the thermostat")
+        .accessibilityAdjustableAction { dir in bump(dir == .increment ? dial.step : -dial.step) }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                stepButton("minus") { bump(-dial.step) }
+                    .accessibilityLabel("Lower \(dial.command.label.lowercased())")
+                stepButton("plus") { bump(dial.step) }
+                    .accessibilityLabel("Raise \(dial.command.label.lowercased())")
+            }
+            .disabled(dial.isOff)
+            .opacity(dial.isOff ? 0.5 : 1)
+            if let modeCmd = dial.modeCommand, !dial.modes.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(dial.modes, id: \.id) { m in
+                        let on = m.id == dial.mode
+                        let c = Color(hex: DialModel.modeColors[m.id] ?? DialModel.neutral)
+                        Button {
+                            if !on { Task { await model.run(dial.entity.id, modeCmd, value: .string(m.id)) } }
+                        } label: {
+                            Text(m.label).font(AppFont.manrope(13 * scale, .heavy)).lineLimit(1).minimumScaleFactor(0.6)
+                                .frame(maxWidth: .infinity, minHeight: 34)
+                                .foregroundColor(on ? Theme.background : Theme.muted)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(on ? c : Color.clear))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Theme.pill))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func stepButton(_ symbol: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 20, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundColor(Theme.text)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.control))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.controlBorder))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func bump(_ d: Double) {
+        guard !dial.isOff, let base = target ?? dial.current else { return }
+        let v = dial.clamp(base + d)
+        target = v
+        pending?.cancel()
+        pending = Task {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            pending = nil
+            if v != dial.current { await model.run(dial.entity.id, dial.command, value: .number(v)) }
+        }
     }
 }
 

@@ -76,23 +76,25 @@ struct DevicesGridTile: View {
         if tile.string("groupBy") == "area" {
             ids.sort { (model.entities[$0]?.area ?? "~").localizedCompare(model.entities[$1]?.area ?? "~") == .orderedAscending }
         }
-        let title = (tile.string("title") ?? "").trimmingCharacters(in: .whitespaces)
+        let list = tile.string("style") == "list"
+        let named = (tile.string("title") ?? "").trimmingCharacters(in: .whitespaces)
+        // Untitled buttons across the phone (two rows or more) are the page's quick controls; a small
+        // tile of one or two buttons stays without a heading.
+        let cell = PhoneGrid.clamp(tile)
+        let quick = named.isEmpty && !list && ids.count > 1 && cell.w >= PhoneGrid.columns && cell.h >= 2
+        let title = quick ? "Quick controls" : named
         let fit = PhoneGrid.fitDevices(count: ids.count, width: Double(size.width), height: Double(size.height),
-                                       titled: !title.isEmpty, list: tile.string("style") == "list")
+                                       titled: !title.isEmpty, list: list)
         let shown = Array(ids.prefix(fit.shown))
         let gap = CGFloat(PhoneGrid.deviceGap)
         let row = CGFloat(PhoneGrid.deviceRow)
         let columns = Array(repeating: GridItem(.flexible(), spacing: gap), count: fit.columns)
         return VStack(alignment: .leading, spacing: 0) {
             if !title.isEmpty {
-                Text(title)
-                    .font(AppFont.manrope(15 * tile.textScale, .heavy))
-                    .foregroundColor(Theme.text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.leading, 4)
+                CardHeader(text: title)
+                    .environment(\.tileScale, tile.textScale)
+                    .padding(.horizontal, 4)
                     .frame(height: CGFloat(PhoneGrid.deviceTitle), alignment: .topLeading)
-                    .accessibilityAddTraits(.isHeader)
             }
             if ids.isEmpty {
                 Text("No devices chosen.").font(AppFont.manrope(13, .bold)).foregroundColor(Theme.muted).padding(4)

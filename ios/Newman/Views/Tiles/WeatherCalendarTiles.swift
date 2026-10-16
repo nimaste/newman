@@ -16,6 +16,8 @@ struct WeatherTile: View {
                 if w.temperature == nil {
                     Text(e.isAvailable ? "Waiting for the weather…" : "Weather unavailable right now.")
                         .font(AppFont.manrope(13, .bold)).foregroundColor(Theme.muted)
+                } else if oneRow {
+                    row(w)
                 } else {
                     content(w)
                 }
@@ -23,7 +25,48 @@ struct WeatherTile: View {
                 Text("Add a Weather connection in the Newman dashboard.").font(AppFont.manrope(13, .bold)).foregroundColor(Theme.muted)
             }
         }
-        .glassCard()
+        .glassCard(padding: oneRow ? 14 : 12)
+    }
+
+    /// The whole width of the phone but one row of cells high: everything on one line.
+    private var oneRow: Bool {
+        wide && model.phoneLayout != nil && PhoneGrid.clamp(tile).h <= 1
+    }
+
+    /// Icon, the temperature, the sky and today's high and low; rain or snow on the right.
+    private func row(_ w: WeatherModel) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: Symbols.weather(w.condition, isDay: w.isDay)).font(.system(size: 30)).foregroundColor(Color(hex: 0xC9D4F5))
+                .accessibilityHidden(true)
+            Text(WeatherModel.deg(w.temperature)).font(AppFont.sora(30 * scale)).foregroundColor(Theme.text)
+                .lineLimit(1).layoutPriority(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(w.label).font(AppFont.manrope(14 * scale, .heavy)).foregroundColor(Theme.text).lineLimit(1)
+                Text("H \(WeatherModel.deg(w.high)) · L \(WeatherModel.deg(w.low))").font(AppFont.manrope(12 * scale, .bold))
+                    .foregroundColor(Theme.muted).lineLimit(1)
+            }
+            .minimumScaleFactor(0.8)
+            Spacer(minLength: 4)
+            if !w.alerts.isEmpty {
+                Button { alertsOpen = true } label: {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 16)).foregroundColor(Theme.amber)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Theme.amber.opacity(0.2)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(w.alerts.first?["name"]?.stringValue ?? "Weather alert")
+                .accessibilityHint("Shows the weather alerts")
+                .sheet(isPresented: $alertsOpen) { WeatherAlertsSheet(place: w.entity.name, alerts: w.alerts) }
+            } else {
+                VStack(alignment: .trailing, spacing: 1) {
+                    ForEach(w.wetToday(), id: \.self) { s in
+                        Text(s).font(AppFont.manrope(12 * scale, .bold)).foregroundColor(Theme.muted).lineLimit(1)
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder private func content(_ w: WeatherModel) -> some View {

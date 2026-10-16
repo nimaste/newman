@@ -136,6 +136,31 @@ final class APIClient {
     }
     func todayDismiss(_ id: String) async throws { try await call("POST", "api/today/dismiss", body: ["id": .string(id)]) }
 
+    // MARK: Automations (More › Automations; only admins may switch or run them - 403 otherwise)
+
+    func automations() async throws -> [AutomationSummary] { try await get("api/automations") }
+
+    func automationRuns(_ id: String, limit: Int = 10) async throws -> [AutomationRun] {
+        let q = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))) ?? id
+        return try await get("api/runs?automationId=\(q)&limit=\(limit)")
+    }
+
+    /// PATCH /api/automations/{id} {"enabled"}: the saved automation back.
+    func setAutomation(_ id: String, enabled: Bool) async throws -> AutomationSummary {
+        let data = try await call("PATCH", "api/automations/\(pathPart(id))", body: AutomationList.enabledBody(enabled))
+        do {
+            return try JSONDecoder().decode(AutomationSummary.self, from: data)
+        } catch {
+            throw APIError(status: 200, message: "The hub's reply wasn't understood.")
+        }
+    }
+
+    /// POST /api/automations/{id}/run: the run it started (its status, when the hub says).
+    func runAutomation(_ id: String) async throws -> AutomationRun? {
+        let data = try await call("POST", "api/automations/\(pathPart(id))/run", body: [:])
+        return try? JSONDecoder().decode(AutomationRun.self, from: data)
+    }
+
     // MARK: People & location
 
     func people() async throws -> [Person] { try await get("api/people") }

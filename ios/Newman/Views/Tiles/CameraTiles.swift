@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The camera tile: live video (or a still refreshing every 2 s) while on screen, the tile's
-/// cameras as pills; tap the picture for full screen.
+/// The camera tile: "CAMERAS" with "All N" (every camera full screen), the tile's cameras as pills,
+/// then live video (or a still refreshing every 2 s) while on screen, LIVE and the time on it; tap
+/// the picture for full screen. Placed on a phone layout the picture takes the rest of the tile.
 struct CameraTile: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.tileScale) var scale
@@ -11,22 +12,55 @@ struct CameraTile: View {
     var body: some View {
         let cams = tile.strings("entities").compactMap { model.entity($0) }
         let cam = cams.first { $0.id == pick } ?? cams.first
-        return VStack(alignment: .leading, spacing: 8) {
+        // Every camera of the house; a zone (a part of another camera's picture, attr "camera") isn't one.
+        let everyCamera = model.allEntities.filter { model.kind(of: $0)?.hasCamera == true && $0.attr("camera") == nil }
+        return VStack(alignment: .leading, spacing: 10) {
+            CardHeader(text: "Cameras") {
+                if let first = everyCamera.first, everyCamera.count > 1 {
+                    Button("All \(everyCamera.count)") {
+                        let start = cam.map { c in everyCamera.contains { $0.id == c.id } ? c.id : first.id } ?? first.id
+                        model.openCamera = AppModel.CameraTarget(entityId: start, cameraIds: everyCamera.map { $0.id })
+                    }
+                    .font(AppFont.manrope(13 * scale, .heavy))
+                    .foregroundColor(Theme.blue)
+                    .accessibilityHint("Every camera, full screen")
+                }
+            }
             if let cam {
+                if cams.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(cams) { c in
+                                Button(c.name) { pick = c.id }
+                                    .buttonStyle(PillButtonStyle(selected: c.id == cam.id, height: 34))
+                                    .accessibilityHint("Shows this camera in the tile")
+                            }
+                        }
+                    }
+                }
                 Button {
                     model.openCamera = AppModel.CameraTarget(entityId: cam.id, cameraIds: cams.map { $0.id })
                 } label: {
-                    ZStack(alignment: .topLeading) {
-                        // Live video (sub stream) over the still; just the refreshing still without live.
-                        LiveCameraView(entity: cam, quality: .sub, priority: false, stillHeight: 480, contentMode: .fill, placeholder: {
-                            LinearGradient(colors: [Color(hex: 0x26314F), Color(hex: 0x121A33)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        })
-                        .id(cam.id)
-                        .frame(height: 190)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                        CameraNameBadge(name: cam.name)
-                            .padding(10)
+                    // Live video (sub stream) over the still; just the refreshing still without live.
+                    LiveCameraView(entity: cam, quality: .sub, priority: false, stillHeight: 480, contentMode: .fill, placeholder: {
+                        LinearGradient(colors: [Color(hex: 0x26314F), Color(hex: 0x121A33)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    })
+                    .id(cam.id)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: placed ? 110 : 190, maxHeight: placed ? .infinity : 190)
+                    .clipped()
+                    .overlay(alignment: .topLeading) {
+                        CameraNameBadge(name: cam.live != nil ? "LIVE" : cam.name).padding(10)
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        TimelineView(.everyMinute) { ctx in
+                            Text(HubDates.time(ctx.date)).font(AppFont.manrope(11, .heavy)).foregroundColor(Theme.text)
+                                .padding(.horizontal, 9)
+                                .frame(height: 26)
+                                .background(Capsule().fill(Color(hex: 0x0B1026, alpha: 0.72)))
+                        }
+                        .padding(10)
+                        .accessibilityHidden(true)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
@@ -34,23 +68,15 @@ struct CameraTile: View {
                 .accessibilityLabel("\(cam.name) camera")
                 .accessibilityAddTraits(.isImage)
                 .accessibilityHint("Opens it full screen")
-                if cams.count > 1 {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(cams) { c in
-                                Button(c.name) { pick = c.id }
-                                    .buttonStyle(PillButtonStyle(selected: c.id == cam.id, height: 36))
-                                    .accessibilityHint("Shows this camera in the tile")
-                            }
-                        }
-                    }
-                }
             } else {
                 Text("No cameras chosen for this tile.").font(AppFont.manrope(13, .bold)).foregroundColor(Theme.muted).padding(6)
             }
         }
-        .glassCard(padding: 8)
+        .glassCard(padding: 14)
     }
+
+    /// On a phone layout: the tile has its own height, which the picture fills.
+    private var placed: Bool { model.phoneLayout != nil }
 }
 
 struct CameraNameBadge: View {

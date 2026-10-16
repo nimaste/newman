@@ -24,7 +24,9 @@ struct PageScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     header
-                    if isFirst { StatusChips().padding(.bottom, 4) }
+                    if isFirst {
+                        StatusChips(showWeather: !(page.tiles ?? []).contains { $0.type == "weather" }).padding(.bottom, 4)
+                    }
                     if model.liveStatus == .down {
                         Label("Reconnecting to Newman…", systemImage: "arrow.triangle.2.circlepath")
                             .font(AppFont.manrope(13, .bold)).foregroundColor(Theme.muted)
@@ -66,7 +68,8 @@ struct PageScreen: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 24)
+                // Clear of the tab bar: the last card scrolls up above it.
+                .padding(.bottom, 40)
             }
             .refreshable { await model.reloadAll() }
         }
@@ -137,14 +140,15 @@ struct PageScreen: View {
     }
 }
 
-/// "All secure", the house mode, the weather, where you are, what needs attention.
+/// "All secure", the house mode, the weather (unless the page shows its own weather tile), where you
+/// are, what needs attention. The chips wrap onto more lines rather than running off the screen.
 struct StatusChips: View {
     @EnvironmentObject var model: AppModel
+    var showWeather = true
 
     var body: some View {
         let ents = model.allEntities
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        WrapLayout(spacing: 8) {
                 if let s = HouseStatus.securitySummary(ents, kinds: model.kinds) {
                     if s == "All secure" {
                         StatusChip(text: s, symbol: "checkmark.shield", tint: Theme.teal)
@@ -155,7 +159,7 @@ struct StatusChips: View {
                 if let mode = HouseStatus.modeDevice(ents, kinds: model.kinds) {
                     StatusChip(text: "\(mode.name): \(DeviceLogic.stateLabel(mode, model.kinds[mode.kind]).lowercased())")
                 }
-                if let w = WeatherModel.pick(tile: nil, entities: ents) {
+                if showWeather, let w = WeatherModel.pick(tile: nil, entities: ents) {
                     let wm = WeatherModel(entity: w, kind: model.kinds[w.kind])
                     if wm.temperature != nil {
                         StatusChip(text: "\(WeatherModel.deg(wm.temperature)) \(wm.label)", symbol: Symbols.weather(wm.condition, isDay: wm.isDay))
@@ -170,8 +174,61 @@ struct StatusChips: View {
                     StatusChip(text: bad.count == 1 ? "\(bad[0].name): \(bad[0].issues.first ?? "needs attention")" : "\(bad.count) devices need attention",
                                symbol: "exclamationmark.triangle", tint: Theme.coral)
                 }
-            }
         }
+    }
+}
+
+/// Lays its children out left to right, starting a new line when the next one doesn't fit
+/// (the status chips). A child wider than the line gets the whole line.
+struct WrapLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let rows = arrange(subviews, width: width)
+        let height = rows.reduce(0) { $0 + $1.height } + spacing * CGFloat(max(0, rows.count - 1))
+        let used = rows.map { $0.width }.max() ?? 0
+        return CGSize(width: proposal.width ?? used, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for i in row.items {
+                let size = subviews[i].sizeThatFits(ProposedViewSize(width: min(bounds.width, row.sizes[i] ?? 0), height: nil))
+                subviews[i].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), anchor: .topLeading,
+                                  proposal: ProposedViewSize(width: size.width, height: size.height))
+                x += size.width + spacing
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var items: [Int] = []
+        var sizes: [Int: CGFloat] = [:]
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for i in subviews.indices {
+            let size = subviews[i].sizeThatFits(ProposedViewSize(width: width, height: nil))
+            let w = min(size.width, width)
+            if !row.items.isEmpty && row.width + spacing + w > width {
+                rows.append(row)
+                row = Row()
+            }
+            row.width += (row.items.isEmpty ? 0 : spacing) + w
+            row.height = max(row.height, size.height)
+            row.items.append(i)
+            row.sizes[i] = w
+        }
+        if !row.items.isEmpty { rows.append(row) }
+        return rows
     }
 }
 

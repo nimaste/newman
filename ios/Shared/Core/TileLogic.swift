@@ -251,6 +251,19 @@ struct WeatherModel {
         return "H \(WeatherModel.deg(high)) · L \(WeatherModel.deg(low))" + (wet.isEmpty ? "" : " · " + wet.joined(separator: " · "))
     }
 
+    /// Today's rain or snow for the one-row weather card's right side: ["71% chance", "1.2 mm"].
+    func wetToday(now: Date = Date()) -> [String] {
+        let today = forecast.first { $0.date == HubDates.dayKey(now) }
+        var out: [String] = []
+        if let c = today?.precipChance ?? num("precipChance"), c > 0 { out.append("\(Int(c.rounded()))% chance") }
+        if let s = today?.snow ?? num("snowToday"), s > 0 {
+            out.append("\(JSONValue.format(s, maxDecimals: 1)) cm")
+        } else if let r = today?.rain ?? num("rainToday"), r > 0 {
+            out.append("\(JSONValue.format(r, maxDecimals: 1)) mm")
+        }
+        return out
+    }
+
     /// The next day with rain or snow worth mentioning: "Fri: rain 7.3 mm".
     func nextWetDay(now: Date = Date()) -> String? {
         for d in nextDays(now: now) {

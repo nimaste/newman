@@ -76,7 +76,7 @@ struct LoadingView: View {
 }
 
 /// Five tabs (PhoneTabs): the dashboard's first three pages (icon and name from each page), People
-/// and Alerts. A Today page becomes the Today card on the first tab; other pages (Climate) open
+/// and More (Alerts, Devices, Automations - MoreTab). A Today page becomes the Today card on the first tab; other pages (Climate) open
 /// from their thermostat tile or a link at the bottom of the first tab.
 struct MainTabs: View {
     @EnvironmentObject var model: AppModel
@@ -94,15 +94,15 @@ struct MainTabs: View {
                 .tabChrome()
                 .tabItem { Label("People", systemImage: "person.2") }
                 .tag("people")
-            AlertsScreen()
+            MoreTab()
                 .tabChrome()
-                .tabItem { Label("Alerts", systemImage: "bell") }
+                .tabItem { Label("More", systemImage: "ellipsis.circle") }
                 .badge(model.unseenAlerts)
-                .tag("alerts")
+                .tag("more")
         }
         .tint(Theme.text)
-        .onChange(of: model.selectedTab) { _, tab in
-            if tab == "alerts" { model.markAlertsSeen() }
+        .onChange(of: model.selectedTab) { _, _ in
+            if model.alertsShowing { model.markAlertsSeen() }
         }
     }
 }

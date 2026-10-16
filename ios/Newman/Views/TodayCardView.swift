@@ -84,27 +84,39 @@ struct TodayCardView: View {
                         .padding(.top, 8)
                     }
                 }
-                .glassCard(padding: 14)
+                // A device needing attention tints the card, like the Needs attention tile.
+                .glassCard(padding: 14, fill: hasProblem(card.rows) ? Theme.coral.opacity(0.10) : Theme.card,
+                           border: hasProblem(card.rows) ? Theme.coral.opacity(0.35) : Theme.cardBorder)
             }
         }
     }
 
+    /// A row about a device the hub reports problems with: its name, and every problem.
+    private func problemDevice(_ r: TodayView.Row) -> Entity? {
+        guard r.tone != .done, let id = r.entity, let e = model.entity(id), !e.issues.isEmpty else { return nil }
+        return e
+    }
+
+    private func hasProblem(_ rows: [TodayView.Row]) -> Bool { rows.contains { problemDevice($0) != nil } }
+
     private func caps(_ s: String) -> some View {
-        Text(s.uppercased()).font(AppFont.manrope(12, .heavy)).kerning(1).foregroundColor(Theme.muted).padding(.bottom, 4)
-            .accessibilityLabel(s) // not spelled out letter by letter
-            .accessibilityAddTraits(.isHeader)
+        CardHeader(text: s).padding(.bottom, 4)
     }
 
     private func row(_ r: TodayView.Row) -> some View {
         let done = r.tone == .done
+        let device = problemDevice(r)
+        let title = device?.name ?? r.title
+        let status = device.map { $0.issues.joined(separator: " · ") } ?? r.status
         return HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 2).fill(toneColor(r.tone)).frame(width: 4, height: 34)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(r.title).font(AppFont.manrope(14, .heavy)).foregroundColor(done ? Theme.muted : Theme.text)
+                Text(title).font(AppFont.manrope(14, .heavy)).foregroundColor(done ? Theme.muted : Theme.text)
                     .strikethrough(done).lineLimit(2)
-                if !r.status.isEmpty {
-                    Text(r.status).font(AppFont.manrope(12, .bold)).foregroundColor(r.tone == .later ? Theme.muted : toneColor(r.tone)).lineLimit(2)
+                if !status.isEmpty {
+                    Text(status).font(AppFont.manrope(12, .bold))
+                        .foregroundColor(device != nil ? Theme.coralText : (r.tone == .later ? Theme.muted : toneColor(r.tone))).lineLimit(3)
                 }
             }
             .accessibilityElement(children: .combine)

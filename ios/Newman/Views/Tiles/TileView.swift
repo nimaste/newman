@@ -42,6 +42,34 @@ extension EnvironmentValues {
     }
 }
 
+/// Every card's heading: a small capitals label ("CAMERAS", "SECURITY · 15") and, on the right, the
+/// card's one action ("All 8", "Show all") or a note. One look for every tile and list on the phone.
+struct CardHeader<Trailing: View>: View {
+    @Environment(\.tileScale) var scale
+    let text: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(text.uppercased())
+                .font(AppFont.manrope(12 * scale, .heavy)).kerning(1.1).foregroundColor(Theme.dim)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .accessibilityLabel(text) // not spelled out letter by letter
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .frame(minHeight: 22)
+    }
+}
+
+extension CardHeader where Trailing == EmptyView {
+    init(text: String) {
+        self.text = text
+        self.trailing = { EmptyView() }
+    }
+}
+
 struct TileTitle: View {
     @Environment(\.tileScale) var scale
     let text: String
@@ -49,13 +77,9 @@ struct TileTitle: View {
     var noteColor: Color = Theme.muted
 
     var body: some View {
-        HStack {
-            Text(text).font(AppFont.manrope(15 * scale, .heavy)).foregroundColor(Theme.text).lineLimit(1)
-            Spacer()
+        CardHeader(text: text) {
             if let note { Text(note).font(AppFont.manrope(13 * scale, .heavy)).foregroundColor(noteColor).lineLimit(1) }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
     }
 }
 
