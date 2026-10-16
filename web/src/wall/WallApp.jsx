@@ -345,7 +345,8 @@ function WallScreens({ auth, signOut }) {
       {festive && xmas.place === 'background' && hasCast(xmas) ? <Backdrop xmas={xmas} dashId={d.id} /> : null}
       {!full ? <TopBar pages={pages} current={page && page.id} tabNames={d && d.tabNames} decor={deco.decor} decorRuler={deco.ruler} decorKey={deco.fit} onDecorRoom={festive ? setDecorRoom : undefined} onDim={() => setDim(true)} user={auth.user} onSignOut={signOut} skewMin={skew} musicChip={!page || page.id !== home.page} /> : null}
       <NamedHub names={d && d.names}>
-        {body}
+        {/* Dimmed, only the time shows: the page's tiles (camera pictures, weather, calendar…) stop until it wakes. */}
+        {dim ? null : body}
         <WallAlerts auth={auth} onWake={() => setDim(false)} />
         <VoiceLayer homePage={currentHome(home)} />
         <MusicEngine />
