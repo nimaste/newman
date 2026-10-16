@@ -248,9 +248,27 @@ class AuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await c.get("/api/automations")).status, 200)
         self.assertEqual((await c.post("/api/entities/fake.side/command", json={"command": "lock"})).status, 200)
         self.assertEqual((await c.post("/api/automations", json={})).status, 403)
+        self.assertEqual((await c.patch("/api/automations/auto_x", json={"enabled": False})).status, 403)
         self.assertEqual((await c.get("/api/users")).status, 403)
         self.assertEqual(self.locks.calls[-1], ("fake.side", "lock"))
         await c.close()
+
+    async def test_switching_an_automation_on_and_off(self):
+        await self.setup_admin()
+        auto = self.h.engine.save({
+            "name": "Side door locked", "recipients": [], "notify": {"enabled": False},
+            "trigger": {"items": [{"type": "state", "entities": ["fake.side"], "to": "LOCKED"}]},
+            "actions": [{"entities": ["fake.side"], "command": "lock"}]})
+        r = await self.client.patch(f"/api/automations/{auto['id']}", json={"enabled": False})
+        out = await r.json()
+        self.assertEqual((r.status, out["enabled"], "summary" in out, "lastRun" in out), (200, False, True, True))
+        self.assertFalse(self.h.engine.autos[auto["id"]]["enabled"])
+        self.assertEqual(self.h.engine.autos[auto["id"]]["name"], "Side door locked")  # nothing else changed
+        for bad in ({"enabled": "no"}, {"enabled": True, "name": "x"}, {}):
+            self.assertEqual((await self.client.patch(f"/api/automations/{auto['id']}", json=bad)).status, 400, bad)
+        self.assertEqual((await self.client.patch("/api/automations/auto_nope", json={"enabled": True})).status, 404)
+        r = await self.client.patch(f"/api/automations/{auto['id']}", json={"enabled": True})
+        self.assertTrue((await r.json())["enabled"])
 
     async def test_guessing_from_outside_gets_locked_out(self):
         await self.setup_admin()

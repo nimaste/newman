@@ -1639,6 +1639,20 @@ def build_app(h: "Newman") -> web.Application:
         except ValueError as e:
             return _err(400, str(e))
 
+    @r.patch("/api/automations/{aid}")
+    async def patch_automation(req: web.Request) -> web.Response:
+        """{"enabled": bool} - switches it on or off (the phone apps' Automations list); answers it as the
+        list does (with summary, lastRun, nextRun)."""
+        aid = req.match_info["aid"]
+        auto = h.engine.autos.get(aid)
+        if auto is None:
+            return _err(404, "not found")
+        data = await body(req)
+        if set(data) != {"enabled"} or not isinstance(data["enabled"], bool):
+            return _err(400, 'Send {"enabled": true} or {"enabled": false}')
+        h.engine.save({**auto, "enabled": data["enabled"]})
+        return web.json_response(next(x for x in h.engine.list() if x["id"] == aid))
+
     @r.delete("/api/automations/{aid}")
     async def delete_automation(req: web.Request) -> web.Response:
         return web.json_response({"ok": h.engine.delete(req.match_info["aid"])})

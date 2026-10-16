@@ -954,6 +954,7 @@ to Chris …`). Two automations with no run waiting both notify.
 
 * `GET /api/automations` → `[Automation + {"summary", "lastRun", "nextRun"}]`
 * `POST /api/automations` (body without id) → Automation · `GET|PUT|DELETE /api/automations/{id}`
+* `PATCH /api/automations/{id}` `{"enabled": true|false}` → switches it on or off, answered as the list answers it (admins only; the phone apps' Automations list)
 * `POST /api/automations/describe` (any automation body, unsaved is fine) →
   `{"summary": "At 9:00 PM every day, if any of Side Door or Laundry is unlocked, notify Chris and Marlina with Lock Side Door, … buttons. Once they are locked, tell everyone who did it.",
     "preview": {"title", "body", "timeSensitive", "buttons": [{"id", "label", "icon", "sensitive"}], "followUp": "Chris locked Side Door and Laundry."},
