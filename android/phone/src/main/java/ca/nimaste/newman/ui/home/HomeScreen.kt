@@ -327,7 +327,7 @@ internal fun TileBody(t: Tile, compact: Boolean, state: HubState, entities: Map<
                       onSheet: (String) -> Unit, onDial: (Tile) -> Unit, fullWidth: Boolean = false) {
     val ts = t.textScale
     when (t.type) {
-        "camera" -> CameraTile(t, entities) { onCamera(it, null) }
+        "camera" -> CameraTile(t, entities, { state.kind(it) }) { onCamera(it, null) }
         "alerts" -> AlertsTile(t, entities, onCamera)
         "dial" -> {
             val e = entities[t.config.string("entity")]

@@ -40,6 +40,13 @@ object HubModel {
 
     fun isMode(k: Kind?): Boolean = k?.isMode == true
 
+    /**
+     * Every camera of the house (a kind with a camera and a picture); a zone - a part of another
+     * camera's picture, attrs.camera - isn't one (as on the iPhone's camera tile).
+     */
+    fun cameras(entities: Collection<Entity>, kind: (Entity) -> Kind?): List<Entity> =
+        entities.filter { kind(it)?.hasCamera == true && it.still != null && it.attrs["camera"] == null }
+
     /** Events a device can actually emit: the kind's, narrowed to attrs.events when present. */
     fun eventsFor(e: Entity?, k: Kind?): List<KindEvent> {
         val all = k?.events ?: emptyList()

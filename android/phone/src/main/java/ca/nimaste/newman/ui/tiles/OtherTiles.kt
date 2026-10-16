@@ -34,6 +34,7 @@ import ca.nimaste.newman.core.live.LiveMessage
 import ca.nimaste.newman.core.model.CameraAlert
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.HubModel
+import ca.nimaste.newman.core.model.Kind
 import ca.nimaste.newman.core.model.Meta
 import ca.nimaste.newman.core.model.Tile
 import ca.nimaste.newman.core.model.asObjectOrNull
@@ -60,18 +61,23 @@ import java.text.DateFormat
 import java.util.Date
 
 /**
- * Live video of the tile's cameras (LiveCamera): a heading, the cameras as pills above the picture
- * (so nothing sits under the tab bar), LIVE and the time on it; tap for full screen.
+ * Live video of the tile's cameras (LiveCamera): a heading with "All N" (every camera full screen,
+ * as on the iPhone), the cameras as pills above the picture (so nothing sits under the tab bar),
+ * LIVE and the time on it; tap for full screen.
  */
 @Composable
-fun CameraTile(tile: Tile, entities: Map<String, Entity>, onOpen: (String) -> Unit) {
+fun CameraTile(tile: Tile, entities: Map<String, Entity>, kind: (Entity) -> Kind?, onOpen: (String) -> Unit) {
     val cams = tile.config.strings("entities").mapNotNull { entities[it] }
     var pick by rememberSaveable(tile.id) { mutableStateOf<String?>(null) }
     val cam = cams.firstOrNull { it.id == pick } ?: cams.firstOrNull()
     val fill = LocalFillHeight.current // read before the card takes it
     val now = rememberNow(30_000)
+    val every = HubModel.cameras(entities.values) { kind(it) }
     GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(12.dp)) {
-        CardHeader(tile.config.string("title")?.takeIf { it.isNotBlank() } ?: if (cams.size == 1) cams[0].name else "Cameras")
+        // "All N": the camera screen, which steps through every camera, starting at this one.
+        CardHeader(tile.config.string("title")?.takeIf { it.isNotBlank() } ?: if (cams.size == 1) cams[0].name else "Cameras",
+            action = if (every.size > 1) "All ${every.size}" else null,
+            onAction = { (cam?.takeIf { c -> every.any { it.id == c.id } } ?: every.first()).let { onOpen(it.id) } })
         if (cam == null) {
             Text("No cameras chosen for this tile.", style = T.tiny, modifier = Modifier.padding(top = 8.dp))
             return@GlassCard

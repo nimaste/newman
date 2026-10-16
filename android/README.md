@@ -321,10 +321,12 @@ The Android counterparts of the iPhone's Control Center controls and Siri shortc
   The first page's chips wrap onto more lines, with no weather chip when the page has a weather tile.
   Devices with a problem from the Today briefing get their own coral card above it (the device's
   name, all its health issues, **Open**). A **weather** tile across the phone is one row (icon,
-  temperature, sky and high/low, humidity and rain), with the week below when it is 200 dp or taller;
+  temperature, sky and high/low; on the right today's rain or snow, `Weather.wetToday` as on the
+  iPhone, or a weather alert's button that opens the alerts), with the week below when it is 200 dp or taller;
   a **thermostat** across the phone but under 4 rows is side by side (`HorizontalDial`: the ring, tap
-  for the full dial; − / + and the device's own modes); a **camera** tile has its heading and the
-  camera pills above the picture, LIVE and the time on it; a devices grid of two or more devices
+  for the full dial; − / + and the device's own modes); a **camera** tile has its heading with
+  "All N" (every camera, `HubModel.cameras`: not zones; opens the camera screen, which steps through
+  the same cameras) and the camera pills above the picture, LIVE and the time on it; a devices grid of two or more devices
   across the phone is headed "Quick controls" unless it has a title.
 - **More** (the last tab; its badge is the unseen alerts): **Alerts** (the old Alerts tab, with a
   way back), **Devices** and **Automations**; the system Back button walks back up.

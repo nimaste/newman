@@ -71,10 +71,12 @@ import java.util.Date
 fun CameraScreen(entityId: String, alertId: String?, onBack: () -> Unit) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
-    // The cameras in dashboard order first, then any other device with a picture.
+    // The cameras in dashboard order first, then every other camera (not a camera's zones: the camera
+    // tile's "All N" counts the same ones).
     val dashCams = state.dashboard?.pages?.flatMap { p -> p.tiles.filter { it.type == "camera" }.flatMap { it.config.strings("entities") } }
         ?.distinct().orEmpty()
-    val cams = (dashCams.mapNotNull { state.named[it] } + state.named.values.filter { it.still != null && it.id !in dashCams })
+    val others = ca.nimaste.newman.core.model.HubModel.cameras(state.named.values) { state.kind(it) }.filter { it.id !in dashCams }
+    val cams = (dashCams.mapNotNull { state.named[it] } + others)
         .filter { it.still != null }
     var camId by rememberSaveable { mutableStateOf(entityId) }
     val cam = state.named[camId] ?: cams.firstOrNull()

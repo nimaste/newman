@@ -96,6 +96,20 @@ class MoreScreensTest {
         assertEquals(listOf("TV Area"), DeviceList.filtered(devices, meta, "", DeviceList.Filter.ON).map { it.name })
     }
 
+    @Test fun everyCameraButNotZones() {
+        val camKind = Kind("camera", category = "cameras", hasCamera = true)
+        val zoneKind = Kind("zone", category = "cameras", hasCamera = true)
+        val kinds = mapOf("camera" to camKind, "zone" to zoneKind)
+        val list = listOf(
+            Entity("c1", "Garage", kind = "camera", still = "api/entities/c1/still.jpg"),
+            Entity("z1", "Driveway", kind = "zone", still = "api/entities/z1/still.jpg",
+                attrs = NewmanJson.parseToJsonElement("""{"camera": "c1"}""") as kotlinx.serialization.json.JsonObject),
+            Entity("c2", "Backyard", kind = "camera", still = "api/entities/c2/still.jpg"),
+            Entity("c3", "Old camera", kind = "camera"),
+        )
+        assertEquals(listOf("c1", "c2"), ca.nimaste.newman.core.model.HubModel.cameras(list) { kinds[it.kind] }.map { it.id })
+    }
+
     @Test fun summaryAndStatus() {
         assertEquals("6 devices · 2 need attention", DeviceList.summary(devices))
         assertEquals("1 device", DeviceList.summary(devices.take(1)))

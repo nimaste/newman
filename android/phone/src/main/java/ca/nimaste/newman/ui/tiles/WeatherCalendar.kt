@@ -38,6 +38,15 @@ import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.core.model.strings
 import ca.nimaste.newman.ui.common.GlassCard
 import ca.nimaste.newman.ui.common.LocalFillHeight
+import ca.nimaste.newman.ui.common.IconAction
+import ca.nimaste.newman.ui.common.heading
+import ca.nimaste.newman.core.model.Weather
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.unit.Dp
 import ca.nimaste.newman.ui.icons.NIcon
 import ca.nimaste.newman.ui.icons.WeatherIcon
@@ -76,11 +85,13 @@ fun rememberNow(periodMs: Long = 60_000): Long {
 
 /**
  * Weather: PhoneOverview's half tile; across the phone, one row (icon, temperature, sky and
- * high/low, humidity and rain on the right), with the week ahead below when the tile is tall enough.
+ * high/low; on the right today's rain or snow - Weather.wetToday - or a weather alert's button,
+ * which opens the alerts), with the week ahead below when the tile is tall enough.
  */
 @Composable
 fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact: Boolean, textScale: Float) {
     val now = rememberNow()
+    var alertsOpen by remember { mutableStateOf(false) }
     val fill = LocalFillHeight.current // read before the card takes it
     val chosen = entities[tile.config.string("entity")]
     val e = if (hasForecast(chosen)) chosen else entities.values.firstOrNull { hasForecast(it) }
@@ -108,13 +119,21 @@ fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact:
                     Text(label, style = T.label.copy(fontSize = 15.sp * textScale), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("H ${deg(a.number("high"))} · L ${deg(a.number("low"))}", style = T.small.copy(fontSize = 13.sp * textScale, color = N.Muted), maxLines = 1)
                 }
-                val side = listOfNotNull(a.number("humidity")?.let { "${it.roundToInt()}% humidity" }) + wet
-                if (side.isNotEmpty()) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        side.take(2).forEach { Text(it, style = T.tiny.copy(fontSize = 12.sp * textScale), maxLines = 1) }
+                // On the right (as on the iPhone): a weather alert's button, else today's rain or snow.
+                val alerts = Weather.alerts(a)
+                if (alerts.isNotEmpty()) {
+                    IconAction("alert", alerts.first().string("name") ?: "Weather alert", size = 36.dp, iconSize = 16.dp, color = N.Amber,
+                        background = N.Amber.copy(alpha = 0.2f), stroke = 2.4f) { alertsOpen = true }
+                } else {
+                    val side = Weather.wetToday(a, today)
+                    if (side.isNotEmpty()) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            side.forEach { Text(it, style = T.tiny.copy(fontSize = 12.sp * textScale), maxLines = 1) }
+                        }
                     }
                 }
             }
+            if (alertsOpen) WeatherAlertsSheet(e.name, Weather.alerts(a)) { alertsOpen = false }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WeatherIcon(e.state, a.bool("isDay") != false, size = 34.dp)
@@ -124,7 +143,8 @@ fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact:
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (wet.isNotEmpty()) Text(wet.joinToString(" · "), style = T.tiny)
         }
-        val alerts = a.array("alerts")?.mapNotNull { it.asObjectOrNull } ?: emptyList()
+        // The half tile names the worst alert (the row has its button instead).
+        val alerts = if (compact) Weather.alerts(a) else emptyList()
         alerts.maxByOrNull { mapOf("red" to 3, "orange" to 2, "yellow" to 1)[it.string("colour")] ?: 0 }?.let { top ->
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 NIcon("alert", size = 14.dp, color = N.Amber)
@@ -140,6 +160,27 @@ fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact:
             val span = max(1.0, (highs.maxOrNull() ?: 0.0) - lo)
             Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 days.forEach { d -> DayRow(d, lo, span) }
+            }
+        }
+    }
+}
+
+/** The weather alerts in full (the iPhone's WeatherAlertsSheet): name, colour · type · area, the text. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WeatherAlertsSheet(place: String, alerts: List<JsonObject>, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF141A33), contentColor = N.Text) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).navigationBarsPadding().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Weather alerts for $place", style = T.title, modifier = Modifier.heading())
+            alerts.forEach { al ->
+                GlassCard(Modifier.fillMaxWidth(), radius = 18.dp) {
+                    Text(al.string("name") ?: "Weather alert", style = T.label.copy(fontSize = 16.sp), modifier = Modifier.heading())
+                    val line = listOfNotNull(al.string("colour")?.replaceFirstChar { it.uppercase() }, al.string("type")?.replaceFirstChar { it.uppercase() },
+                        al.string("area")).filter { it.isNotBlank() }.joinToString(" · ")
+                    if (line.isNotEmpty()) Text(line, style = T.tiny)
+                    Text(al.string("text")?.takeIf { it.isNotBlank() } ?: "No details given.", style = T.body, modifier = Modifier.padding(top = 6.dp))
+                }
             }
         }
     }
