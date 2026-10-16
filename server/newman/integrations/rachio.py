@@ -30,7 +30,6 @@ log = logging.getLogger(__name__)
 
 API = "https://api.rach.io/1/public"
 DAILY_BUDGET = 1000          # of Rachio's 1,700 - room for commands and the Rachio app's own use
-MIN_POLL_S = 180
 WEBHOOK_POLL_S = 1800
 INFO_EVERY_S = 1800
 NEXT_RUN_EVERY_S = 3600
@@ -63,6 +62,9 @@ class RachioIntegration(Integration):
         Field("webhook_base", "Webhook address", advanced=True, placeholder="https://newman.example.com",
               help="Only if Rachio can reach Newman from the internet without a client certificate (the "
                    "/api/public/webhooks path let through your proxy). Leave empty to poll."),
+        Field("poll_seconds", "Check every (seconds)", "number", default=180, minimum=180, advanced=True,
+              help="Without a webhook address. Newman still checks less often when it has several controllers, "
+                   "to stay within Rachio's daily limit."),
     ]
 
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -108,7 +110,7 @@ class RachioIntegration(Integration):
             return 3600
         if self._webhooks:
             return WEBHOOK_POLL_S
-        return max(MIN_POLL_S, len(self._devices) * 86400 / DAILY_BUDGET)
+        return max(self.seconds_every("poll_seconds", unit=1), len(self._devices) * 86400 / DAILY_BUDGET)
 
     async def run(self) -> None:
         attempt, info_at, next_at = 0, 0.0, 0.0

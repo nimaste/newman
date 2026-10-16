@@ -28,7 +28,7 @@ import aiomqtt
 import httpx
 
 from ..kinds import DETECTABLE
-from .base import Field, Integration, address_of, is_local_address
+from .base import Field, Integration, address_of, check_every_field, is_local_address
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,6 @@ def nice(name: str) -> str:
 
 
 FILTERS = ("cameras", "zones")  # each has a hide_<name> setting (and an older include list, see extra_config_keys)
-REFRESH_S = 600  # re-read Frigate's config this often, in case its restart messages were missed
 # Frigate writes recordings in segments of about 10 s, so an alert's last seconds (and the lead-out
 # open_clip adds) reach its clip a little after the alert ends; fetched sooner, the clip would be
 # cached cut short.
@@ -96,6 +95,8 @@ class FrigateIntegration(Integration):
         Field("mqtt_port", "MQTT port (optional)", "number"),
         Field("mqtt_username", "MQTT username (optional)"),
         Field("mqtt_password", "MQTT password (optional)", "password"),
+        check_every_field(10, 1, help="Detections arrive as they happen; this also reads Frigate's cameras and zones "
+                                      "again, in case a change to them was missed."),
     ]
     # Older Newman kept the cameras/zones to INCLUDE ("cameras", "zones": empty = all), so a camera added
     # to Frigate later never appeared. Still accepted from older clients; turned into hide_cameras /
@@ -279,8 +280,10 @@ class FrigateIntegration(Integration):
     # -- following Frigate's config changes ---------------------------------------------------------
 
     async def _refresh_timer(self) -> None:
+        """Every "Check everything every" minutes while connected: Frigate's config read again (its cameras
+        and zones), in case its restart messages were missed."""
         while True:
-            await asyncio.sleep(REFRESH_S)
+            await asyncio.sleep(self.seconds_every("check_minutes"))
             await self.refresh()
 
     def _refresh_soon(self) -> None:

@@ -18,7 +18,6 @@ log = logging.getLogger(__name__)
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 EC_ALERTS_URL = "https://api.weather.gc.ca/collections/weather-alerts/items"
-WEATHER_EVERY_S = 15 * 60
 DAILY = ["weather_code", "temperature_2m_max", "temperature_2m_min", "apparent_temperature_max",
          "apparent_temperature_min", "precipitation_probability_max", "precipitation_sum", "rain_sum", "showers_sum",
          "snowfall_sum", "precipitation_hours", "wind_speed_10m_max", "wind_gusts_10m_max",
@@ -26,7 +25,6 @@ DAILY = ["weather_code", "temperature_2m_max", "temperature_2m_min", "apparent_t
 HOURLY = ["temperature_2m", "apparent_temperature", "weather_code", "precipitation_probability", "precipitation",
           "rain", "showers", "snowfall", "wind_speed_10m", "wind_gusts_10m", "wind_direction_10m",
           "relative_humidity_2m", "cloud_cover", "uv_index"]
-ALERTS_EVERY_S = 5 * 60
 
 # WMO weather codes (what Open-Meteo reports) -> the weather kind's states.
 WMO = {0: "clear", 1: "mostly-clear", 2: "partly-cloudy", 3: "cloudy", 45: "fog", 48: "fog",
@@ -58,6 +56,8 @@ class WeatherIntegration(Integration):
               help="Warnings, watches and advisories for this spot (Canada only)."),
         Field("latitude", "Latitude", "number", advanced=True),
         Field("longitude", "Longitude", "number", advanced=True),
+        Field("weather_minutes", "Check the weather every (minutes)", "number", default=15, minimum=5, advanced=True),
+        Field("alerts_minutes", "Check for warnings every (minutes)", "number", default=5, minimum=1, advanced=True),
     ]
 
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -95,10 +95,10 @@ class WeatherIntegration(Integration):
             try:
                 if now >= next_weather:
                     await self._update_weather(lat, lon)
-                    next_weather = now + WEATHER_EVERY_S
+                    next_weather = now + self.seconds_every("weather_minutes")
                 if self.config.get("alerts", True) and now >= next_alerts:
                     await self._update_alerts(lat, lon)
-                    next_alerts = now + ALERTS_EVERY_S
+                    next_alerts = now + self.seconds_every("alerts_minutes")
                 self.set_status("connected", f"{where or f'{lat}, {lon}'} · Open-Meteo"
                                 + (" + Environment Canada" if self.config.get("alerts", True) else ""))
             except asyncio.CancelledError:

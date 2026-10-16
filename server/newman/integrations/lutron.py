@@ -17,7 +17,7 @@ from pylutron_caseta import BUTTON_STATUS_PRESSED, BUTTON_STATUS_RELEASED
 from pylutron_caseta.pairing import async_pair
 from pylutron_caseta.smartbridge import Smartbridge
 
-from .base import CommandError, Field, Integration
+from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ PAIR_WINDOW_S = 180
 LIGHT_TYPES = {"light", "switch"}
 # A Pico button still down this long is a long press ("raise_long"); let go sooner, it's a plain press.
 HOLD_S = 0.5
+CONNECTED_CHECK_S = 30  # how often a running connection checks the bridge is still connected
 
 # LEAP button_number -> event, per Pico model (same mapping Home Assistant uses).
 PICO_BUTTONS = {
@@ -58,7 +59,10 @@ class LutronIntegration(Integration):
                    "the back of the bridge once. Dimmers and switches appear under Lighting; Pico remote buttons "
                    "can start automations.")
     fields = [Field("host", "Bridge address", required=True, placeholder="10.1.1.23",
-                    help="Found automatically if the bridge is on your network.")]
+                    help="Found automatically if the bridge is on your network."),
+              check_every_field(15, 1, help="The bridge sends changes as they happen; this also asks it for every "
+                                            "light's level now and then, in case one was missed. Pico remotes "
+                                            "are never asked.")]
     zeroconf = ["_lutron._tcp.local."]
 
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -116,8 +120,12 @@ class LutronIntegration(Integration):
             try:
                 await self._connect()
                 attempt = 0
-                while self._bridge and self._bridge.is_connected():
-                    await asyncio.sleep(30)
+                recheck = asyncio.get_running_loop().create_task(self._recheck())
+                try:
+                    while self._bridge and self._bridge.is_connected():
+                        await asyncio.sleep(CONNECTED_CHECK_S)
+                finally:
+                    recheck.cancel()
                 raise ConnectionError("connection lost")
             except asyncio.CancelledError:
                 raise
@@ -173,6 +181,23 @@ class LutronIntegration(Integration):
         n = len(remotes)
         self.set_status("connected", f"{self.config['host']} · {lights} light{'s' if lights != 1 else ''}"
                                      + (f", {n} remote{'s' if n != 1 else ''}" if n else ""))
+
+    async def _recheck(self) -> None:
+        """While connected: every "Check everything every" minutes ask the bridge for every light's level again,
+        the way the library reads them when it connects (so the same update path runs), in case a change
+        was missed. Pico remotes are only ever listened to."""
+        while True:
+            await asyncio.sleep(self.seconds_every("check_minutes"))
+            bridge = self._bridge
+            if bridge is None:
+                continue
+            try:
+                for dev in list(bridge.get_devices().values()):
+                    if dev.get("zone") is not None:
+                        status = await bridge._request("ReadRequest", f"/zone/{dev['zone']}/status")
+                        bridge._handle_one_zone_status(status)
+            except Exception as e:  # noqa: BLE001 - asked again next time
+                log.info("Lutron %s: couldn't ask for every light's level: %s", self.config["host"], e)
 
     async def _close(self) -> None:
         bridge, self._bridge = self._bridge, None

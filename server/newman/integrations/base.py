@@ -60,6 +60,8 @@ class Field:
     # type "devices" (a list of small forms, e.g. Reolink's cameras or a list of calendars): the
     # sub-fields of each entry. Password sub-fields are masked like top-level ones.
     item_fields: tuple = ()
+    # type "number": the smallest value saving accepts (also what a running connection holds itself to).
+    minimum: float | None = None
 
     def to_json(self) -> dict[str, Any]:
         out = {"key": self.key, "label": self.label, "type": self.type, "required": self.required,
@@ -67,7 +69,17 @@ class Field:
                "options": [dict(o) for o in self.options], "dynamic": self.dynamic, "advanced": self.advanced}
         if self.item_fields:
             out["itemFields"] = [f.to_json() for f in self.item_fields]
+        if self.minimum is not None:
+            out["min"] = self.minimum
         return out
+
+
+def check_every_field(default: int, minimum: int, help: str = "") -> Field:
+    """The "Check everything every (minutes)" setting of a connection that is told about changes as they
+    happen: how often it also asks for every device's status again, in case a change was missed."""
+    return Field("check_minutes", "Check everything every (minutes)", "number", default=default, advanced=True,
+                 minimum=minimum, help=help or "Changes arrive as they happen; this also asks for everything "
+                                               "again now and then, in case one was missed.")
 
 
 @dataclass
@@ -164,8 +176,24 @@ class Integration:
 
     @classmethod
     def validate(cls, config: dict[str, Any]) -> list[str]:
-        return [f"{f.label} is required" for f in cls.fields
-                if f.required and config.get(f.key) in (None, "")]
+        errors = [f"{f.label} is required" for f in cls.fields
+                  if f.required and config.get(f.key) in (None, "")]
+        for f in cls.fields:
+            v = config.get(f.key)
+            if f.type == "number" and f.minimum is not None and v not in (None, ""):
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or v < f.minimum:
+                    errors.append(f"{f.label}: {f.minimum:g} or more")
+        return errors
+
+    def seconds_every(self, key: str, unit: float = 60.0) -> float:
+        """A "Check every …" number setting (in `unit` seconds, minutes by default) as seconds: its default
+        when unset or not a number, and never under the field's minimum."""
+        f = next(f for f in self.fields if f.key == key)
+        v = self.config.get(key)
+        n = v if isinstance(v, (int, float)) and not isinstance(v, bool) else f.default
+        if f.minimum is not None:
+            n = max(f.minimum, n)
+        return float(n) * unit
 
     def entity_id(self, local: str) -> str:
         return f"{self.id}.{local}"

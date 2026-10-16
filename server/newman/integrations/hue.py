@@ -18,12 +18,13 @@ from pathlib import Path
 from typing import Any
 
 from ._common import TaskKeeper, clean_id, device_summary
-from .base import CommandError, Field, Integration
+from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
 
 PAIR_FOR_S = 300   # keep asking the bridge this long after a save, waiting for the button press
 PAIR_EVERY_S = 3
+CONNECTED_CHECK_S = 30  # how often a running connection checks the bridge's event stream is up
 
 
 def _v(obj: Any, *path: str) -> Any:
@@ -55,7 +56,10 @@ class HueIntegration(Integration):
     description = ("Hue lights, motion sensors and remotes through your Hue bridge, entirely on your network. When "
                    "you connect, press the round button on top of the bridge - that's the whole setup.")
     fields = [Field("host", "Bridge address", required=True, placeholder="10.1.1.40",
-                    help="Found automatically if the bridge is on your network.")]
+                    help="Found automatically if the bridge is on your network."),
+              check_every_field(15, 1, help="The bridge sends changes as they happen; this also asks it for "
+                                            "everything now and then, in case one was missed. The bridge answers "
+                                            "from what it holds - no sensor or remote is woken.")]
     zeroconf = ["_hue._tcp.local."]
 
     @classmethod
@@ -123,15 +127,17 @@ class HueIntegration(Integration):
                 await self._setup(bridge)
                 unsubscribe = bridge.subscribe(self._on_event)
                 attempt = 0
+                recheck = asyncio.get_running_loop().create_task(self._recheck(bridge))
                 try:
                     while True:
-                        await asyncio.sleep(30)
+                        await asyncio.sleep(CONNECTED_CHECK_S)
                         live = bool(_v(bridge, "events", "connected"))
                         if live:
                             self._connected()
                         else:
                             self.set_status("connecting", "Reconnecting to the Hue bridge…")
                 finally:
+                    recheck.cancel()
                     unsubscribe()
             except asyncio.CancelledError:
                 raise
@@ -152,6 +158,16 @@ class HueIntegration(Integration):
                     pass
             attempt += 1
             await self.backoff_sleep(attempt + 1)
+
+    async def _recheck(self, bridge: Any) -> None:
+        """While connected: every "Check everything every" minutes ask the bridge for everything again. aiohue
+        treats it as after a long disconnect - what changed comes through the usual update events (_on_event)."""
+        while True:
+            await asyncio.sleep(self.seconds_every("check_minutes"))
+            try:
+                await bridge.fetch_full_state()
+            except Exception as e:  # noqa: BLE001 - asked again next time
+                log.info("Hue %s: couldn't ask for everything: %s: %s", self.config["host"], e.__class__.__name__, e)
 
     def _connected(self) -> None:
         self.set_status("connected", f"{device_summary(self._kinds.values())} · on your network")

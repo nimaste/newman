@@ -107,7 +107,7 @@ class HydrawiseTests(Base):
         self.assertEqual(c.attrs["nextRun"], z.attrs["nextRun"])  # the earliest zone
         self.assertEqual(self.hw.status, "connected")
         self.assertEqual(self.hw.detail, "1 controller, 2 zones")
-        self.assertEqual(self.hw._next_poll, 60)  # never sooner than a minute, whatever nextpoll says
+        self.assertEqual(self.hw.poll_wait(), 60)  # never sooner than a minute, whatever nextpoll says
 
     async def test_watering_and_finishing_emit_events(self):
         self.fake.running = True
@@ -413,3 +413,39 @@ class RachioTests(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckEverySettingTests(Base):
+    """How often each sprinkler connection checks is a setting: today's interval by default, never under its floor."""
+
+    def make(self, cls, config):
+        return cls(cls.type, cls.name, config, self.ctx)
+
+    async def test_hydrawise(self):
+        base = {"api_key": "KEY"}
+        self.assertEqual(self.make(HydrawiseIntegration, base).poll_wait(), 60)  # as before
+        hw = self.make(HydrawiseIntegration, {**base, "poll_seconds": 300})
+        self.assertEqual(hw.poll_wait(), 300)
+        hw._asked_wait = 900  # Hydrawise asked for longer: it wins
+        self.assertEqual(hw.poll_wait(), 900)
+        self.assertEqual(self.make(HydrawiseIntegration, {**base, "poll_seconds": 5}).poll_wait(), 60)
+        self.assertTrue(HydrawiseIntegration.validate({**base, "poll_seconds": 30}))
+        self.assertEqual(HydrawiseIntegration.validate({**base, "poll_seconds": 120}), [])
+
+    async def test_rachio(self):
+        base = {"api_key": "KEY"}
+        self.assertEqual(self.make(RachioIntegration, base).poll_interval(), 180)  # as before
+        self.assertEqual(self.make(RachioIntegration, {**base, "poll_seconds": 600}).poll_interval(), 600)
+        self.assertEqual(self.make(RachioIntegration, {**base, "poll_seconds": 60}).poll_interval(), 180)
+        self.assertTrue(RachioIntegration.validate({**base, "poll_seconds": 60}))
+        self.assertEqual(RachioIntegration.validate({**base, "poll_seconds": 180}), [])
+
+    async def test_rain_bird(self):
+        base = {"host": "10.0.0.5", "password": "pw"}
+        rb = self.make(RainBirdIntegration, base)
+        self.assertEqual((rb.poll_wait(False), rb.poll_wait(True)), (60, 20))  # as before
+        rb = self.make(RainBirdIntegration, {**base, "poll_seconds": 120})
+        self.assertEqual((rb.poll_wait(False), rb.poll_wait(True)), (120, 20))
+        self.assertEqual(self.make(RainBirdIntegration, {**base, "poll_seconds": 3}).poll_wait(False), 20)
+        self.assertTrue(RainBirdIntegration.validate({**base, "poll_seconds": 10}))
+        self.assertEqual(RainBirdIntegration.validate({**base, "poll_seconds": 30}), [])

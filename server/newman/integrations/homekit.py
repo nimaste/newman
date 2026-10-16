@@ -19,7 +19,7 @@ from aiohomekit import Controller
 from zeroconf import IPVersion
 from zeroconf.asyncio import AsyncServiceBrowser, AsyncZeroconf
 
-from .base import CommandError, Field, Integration
+from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +36,10 @@ CATEGORY_PROVIDES = {
     9: ("thermostat", "temperature", "motion"),  # thermostat (Ecobee: it carries its room sensors)
     10: ("temperature", "motion"),               # sensor
 }
+
+# How a pairing reaches its accessory (aiohomekit's "Connection"). Over Bluetooth or Thread an accessory may
+# be asleep between reports; asking it for its values wakes it, so those are only listened to.
+SLEEPY_TRANSPORTS = ("BLE", "CoAP")
 
 MODES = {0: "off", 1: "heat", 2: "cool", 3: "auto"}
 ACTIONS = {0: "idle", 1: "heating", 2: "cooling"}
@@ -63,6 +67,9 @@ class HomeKitIntegration(Integration):
         Field("name", "Name"),
         Field("code", "HomeKit setup code", "password", required=True, placeholder="123-45-678",
               help="The 8-digit code on the device's label or screen (on an Ecobee: Settings > HomeKit / Reconnect)."),
+        check_every_field(1, 1, help="The accessory sends changes as they happen; this also asks it for every value "
+                                     "now and then, in case one was missed. Accessories on Bluetooth or Thread "
+                                     "are only listened to - asking would wake them."),
     ]
     zeroconf = ["_hap._tcp.local."]
 
@@ -145,14 +152,16 @@ class HomeKitIntegration(Integration):
                     self.set_status("error", msg)
                     await asyncio.Event().wait()  # wait for new settings (saving restarts the integration)
             self._pairing = controller.load_pairing(self.id, data)
+            sleepy = data.get("Connection") in SLEEPY_TRANSPORTS
             attempt = 0
             while True:
                 try:
                     await self._connect()
                     attempt = 0
                     while True:
-                        await asyncio.sleep(60)
-                        await self._refresh()
+                        await asyncio.sleep(self.seconds_every("check_minutes"))
+                        if not sleepy:
+                            await self._refresh()
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:

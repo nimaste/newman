@@ -565,6 +565,45 @@ class LiveTests(RingBase):
         await self.until(lambda: len(f.tickets) == 3, what="reconnect on request")
         self.assertEqual(self.hub.get("ring.z_front").state, "open")  # kept across reconnects
 
+    async def test_check_everything_asks_the_base_station_again(self):
+        p = mock.patch.object(R.RingIntegration, "seconds_every", lambda self, key, unit=60.0: 0.15)
+        p.start()
+        self.addCleanup(p.stop)
+        r = await self.started()
+        f = self.fake
+        lists = lambda: sum(o["msg"]["msg"] == "DeviceInfoDocGetList" for o in f.sent)  # noqa: E731
+        await self.until(lambda: lists() >= 3, what="asking again on the interval")
+        self.assertTrue(all(o["msg"]["dst"] == "asset1" for o in f.sent if o["msg"]["msg"] == "DeviceInfoDocGetList"))
+        # A change Ring never pushed (the keypad's battery) still arrives with the next full list.
+        for d in f.devices:
+            if d["general"]["v2"]["zid"] == "z-keypad":
+                d["general"]["v2"]["batteryLevel"] = 55
+        await self.until(lambda: self.hub.get("ring.z_keypad").attrs.get("batteryLevel") == 55, what="the missed change")
+        # One check per live connection: the old one stops when the connection drops.
+        loc = next(iter(r._locations.values()))
+        first = loc.recheck
+        await f.sockets[0].close()
+        await self.until(lambda: len(f.sockets) == 2 and loc.recheck is not first, what="reconnect")
+        await asyncio.sleep(0.05)
+        self.assertTrue(first.done())
+        self.assertFalse(loc.recheck.done())
+        for t in self.tasks:
+            t.cancel()
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        await asyncio.sleep(0.05)
+        self.assertTrue(loc.recheck.done())
+
+    def test_check_everything_setting(self):
+        f = next(x for x in R.RingIntegration.fields if x.key == "check_minutes")
+        self.assertEqual((f.default, f.minimum, f.type), (30, 5, "number"))
+        self.assertEqual(R.RingIntegration.validate({"email": "a@b.c", "check_minutes": 2}),
+                         ["Check everything every (minutes): 5 or more"])
+        self.assertEqual(R.RingIntegration.validate({"email": "a@b.c", "check_minutes": 10}), [])
+        r = self.make({"email": "a@b.c", "check_minutes": 1})
+        self.assertEqual(r.seconds_every("check_minutes"), 300.0)  # held to the minimum
+        r.config["check_minutes"] = 45
+        self.assertEqual(r.seconds_every("check_minutes"), 2700.0)  # read each time: a change applies at once
+
     async def test_token_renewal_saves_the_new_refresh_token(self):
         self.signed_in(expires=0)  # access token already expired
         r = self.make()

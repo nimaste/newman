@@ -40,7 +40,7 @@ import aiohttp
 
 from ..kinds import KINDS
 from ._common import TaskKeeper, clean_id, device_summary, plural
-from .base import CommandError, Field, Integration
+from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
 
@@ -244,6 +244,9 @@ class MatterIntegration(Integration):
         Field("url", "Matter server address", required=True, default="ws://127.0.0.1:5580/ws",
               placeholder="ws://127.0.0.1:5580/ws",
               help="The Matter server's websocket. It runs on this computer's network, so 127.0.0.1 unless it's elsewhere."),
+        check_every_field(15, 1, help="Changes arrive as they happen; this also reads the Matter server's own copy of "
+                                      "every device again, in case one was missed. The devices themselves aren't "
+                                      "asked, so battery ones aren't woken."),
     ]
     add_by_code = {
         "label": "Setup code",
@@ -295,13 +298,17 @@ class MatterIntegration(Integration):
                                                   f"Newman needs {MIN_SCHEMA} or newer)")
                         self._server, self._ws = info, ws
                         reader = asyncio.create_task(self._read(ws))
+                        again: asyncio.Task | None = None
                         try:
                             await self._call("start_listening", timeout=120, on_result=self._load)
                             attempt = 0
+                            again = asyncio.create_task(self._check_again())
                             await reader
                         finally:
-                            reader.cancel()
-                            await asyncio.gather(reader, return_exceptions=True)
+                            for t in (reader, again):
+                                if t:
+                                    t.cancel()
+                            await asyncio.gather(*(t for t in (reader, again) if t), return_exceptions=True)
                             self._disconnected()
                     raise ConnectionError("the Matter server closed the connection")
                 except asyncio.CancelledError:
@@ -385,6 +392,19 @@ class MatterIntegration(Integration):
             return await asyncio.wait_for(fut, timeout)
         finally:
             self._pending.pop(mid, None)
+
+    async def _check_again(self) -> None:
+        """Every "Check everything every" minutes while connected: the Matter server's own copy of every
+        device (get_nodes - the server answers from what it holds; no device is asked, so sleepy battery
+        ones aren't woken), through the same setup as the first load."""
+        while True:
+            await asyncio.sleep(self.seconds_every("check_minutes"))
+            try:
+                await self._call("get_nodes", timeout=60, on_result=self._load)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # noqa: BLE001 - the live connection carries on either way
+                log.info("Matter: checking everything again failed: %s", e)
 
     async def _load(self, nodes: Any) -> None:
         seen = set()

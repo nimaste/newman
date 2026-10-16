@@ -1,6 +1,7 @@
 """ESPHome, offline: a ratgdo-style garage opener described with aioesphomeapi's real entity models."""
 import asyncio
 import os
+from unittest import mock
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,6 +54,17 @@ class FakeClient:
 
     def subscribe_states(self, cb):
         self.on_state = cb
+        self.subscribes = getattr(self, "subscribes", 0) + 1
+
+    def _get_connection(self):
+        client = self
+
+        class Conn:
+            def send_message(self, msg):  # the device answers a states request with every state it has
+                client.calls.append(("send_message", (type(msg).__name__,), {}))
+                for st in getattr(client, "states", []):
+                    client.on_state(st)
+        return Conn()
 
     async def disconnect(self):
         pass
@@ -80,6 +92,33 @@ class EsphomeTests(unittest.IsolatedAsyncioTestCase):
     def make(self, **cfg):
         return EsphomeIntegration("esphome", "ESPHome", {"host": "10.0.0.20", **cfg},
                                   Context(self.hub, Path(self.tmp.name), Path(self.tmp.name)))
+
+    async def test_check_everything_again_asks_for_every_state(self):
+        with mock.patch.object(EsphomeIntegration, "seconds_every", lambda self, key, unit=60.0: 0.05):
+            x = self.make()
+            task = asyncio.create_task(x.run())
+            await asyncio.sleep(0.02)
+            client = FakeClient.made[-1]
+            client.states = [E.CoverState(key=1, position=1.0)]  # a change whose push never arrived
+            door = "esphome.aabbccddee01_cover_door"
+            for _ in range(50):
+                await asyncio.sleep(0.02)
+                await x._tasks.drain()
+                if self.hub.get(door).state == "open":
+                    break
+            self.assertEqual(self.hub.get(door).state, "open")
+            asks = [c for c in client.calls if c[0] == "send_message"]
+            self.assertTrue(asks and all(c[1] == ("SubscribeStatesRequest",) for c in asks))
+            self.assertEqual(client.subscribes, 1)  # one subscription: the answers go into it
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            n = len([c for c in client.calls if c[0] == "send_message"])
+            await asyncio.sleep(0.15)
+            self.assertEqual(len([c for c in client.calls if c[0] == "send_message"]), n)  # stops with it
+
+    def test_the_states_request_is_real(self):
+        from aioesphomeapi.api_pb2 import SubscribeStatesRequest  # what ask_states_again sends
+        self.assertTrue(SubscribeStatesRequest())
 
     def test_discovery(self):
         offer = EsphomeIntegration.from_discovery("ratgdo-garage._esphomelib._tcp.local.", "10.0.0.20",

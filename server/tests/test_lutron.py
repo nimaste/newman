@@ -136,6 +136,79 @@ class PicoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.fired(), ["on", "raise_long"])
 
 
+class DimmerBridge(FakeBridge):
+    """The fake bridge plus one dimmer (zone 5), answering /zone/5/status as LEAP does."""
+
+    def __init__(self):
+        super().__init__()
+        self.devices["9"] = {"device_id": "9", "type": "WallDimmer", "name": "Kitchen_Kitchen", "device_name": "Kitchen",
+                             "area": "3", "zone": "5", "current_state": 0, "model": "PD-6WCL"}
+        self.level, self.reads, self.connected = 40, [], True
+        self.dev_subscribers = {}
+
+    def is_connected(self):
+        return self.connected
+
+    def add_subscriber(self, dev_id, cb):
+        self.dev_subscribers[dev_id] = cb
+
+    async def _request(self, kind, url):
+        self.reads.append((kind, url))
+        return mock.Mock(Body={"ZoneStatus": {"Zone": {"href": "/zone/5"}, "Level": self.level}})
+
+    def _handle_one_zone_status(self, response):
+        self.devices["9"]["current_state"] = response.Body["ZoneStatus"]["Level"]
+        self.dev_subscribers["9"]()
+
+
+class CheckEverythingTests(unittest.IsolatedAsyncioTestCase):
+    """Every "Check everything every" minutes the bridge is asked for every light's level again."""
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.hub = Hub()
+        for target, value in ((LutronIntegration, "seconds_every"), (lutron_mod, "CONNECTED_CHECK_S")):
+            p = (mock.patch.object(target, value, lambda self, key, unit=60.0: 0.05) if value == "seconds_every"
+                 else mock.patch.object(target, value, 0.02))
+            p.start()
+            self.addCleanup(p.stop)
+        self.bridge = DimmerBridge()
+        self.lut = LutronIntegration("lutron", "Lutron Caséta", {"host": "10.0.0.9"},
+                                     Context(self.hub, Path(self.tmp.name), Path(self.tmp.name)))
+
+    async def asyncTearDown(self):
+        self.tmp.cleanup()
+
+    async def test_a_missed_level_change_arrives_and_checking_stops_with_the_connection(self):
+        async def wait_forever(_attempt):
+            await asyncio.sleep(3600)
+        with mock.patch.object(lutron_mod.Smartbridge, "create_tls", return_value=self.bridge), \
+                mock.patch.object(self.lut, "_paired", return_value=True), \
+                mock.patch.object(self.lut, "backoff_sleep", wait_forever):
+            run = asyncio.create_task(self.lut.run())
+            for _ in range(100):
+                light = self.hub.get("lutron.device_9")
+                if light and light.attrs.get("brightness") == 40:
+                    break
+                await asyncio.sleep(0.02)
+            self.assertEqual((light.state, light.attrs["brightness"]), ("on", 40))  # never pushed, read again
+            self.assertIn(("ReadRequest", "/zone/5/status"), self.bridge.reads)
+            self.bridge.connected = False  # the bridge goes away: no more asking
+            await asyncio.sleep(0.1)
+            n = len(self.bridge.reads)
+            await asyncio.sleep(0.15)
+            self.assertEqual(len(self.bridge.reads), n)
+            self.assertFalse(self.hub.get("lutron.device_9").available)
+            run.cancel()
+            await asyncio.gather(run, return_exceptions=True)
+
+    def test_the_setting(self):
+        f = next(x for x in LutronIntegration.fields if x.key == "check_minutes")
+        self.assertEqual((f.default, f.minimum), (15, 1))
+        self.assertEqual(LutronIntegration.validate({"host": "h", "check_minutes": 0}),
+                         ["Check everything every (minutes): 1 or more"])
+
+
 class PicoHoldToDimTests(Base):
     """Holding a Pico's raise brightens a light until it's let go - and is never also its "raise"."""
 

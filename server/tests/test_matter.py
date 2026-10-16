@@ -6,6 +6,7 @@ import os
 import tempfile
 import time
 import unittest
+from unittest import mock
 from dataclasses import replace
 from pathlib import Path
 
@@ -130,8 +131,8 @@ class FakeMatterServer:
         return ws
 
     async def handle(self, cmd, args):
-        if cmd == "start_listening":
-            return list(self.nodes.values())
+        if cmd in ("start_listening", "get_nodes"):
+            return copy.deepcopy(list(self.nodes.values()))
         if cmd == "commission_with_code":
             await asyncio.sleep(0.05)
             if self.commission_hold:
@@ -215,6 +216,68 @@ class MatterBase(unittest.IsolatedAsyncioTestCase):
 
     def by_name(self):
         return {e.name: e for e in self.hub.all()}
+
+
+class CheckAgainTests(MatterBase):
+    """Every "Check everything every" minutes: the server's own copy of every device, run through setup again."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.fast = mock.patch.object(MatterIntegration, "seconds_every", lambda self, key, unit=60.0: 0.05)
+        self.fast.start()
+
+    async def asyncTearDown(self):
+        self.fast.stop()
+        await super().asyncTearDown()
+
+    def reads(self):
+        return sum(1 for c, _ in self.server.calls if c == "get_nodes")
+
+    async def test_a_missed_change_is_picked_up_and_nothing_else_moves(self):
+        hub = Hub()
+        added, removed = [], []
+
+        async def on_added(e):
+            added.append(e.id)
+
+        async def on_removed(ids):
+            removed.extend(ids)
+        hub.subscribe_registry(on_added, on_removed)
+        await self.start(hub)
+        await asyncio.sleep(0.1)
+        added.clear()
+        ids = {e.id for e in hub.all()}
+        await until(lambda: self.reads() >= 2, "two checks")
+        self.assertEqual(({e.id for e in hub.all()}, added, removed), (ids, [], []))
+        self.assertTrue(all(e.available for e in hub.all()))
+        # A change the server has but whose event never arrived.
+        bulb = self.by_name()["Hall bulb"].id
+        self.server.nodes[2]["attributes"]["1/6/0"] = True
+        await until(lambda: hub.get(bulb).state == "on", "the missed change")
+        self.assertEqual((added, removed), ([], []))
+        # Only the server's copy is read: nothing is asked of the devices themselves.
+        self.assertFalse(any(c == "read_attribute" for c, _ in self.server.calls))
+        await self.stop()
+        n = self.reads()
+        await asyncio.sleep(0.2)
+        self.assertEqual(self.reads(), n)  # stops with the connection
+
+    async def test_one_check_per_connection_after_reconnects(self):
+        await self.start()
+        for ws in list(self.server.sockets):
+            await ws.close()  # the server restarts: Newman reconnects
+        await until(lambda: len(self.server.sockets) == 1 and self.m.status == "connected", "reconnected")
+        before = self.reads()
+        await asyncio.sleep(0.3)
+        self.assertLessEqual(self.reads() - before, 0.3 / 0.05 + 1)  # one loop, not two
+        await self.stop()
+
+    def test_the_setting(self):
+        f = next(f for f in MatterIntegration.fields if f.key == "check_minutes")
+        self.assertEqual((f.type, f.default, f.minimum), ("number", 15, 1))
+        self.assertEqual(MatterIntegration.validate({"url": "ws://x", "check_minutes": 0}),
+                         ["Check everything every (minutes): 1 or more"])
+        self.assertEqual(MatterIntegration.validate({"url": "ws://x", "check_minutes": 5}), [])
 
 
 class MappingTests(MatterBase):
@@ -561,7 +624,7 @@ class HubTests(HubBase):
     async def test_catalog_add_and_remove_through_the_api(self):
         cat = {c["type"]: c for c in await (await self.client.get("/api/integrations/catalog")).json()}
         self.assertEqual(cat["matter"]["addByCode"]["label"], "Setup code")
-        self.assertEqual([f["key"] for f in cat["matter"]["fields"]], ["url"])
+        self.assertEqual([f["key"] for f in cat["matter"]["fields"]], ["url", "check_minutes"])
         r = await self.client.post(f"/api/integrations/{self.iid}/devices", json={"code": "3497-011-2333"})
         self.assertEqual((r.status, "typo" in (await r.json())["error"]), (400, True))
         r = await self.client.post(f"/api/integrations/{self.iid}/devices", json={"code": "3497-011-2332"})

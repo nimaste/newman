@@ -202,6 +202,31 @@ tried on real hardware.
 | β **Hisense TV (VIDAA)** | VIDAA Hisense / Toshiba TVs: on / off, volume, inputs, apps, keys | The TV's own MQTT broker (36669, TLS) — community-researched | The code the TV shows, once; some sets need a client certificate — see [TVs](#tvs) |
 | **Virtual test devices** | pretend locks, doors and a doorbell | — | Nothing |
 
+### How often Newman checks
+
+Connections that are told about changes as they happen (Ring, Lutron, Hue, HomeKit, Matter, ESPHome,
+Reolink, Frigate) also ask for everything again now and then, in case a change was missed. That's
+**Check everything every (minutes)** under a connection's More settings. Newman only ever asks the hub,
+bridge or server that already holds the status - battery devices are never woken by it.
+
+| Connection | Default | Lowest | What it asks again |
+|---|---|---|---|
+| Ring | 30 | 5 | the alarm base station, for every device's status (it answers from what it holds) |
+| Lutron | 15 | 1 | the bridge, for every dimmer's and switch's level (Pico remotes are only listened to) |
+| Hue | 15 | 1 | the bridge, for everything; only what changed comes through |
+| HomeKit | 1 | 1 | a Wi-Fi accessory, for all its values; Bluetooth and Thread ones are only listened to |
+| Matter | 15 | 1 | the Matter server's own copy of every device (devices themselves aren't asked) |
+| ESPHome | 15 | 1 | a connected device, to send all its states again (deep-sleep devices are skipped) |
+| Reolink | 15 | 1 | each device's names, firmware and floodlights |
+| Frigate | 10 | 1 | Frigate's cameras and zones |
+
+Connections that only check on a timer have their own **Check every…** setting: Hydrawise (60 s, at
+least 60, never sooner than Hydrawise asks), Rachio (180 s, at least 180; slower with several
+controllers to stay within Rachio's daily limit), Rain Bird (60 s, at least 20; every 20 s while
+watering), Weather (the weather every 15 min, at least 5; warnings every 5 min, at least 1), and the
+TVs, Kasa, Meross, Sonos, Shelly, DNS filters and calendars as before. Saving less than a setting's
+lowest value is refused.
+
 ### Reconnecting a connection
 
 Every connection's page has **Reconnect** (also in its ⋯ menu, admins only): it starts the connection

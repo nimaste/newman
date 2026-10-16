@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from types import SimpleNamespace as NS
 
 os.environ.setdefault("TOKEN_SECRET", "test-secret")
@@ -159,3 +160,68 @@ class HueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bridge.lights.calls, [("brightness", "l-1", 30.0), ("on", "l-2")])
         with self.assertRaises(CommandError):
             await self.h.command(hall.id, "turn_on")
+
+
+class CheckEverythingTests(unittest.IsolatedAsyncioTestCase):
+    """Every "Check everything every" minutes the bridge is asked for everything again (aiohue's full state)."""
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.hub = Hub()
+        self.h = HueIntegration("hue", "Philips Hue", {"host": "10.0.0.30"},
+                                Context(self.hub, Path(self.tmp.name), Path(self.tmp.name)))
+        self.bridge = fake_bridge()
+        self.bridge.fetches = 0
+        subs = []
+
+        async def initialize():
+            pass
+
+        async def close():
+            pass
+
+        async def fetch_full_state():  # what aiohue does on a long disconnect: changed resources as updates
+            self.bridge.fetches += 1
+            lamp = self.bridge.lights[0]
+            lamp.dimming = NS(brightness=80.0)
+            for cb in subs:
+                cb(UPDATE, lamp)
+
+        def subscribe(cb):
+            subs.append(cb)
+            return lambda: subs.remove(cb)
+        self.bridge.initialize, self.bridge.close = initialize, close
+        self.bridge.fetch_full_state, self.bridge.subscribe = fetch_full_state, subscribe
+        for target, name, value in ((HueIntegration, "seconds_every", lambda self, key, unit=60.0: 0.05),
+                                    (hue_mod, "CONNECTED_CHECK_S", 0.02)):
+            p = mock.patch.object(target, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+
+    async def asyncTearDown(self):
+        self.tmp.cleanup()
+
+    async def test_a_missed_change_arrives_and_checking_stops_with_the_connection(self):
+        import aiohue
+
+        async def key():
+            return "app-key"
+        with mock.patch.object(aiohue, "HueBridgeV2", lambda host, k: self.bridge), \
+                mock.patch.object(self.h, "_app_key", key):
+            run = asyncio.create_task(self.h.run())
+            for _ in range(100):
+                lamp = next((e for e in self.hub.all() if e.name == "Living room lamp"), None)
+                if lamp and lamp.attrs.get("brightness") == 80:
+                    break
+                await asyncio.sleep(0.02)
+            self.assertEqual(lamp.attrs["brightness"], 80)
+            self.assertGreaterEqual(self.bridge.fetches, 1)
+            run.cancel()
+            await asyncio.gather(run, return_exceptions=True)
+            n = self.bridge.fetches
+            await asyncio.sleep(0.15)
+            self.assertEqual(self.bridge.fetches, n)  # gone with the connection
+
+    def test_the_setting(self):
+        f = next(x for x in HueIntegration.fields if x.key == "check_minutes")
+        self.assertEqual((f.default, f.minimum), (15, 1))

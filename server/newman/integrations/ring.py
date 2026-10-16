@@ -32,7 +32,7 @@ import httpx
 
 from ..kinds import KINDS
 from ..store import slug
-from .base import CommandError, Field, Integration
+from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
 
@@ -160,6 +160,7 @@ class Location:
     has_hub: bool = True
     down_since: float | None = None
     offline_assets: set[str] = field(default_factory=set)
+    recheck: asyncio.Task | None = None  # "Check everything every" while this live connection is up
 
 
 class RingIntegration(Integration):
@@ -179,6 +180,9 @@ class RingIntegration(Integration):
               help="After saving the email and password, Ring texts or emails a code. Paste it here and save."),
         Field("bypass_open", "Bypass open doors and windows when arming", "boolean", default=False, advanced=True,
               help="Without this, Ring won't arm while a door or window is open (the same as the Ring app asking)."),
+        check_every_field(30, 5, help="Ring sends changes as they happen; this also asks the alarm's base station "
+                                      "for every device's status now and then, in case one was missed. The base "
+                                      "station answers from what it holds - no device is woken."),
     ]
 
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -336,17 +340,21 @@ class RingIntegration(Integration):
                     for a in loc.assets:
                         await self._send(loc, {"msg": "DeviceInfoDocGetList", "dst": a["uuid"]})
                     self._update_status()
-                    async for m in ws:
-                        if m.type == aiohttp.WSMsgType.TEXT:
-                            try:
-                                outer = json.loads(m.data)
-                            except ValueError:
-                                continue
-                            if await self._on_message(loc, outer) == "reconnect":
-                                log.info("Ring asked Newman to reconnect (%s)", loc.name)
+                    loc.recheck = asyncio.get_running_loop().create_task(self._recheck(loc))
+                    try:
+                        async for m in ws:
+                            if m.type == aiohttp.WSMsgType.TEXT:
+                                try:
+                                    outer = json.loads(m.data)
+                                except ValueError:
+                                    continue
+                                if await self._on_message(loc, outer) == "reconnect":
+                                    log.info("Ring asked Newman to reconnect (%s)", loc.name)
+                                    break
+                            elif m.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                                 break
-                        elif m.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                            break
+                    finally:
+                        loc.recheck.cancel()
             except (SignedOut, asyncio.CancelledError):
                 raise
             except Exception as e:
@@ -360,6 +368,17 @@ class RingIntegration(Integration):
                 for p in self._parts.values():
                     if self._devices.get(p.zid, {}).get("_loc") == loc.id:
                         await self.hub.update(p.eid, available=False)
+
+    async def _recheck(self, loc: Location) -> None:
+        """While the live connection is up: every "Check everything every" minutes ask each base station for
+        every device's status again (the same list as on connecting), in case a change was missed."""
+        while True:
+            await asyncio.sleep(self.seconds_every("check_minutes"))
+            for a in loc.assets:
+                try:
+                    await self._send(loc, {"msg": "DeviceInfoDocGetList", "dst": a["uuid"]})
+                except CommandError as e:
+                    log.info("Ring (%s): couldn't ask for every device's status: %s", loc.name, e)
 
     def _update_status(self) -> None:
         live = [l for l in self._locations.values() if l.ws is not None]

@@ -23,8 +23,7 @@ from .base import CommandError, Field, Integration
 
 log = logging.getLogger(__name__)
 
-IDLE_POLL_S = 60
-WATERING_POLL_S = 20
+WATERING_POLL_S = 20       # while a zone waters (or sooner, if the setting is shorter)
 
 
 def _create(session: aiohttp.ClientSession, host: str, password: str) -> Any:
@@ -51,6 +50,9 @@ class RainBirdIntegration(Integration):
         Field("password", "Controller password", "password", required=True,
               help="The password set for the controller in the Rain Bird app. Rain Bird's local protocol has no "
                    "tokens, so this is kept (masked) and sent, encrypted, with every request."),
+        Field("poll_seconds", "Check every (seconds)", "number", default=60, minimum=20, advanced=True,
+              help="While a zone waters Newman checks every 20 seconds. The controller takes one request at a "
+                   "time, so don't go much lower."),
     ]
 
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -66,6 +68,11 @@ class RainBirdIntegration(Integration):
 
     # -- running --------------------------------------------------------------------------
 
+    def poll_wait(self, watering: bool) -> float:
+        """Seconds until the next check: the setting, or WATERING_POLL_S while a zone waters."""
+        idle = self.seconds_every("poll_seconds", unit=1)
+        return min(WATERING_POLL_S, idle) if watering else idle
+
     async def run(self) -> None:
         attempt = 0
         async with aiohttp.ClientSession() as session:
@@ -78,7 +85,7 @@ class RainBirdIntegration(Integration):
                     attempt = 0
                     self._wake.clear()
                     try:
-                        await asyncio.wait_for(self._wake.wait(), WATERING_POLL_S if watering else IDLE_POLL_S)
+                        await asyncio.wait_for(self._wake.wait(), self.poll_wait(watering))
                         await asyncio.sleep(2)
                     except asyncio.TimeoutError:
                         pass

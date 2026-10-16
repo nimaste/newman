@@ -27,7 +27,6 @@ API = "https://api.hydrawise.com/api/v1"
 RUNNING = 1                # a relay's "time" while it waters
 SUSPENDED = 1576800000     # a relay's "time" while suspended (or held off by a sensor)
 STANDBY_DAYS = 365
-MIN_POLL_S = 60
 RELOAD_S = 3600            # re-read the list of controllers (names, last contact) hourly
 
 
@@ -47,6 +46,8 @@ class HydrawiseIntegration(Integration):
         Field("api_key", "API key", "password", required=True,
               help="In app.hydrawise.com (or the Hydrawise app): Account → Account Details → API Key → Generate. "
                    "Copy the key here."),
+        Field("poll_seconds", "Check every (seconds)", "number", default=60, minimum=60, advanced=True,
+              help="Hydrawise also says when to look again; Newman never asks sooner than that."),
     ]
 
     def __init__(self, *a: Any, **kw: Any) -> None:
@@ -55,7 +56,7 @@ class HydrawiseIntegration(Integration):
         self._ctrls: dict[str, str] = {}                  # controller id -> entity id
         self._zones: dict[str, tuple[str, str]] = {}      # zone entity id -> (relay id, controller id)
         self._delay_until: dict[str, float] = {}          # controller id -> rain delay end Newman set
-        self._next_poll = MIN_POLL_S
+        self._asked_wait = 0.0                            # how long Hydrawise last asked Newman to wait
         self._wake = asyncio.Event()
 
     async def _get(self, path: str, **params: Any) -> dict[str, Any]:
@@ -78,10 +79,14 @@ class HydrawiseIntegration(Integration):
             if j.get("message_type") == "error" or j.get("error_msg"):
                 raise CommandError(str(j.get("message") or j.get("error_msg")))
             if isinstance(j.get("nextpoll"), (int, float)):
-                self._next_poll = max(MIN_POLL_S, int(j["nextpoll"]))
+                self._asked_wait = float(j["nextpoll"])
         return j if isinstance(j, dict) else {}
 
     # -- running --------------------------------------------------------------------------
+
+    def poll_wait(self) -> float:
+        """Seconds until the next check: the setting, or longer when Hydrawise asked for longer."""
+        return max(self.seconds_every("poll_seconds", unit=1), self._asked_wait)
 
     async def run(self) -> None:
         attempt, loaded = 0, 0.0
@@ -94,7 +99,7 @@ class HydrawiseIntegration(Integration):
                 attempt = 0
                 self._wake.clear()
                 try:
-                    await asyncio.wait_for(self._wake.wait(), self._next_poll)
+                    await asyncio.wait_for(self._wake.wait(), self.poll_wait())
                     await asyncio.sleep(3)  # give Hydrawise a moment to apply what was just asked
                 except asyncio.TimeoutError:
                     pass

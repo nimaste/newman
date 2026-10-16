@@ -6,6 +6,7 @@ import copy
 import os
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 os.environ.setdefault("TOKEN_SECRET", "test-secret")
@@ -204,17 +205,18 @@ class RefreshTests(Base):
         cfg = frigate_cfg()
         cfg["cameras"]["attic"] = {"objects": {"track": ["person"]}}
         f._http.cfg = cfg
-        old, fr.REFRESH_S = fr.REFRESH_S, 0.01
-        try:
+        f.config["check_minutes"] = 5  # the setting is what the timer waits for
+        self.assertEqual(f.seconds_every("check_minutes"), 300)
+        with mock.patch.object(fr.FrigateIntegration, "seconds_every", lambda self, key, unit=60.0: 0.01):
             timer = asyncio.create_task(f._refresh_timer())
             for _ in range(50):
                 await asyncio.sleep(0.01)
                 if "frigate.camera_attic" in self.ids():
                     break
             timer.cancel()
-        finally:
-            fr.REFRESH_S = old
         self.assertIn("frigate.camera_attic", self.ids())
+        self.assertEqual(fr.FrigateIntegration.validate({"url": "http://x", "check_minutes": 0}),
+                         ["Check everything every (minutes): 1 or more"])
 
 
 class FakeConn(Integration):

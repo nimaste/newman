@@ -138,3 +138,23 @@ class WeatherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(logged), 1)
         await w._http.aclose() if hasattr(w._http, "aclose") else None
         tmp.cleanup()
+
+
+class WeatherCheckEveryTests(unittest.TestCase):
+    def make(self, **config):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        hub = Hub()
+        return WeatherIntegration("weather", "Weather", {"place": "Toronto", **config},
+                                  Context(hub, Path(tmp.name), Path(tmp.name)))
+
+    def test_intervals_are_settings(self):
+        w = self.make()
+        self.assertEqual((w.seconds_every("weather_minutes"), w.seconds_every("alerts_minutes")), (900, 300))  # as before
+        w = self.make(weather_minutes=30, alerts_minutes=2)
+        self.assertEqual((w.seconds_every("weather_minutes"), w.seconds_every("alerts_minutes")), (1800, 120))
+        w = self.make(weather_minutes=1, alerts_minutes=0)
+        self.assertEqual((w.seconds_every("weather_minutes"), w.seconds_every("alerts_minutes")), (300, 60))
+        self.assertTrue(WeatherIntegration.validate({"place": "Toronto", "weather_minutes": 2}))
+        self.assertTrue(WeatherIntegration.validate({"place": "Toronto", "alerts_minutes": 0.5}))
+        self.assertEqual(WeatherIntegration.validate({"place": "Toronto", "weather_minutes": 10, "alerts_minutes": 1}), [])

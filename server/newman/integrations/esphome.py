@@ -14,7 +14,7 @@ import logging
 from typing import Any
 
 from ._common import TaskKeeper, clean_id, device_summary
-from .base import CommandError, Field, Integration
+from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +80,9 @@ class EsphomeIntegration(Integration):
               help="If the device's ESPHome settings have an api: encryption: key, paste it here."),
         Field("password", "API password (older devices)", "password", advanced=True),
         Field("port", "Port", "number", default=6053, advanced=True),
+        check_every_field(15, 1, help="Changes arrive as they happen; this also asks the device for every state "
+                                      "again, in case one was missed. Devices that deep-sleep on a battery aren't "
+                                      "asked - they report in when they wake."),
     ]
     zeroconf = ["_esphomelib._tcp.local."]
 
@@ -112,6 +115,7 @@ class EsphomeIntegration(Integration):
                                  password=self.config.get("password") or "", client_info="Newman",
                                  noise_psk=(self.config.get("encryption_key") or "").strip() or None)
             stopped = asyncio.Event()
+            again: asyncio.Task | None = None
 
             async def on_stop(expected_disconnect: bool) -> None:
                 stopped.set()
@@ -121,6 +125,8 @@ class EsphomeIntegration(Integration):
                 await self._setup(info, entities)
                 self._client = client
                 client.subscribe_states(self._on_state)
+                if not self._sleeps:
+                    again = asyncio.create_task(self._check_again(client))
                 self.set_status("connected", f"{self._device} · {device_summary(s['kind'] for s in self._specs.values())}"
                                              " · reports changes instantly")
                 attempt = 0
@@ -148,12 +154,25 @@ class EsphomeIntegration(Integration):
                     await self._unavailable()
             finally:
                 self._client = None
+                if again:
+                    again.cancel()
+                    await asyncio.gather(again, return_exceptions=True)
                 try:
                     await client.disconnect()
                 except Exception:
                     pass
             attempt += 1
             await self.backoff_sleep(min(attempt, 5))
+
+    async def _check_again(self, client: Any) -> None:
+        """Every "Check everything every" minutes while connected: the device sends every state again (as it
+        does right after subscribing) into the subscription already running."""
+        while True:
+            await asyncio.sleep(self.seconds_every("check_minutes"))
+            try:
+                ask_states_again(client)
+            except Exception as e:  # noqa: BLE001 - the live connection carries on either way
+                log.info("ESPHome %s: checking everything again failed: %s", self.config["host"], e)
 
     async def _unavailable(self) -> None:
         for eid in self._specs:
@@ -289,3 +308,11 @@ class EsphomeIntegration(Integration):
             raise CommandError(f"{self.hub.name(entity_id)} can't {command.replace('_', ' ')}")
         if inspect.isawaitable(result):  # older library versions made these coroutines
             await result
+
+
+def ask_states_again(client: Any) -> None:
+    """Has a connected device send all its states again. aioesphomeapi has no public call for it: its
+    subscribe_states would add a second handler for every state from then on, so only the request is sent
+    and the running subscription receives the answers (ESPHome re-sends every state on each one)."""
+    from aioesphomeapi.api_pb2 import SubscribeStatesRequest  # type: ignore[attr-defined]
+    client._get_connection().send_message(SubscribeStatesRequest())

@@ -25,7 +25,7 @@ import httpx
 from reolink_aio.api import Host
 
 from ..store import slug
-from .base import CommandError, Field, Integration, address_of
+from .base import CommandError, Field, Integration, address_of, check_every_field
 
 log = logging.getLogger(__name__)
 
@@ -68,9 +68,11 @@ class ReolinkDevice:
     async def run(self) -> None:
         attempt = 0
         while True:
+            again: asyncio.Task | None = None
             try:
                 await self.connect()
                 attempt = 0
+                again = asyncio.create_task(self.check_again())
                 while True:
                     await asyncio.sleep(60)
                     await self.host.baichuan.check_subscribe_events()
@@ -81,6 +83,9 @@ class ReolinkDevice:
                 self.status, self.summary = "error", f"{self.spec['host']}: {e}"
                 self.p.refresh_status()
             finally:
+                if again:
+                    again.cancel()
+                    await asyncio.gather(again, return_exceptions=True)
                 await self.disconnect()
             attempt += 1
             await asyncio.sleep(min(2 ** (attempt + 2), 300))
@@ -119,6 +124,30 @@ class ReolinkDevice:
         self.status = "connected"
         self.summary = f"{self.spec['host']} · {host.nvr_name if host.is_nvr else ', '.join(kinds)}"
         self.p.refresh_status()
+
+    async def check_again(self) -> None:
+        """Every "Check everything every" minutes while connected: the device's names, firmware and
+        floodlights read again over its HTTP API, as on connecting (a doorbell's own state is left alone)."""
+        while True:
+            await asyncio.sleep(self.p.seconds_every("check_minutes"))
+            host = self.host
+            if not host:
+                continue
+            try:
+                await host.get_host_data()
+                await host.get_states()
+            except Exception as e:  # noqa: BLE001 - the event subscription carries on either way
+                log.info("Reolink %s: checking everything again failed: %s", self.spec["host"], e)
+                continue
+            single = len(host.channels) == 1 and not host.is_nvr
+            for ch, info in self.chans.items():
+                name = (self.spec.get("name") if single and self.spec.get("name") else None) or host.camera_name(ch)
+                self.hub.upsert(info["eid"], kind="doorbell" if info["doorbell"] else "camera", name=name,
+                                integration=self.p.id)
+                await self.hub.update(info["eid"], available=True,
+                                      attrs={"model": host.camera_model(ch), "firmware": host.sw_version})
+            for leid, ch in self.lights.items():
+                await self.hub.update(leid, available=True, state="on" if host.whiteled_state(ch) else "off")
 
     async def disconnect(self) -> None:
         host, self.host = self.host, None
@@ -206,6 +235,8 @@ class ReolinkIntegration(Integration):
         Field("cooldown", "Ignore repeat doorbell presses for (seconds)", "number", default=15, advanced=True),
         Field("port", "HTTP port", "number", default=80, advanced=True),
         Field("https", "Use HTTPS", "boolean", default=False, advanced=True),
+        check_every_field(15, 1, help="Presses and detections arrive as they happen; this also reads every "
+                                      "device's names, firmware and floodlights again, in case a change was missed."),
     ]
     # Sub-fields of each entry in "devices" (for the dashboard's list editor).
     device_fields = [
