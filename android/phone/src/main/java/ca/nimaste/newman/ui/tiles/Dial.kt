@@ -60,7 +60,10 @@ import ca.nimaste.newman.core.model.asNumberOrNull
 import ca.nimaste.newman.core.model.asStringOrNull
 import ca.nimaste.newman.core.model.jsonOf
 import ca.nimaste.newman.core.model.string
+import ca.nimaste.newman.ui.common.GlassButton
 import ca.nimaste.newman.ui.common.GlassCard
+import ca.nimaste.newman.ui.common.LocalFillHeight
+import androidx.compose.foundation.layout.PaddingValues
 import ca.nimaste.newman.ui.rememberRunner
 import ca.nimaste.newman.ui.theme.N
 import ca.nimaste.newman.ui.theme.Sora
@@ -302,6 +305,66 @@ private fun RoundButton(text: String, label: String, enabled: Boolean, onClick: 
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = T.number.copy(fontSize = 30.sp, color = if (enabled) N.Text else N.TabOff))
+    }
+}
+
+/**
+ * A full-width but short dial tile (the Overview's thermostat): the ring on the left (tap it for
+ * the full dial), −/+ and the device's modes on the right; the name and what it's doing on top.
+ */
+@Composable
+fun HorizontalDial(m: DialModel, onOpen: () -> Unit, textScale: Float) {
+    val run = rememberRunner()
+    val fill = LocalFillHeight.current // read before the card takes it
+    val (target, _, bump) = rememberDialTarget(m)
+    val ring = if (fill == Dp.Unspecified) 140.dp else (fill - 74.dp).coerceIn(96.dp, 140.dp)
+    GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(14.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(m.e.name.uppercase(), style = T.caps, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (m.status.isNotEmpty()) {
+                Text(m.status, style = T.tiny.copy(color = m.color, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold), maxLines = 1,
+                    modifier = Modifier.background(m.color.copy(alpha = 0.16f), RoundedCornerShape(99.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.clip(CircleShape).clickable(onClickLabel = "open the full dial", role = Role.Button, onClick = onOpen)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = Spoken.of(m.e.name, m.text(target).takeIf { !m.off }, m.nowLine(false).ifEmpty { null })
+                }) {
+                DialRing(m, target, ring, 12.dp, onDrag = null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 6.dp)) {
+                        Text(m.text(target), style = T.number.copy(fontSize = 28.sp * textScale))
+                        val now = m.nowProp?.let { "Now ${HubModel.formatProp(it, it.value).replace(" °C", "°").replace(" °F", "°")}" }
+                        if (now != null) Text(now, style = T.tiny.copy(fontSize = 11.sp))
+                    }
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassButton("−", Modifier.weight(1f).semantics { contentDescription = "Lower ${Spoken.phrase(m.cmd.label)}" },
+                        enabled = !m.off, height = 44.dp, style = T.number.copy(fontSize = 22.sp)) { bump(-m.step) }
+                    GlassButton("+", Modifier.weight(1f).semantics { contentDescription = "Raise ${Spoken.phrase(m.cmd.label)}" },
+                        enabled = !m.off, height = 44.dp, style = T.number.copy(fontSize = 22.sp)) { bump(m.step) }
+                }
+                if (m.modes.isNotEmpty() && m.modeCmd != null) {
+                    val shape = RoundedCornerShape(14.dp)
+                    Row(Modifier.fillMaxWidth().background(Color(0x0FFFFFFF), shape).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        m.modes.forEach { s ->
+                            val on = s.id == m.mode
+                            val c = MODE_COLOR[s.id] ?: N.Neutral
+                            Box(
+                                Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(11.dp))
+                                    .background(if (on) c else Color.Transparent)
+                                    .selectable(selected = on, enabled = !on && m.e.available, role = Role.RadioButton) { run.run(m.e, m.modeCmd, jsonOf(s.id)) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(s.label, style = T.small.copy(fontSize = 12.sp, color = if (on) N.Night else N.Text), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

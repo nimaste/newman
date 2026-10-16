@@ -37,6 +37,8 @@ import ca.nimaste.newman.core.model.number
 import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.core.model.strings
 import ca.nimaste.newman.ui.common.GlassCard
+import ca.nimaste.newman.ui.common.LocalFillHeight
+import androidx.compose.ui.unit.Dp
 import ca.nimaste.newman.ui.icons.NIcon
 import ca.nimaste.newman.ui.icons.WeatherIcon
 import ca.nimaste.newman.ui.theme.N
@@ -72,13 +74,17 @@ fun rememberNow(periodMs: Long = 60_000): Long {
     return now
 }
 
-/** Weather (PhoneOverview's half tile; a wide tile adds the week ahead). */
+/**
+ * Weather: PhoneOverview's half tile; across the phone, one row (icon, temperature, sky and
+ * high/low, humidity and rain on the right), with the week ahead below when the tile is tall enough.
+ */
 @Composable
 fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact: Boolean, textScale: Float) {
     val now = rememberNow()
+    val fill = LocalFillHeight.current // read before the card takes it
     val chosen = entities[tile.config.string("entity")]
     val e = if (hasForecast(chosen)) chosen else entities.values.firstOrNull { hasForecast(it) }
-    GlassCard(Modifier.fillMaxWidth().then(if (compact) Modifier.height(172.dp) else Modifier), padding = PaddingValues(12.dp)) {
+    GlassCard(Modifier.fillMaxWidth().then(if (compact) Modifier.height(172.dp) else Modifier), padding = PaddingValues(if (compact) 12.dp else 14.dp)) {
         if (e == null || e.attrs.number("temperature") == null) {
             Text(if (e == null) "Add a Weather connection in the Newman dashboard." else "Waiting for the weather…", style = T.tiny)
             return@GlassCard
@@ -89,18 +95,35 @@ fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact:
         val forecast = a.array("forecast")?.mapNotNull { it.asObjectOrNull } ?: emptyList()
         val todayF = forecast.firstOrNull { it.string("date") == today }
         val chance = todayF?.number("precipChance") ?: a.number("precipChance")
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WeatherIcon(e.state, a.bool("isDay") != false, size = 34.dp)
-            Text(deg(a.number("temperature")), style = T.number.copy(fontSize = 30.sp * textScale))
-        }
-        Text("$label · H ${deg(a.number("high"))} L ${deg(a.number("low"))}", style = T.small.copy(fontSize = 13.sp * textScale),
-            maxLines = 2, overflow = TextOverflow.Ellipsis)
         val wet = listOfNotNull(
             chance?.takeIf { it > 0 }?.let { "${it.roundToInt()}% chance today" },
             (todayF?.number("snow") ?: a.number("snowToday"))?.takeIf { it > 0 }?.let { "${fmt1(it)} cm snow" }
                 ?: (todayF?.number("rain") ?: a.number("rainToday"))?.takeIf { it > 0 }?.let { "${fmt1(it)} mm rain" },
         )
-        if (wet.isNotEmpty()) Text(wet.joinToString(" · "), style = T.tiny)
+        if (!compact) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WeatherIcon(e.state, a.bool("isDay") != false, size = 40.dp)
+                Text(deg(a.number("temperature")), style = T.number.copy(fontSize = 32.sp * textScale))
+                Column(Modifier.weight(1f)) {
+                    Text(label, style = T.label.copy(fontSize = 15.sp * textScale), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("H ${deg(a.number("high"))} · L ${deg(a.number("low"))}", style = T.small.copy(fontSize = 13.sp * textScale, color = N.Muted), maxLines = 1)
+                }
+                val side = listOfNotNull(a.number("humidity")?.let { "${it.roundToInt()}% humidity" }) + wet
+                if (side.isNotEmpty()) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        side.take(2).forEach { Text(it, style = T.tiny.copy(fontSize = 12.sp * textScale), maxLines = 1) }
+                    }
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WeatherIcon(e.state, a.bool("isDay") != false, size = 34.dp)
+                Text(deg(a.number("temperature")), style = T.number.copy(fontSize = 30.sp * textScale))
+            }
+            Text("$label · H ${deg(a.number("high"))} L ${deg(a.number("low"))}", style = T.small.copy(fontSize = 13.sp * textScale),
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (wet.isNotEmpty()) Text(wet.joinToString(" · "), style = T.tiny)
+        }
         val alerts = a.array("alerts")?.mapNotNull { it.asObjectOrNull } ?: emptyList()
         alerts.maxByOrNull { mapOf("red" to 3, "orange" to 2, "yellow" to 1)[it.string("colour")] ?: 0 }?.let { top ->
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -108,7 +131,8 @@ fun WeatherTile(tile: Tile, entities: Map<String, Entity>, meta: Meta?, compact:
                 Text(top.string("name") ?: "Weather alert", style = T.tiny.copy(color = N.Amber), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (!compact) {
+        // The week ahead: a flowed page, or a placed tile with room for it.
+        if (!compact && (fill == Dp.Unspecified || fill >= 200.dp)) {
             val days = forecast.filter { (it.string("date") ?: "") > today }.take(6)
             val lows = days.mapNotNull { it.number("low") }
             val highs = days.mapNotNull { it.number("high") }

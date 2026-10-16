@@ -71,7 +71,7 @@ private const val HOME = "__home"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlertsScreen(onCamera: (String, String?) -> Unit) {
+fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = null) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -96,6 +96,8 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        // Opened from More: a way back.
+        if (onBack != null) Box(Modifier.padding(start = 16.dp, top = 10.dp)) { ca.nimaste.newman.ui.common.BackPill("More", onClick = onBack) }
         Text("Alerts", style = T.display, modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 10.dp).heading())
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {

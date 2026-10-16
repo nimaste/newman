@@ -3,6 +3,8 @@ package ca.nimaste.newman.core.api
 import ca.nimaste.newman.core.model.ActionRequest
 import ca.nimaste.newman.core.model.ActivityEntry
 import ca.nimaste.newman.core.model.AuthState
+import ca.nimaste.newman.core.model.Automation
+import ca.nimaste.newman.core.model.AutomationRun
 import ca.nimaste.newman.core.model.CameraAlert
 import ca.nimaste.newman.core.model.CommandRequest
 import ca.nimaste.newman.core.model.Dashboard
@@ -43,6 +45,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -137,6 +140,21 @@ interface NewmanApi {
 
     @POST("api/today/dismiss")
     suspend fun todayDismiss(@Body body: DismissRequest): Response<Unit>
+
+    // -- automations (the phone's More › Automations) ----------------------------------------------
+
+    @GET("api/automations")
+    suspend fun automations(): List<Automation>
+
+    /** {"enabled": true|false}; answers the saved automation (403 for accounts that can't change automations). */
+    @PATCH("api/automations/{id}")
+    suspend fun patchAutomation(@Path("id") id: String, @Body body: JsonObject): Response<Automation>
+
+    @GET("api/runs")
+    suspend fun runs(@Query("automationId") automationId: String, @Query("limit") limit: Int = 10): List<AutomationRun>
+
+    @POST("api/automations/{id}/run")
+    suspend fun runAutomation(@Path("id") id: String, @Body body: JsonObject = JsonObject(emptyMap())): Response<AutomationRun>
 
     // -- people & location ----------------------------------------------------------------------
 

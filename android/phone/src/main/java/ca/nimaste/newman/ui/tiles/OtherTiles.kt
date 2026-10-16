@@ -42,7 +42,10 @@ import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.core.model.strings
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.common.LiveCamera
+import ca.nimaste.newman.ui.common.CardHeader
 import ca.nimaste.newman.ui.common.GlassCard
+import ca.nimaste.newman.ui.common.LocalFillHeight
+import androidx.compose.ui.unit.Dp
 import ca.nimaste.newman.ui.common.HubImage
 import ca.nimaste.newman.ui.common.Pill
 import ca.nimaste.newman.ui.common.heading
@@ -56,26 +59,39 @@ import ca.nimaste.newman.ui.theme.T
 import java.text.DateFormat
 import java.util.Date
 
-/** Live video of the tile's cameras (LiveCamera), with pills to switch; tap for full screen. */
+/**
+ * Live video of the tile's cameras (LiveCamera): a heading, the cameras as pills above the picture
+ * (so nothing sits under the tab bar), LIVE and the time on it; tap for full screen.
+ */
 @Composable
 fun CameraTile(tile: Tile, entities: Map<String, Entity>, onOpen: (String) -> Unit) {
     val cams = tile.config.strings("entities").mapNotNull { entities[it] }
     var pick by rememberSaveable(tile.id) { mutableStateOf<String?>(null) }
     val cam = cams.firstOrNull { it.id == pick } ?: cams.firstOrNull()
-    GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(8.dp)) {
+    val fill = LocalFillHeight.current // read before the card takes it
+    val now = rememberNow(30_000)
+    GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(12.dp)) {
+        CardHeader(tile.config.string("title")?.takeIf { it.isNotBlank() } ?: if (cams.size == 1) cams[0].name else "Cameras")
         if (cam == null) {
-            Text("No cameras chosen for this tile.", style = T.tiny, modifier = Modifier.padding(8.dp))
+            Text("No cameras chosen for this tile.", style = T.tiny, modifier = Modifier.padding(top = 8.dp))
             return@GlassCard
         }
-        LiveCamera(cam, Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(16.dp))
-            .clickable(onClickLabel = "open full screen", role = Role.Button) { onOpen(cam.id) }.semantics { contentDescription = "${cam.name}, live" }, quality = "sub") {
-            LiveLabel(cam.name, Modifier.align(Alignment.TopStart).padding(10.dp))
-            NIcon("expand", Modifier.align(Alignment.BottomEnd).padding(10.dp), size = 20.dp)
-        }
         if (cams.size > 1) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 cams.forEach { c -> Pill(c.name, c.id == cam.id) { pick = c.id } }
             }
+        }
+        // A placed tile: the picture takes the room its cell leaves.
+        val video = if (fill == Dp.Unspecified) 190.dp
+            else (fill - 24.dp - 22.dp - (if (cams.size > 1) 54.dp else 0.dp) - 8.dp).coerceIn(120.dp, 320.dp)
+        LiveCamera(cam, Modifier.padding(top = 8.dp).fillMaxWidth().height(video).clip(RoundedCornerShape(16.dp))
+            .clickable(onClickLabel = "open full screen", role = Role.Button) { onOpen(cam.id) }.semantics { contentDescription = "${cam.name}, live" }, quality = "sub") {
+            LiveLabel("LIVE", Modifier.align(Alignment.TopStart).padding(10.dp))
+            Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
+                style = T.tiny.copy(color = N.Text, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).height(26.dp)
+                    .background(Color(0xB80B1026), RoundedCornerShape(99.dp)).padding(horizontal = 9.dp, vertical = 5.dp))
+            NIcon("expand", Modifier.align(Alignment.BottomEnd).padding(10.dp), size = 20.dp)
         }
     }
 }

@@ -3,7 +3,14 @@ package ca.nimaste.newman.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ca.nimaste.newman.core.api.NewmanApi
+import ca.nimaste.newman.core.api.ApiErrors
 import ca.nimaste.newman.core.api.hubCall
+import ca.nimaste.newman.core.api.orThrow
+import ca.nimaste.newman.core.model.Automation
+import ca.nimaste.newman.core.model.AutomationRun
+import ca.nimaste.newman.core.model.Automations
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import ca.nimaste.newman.core.hub.HubRepository
 import ca.nimaste.newman.core.hub.HubState
 import ca.nimaste.newman.core.live.LiveMessage
@@ -186,6 +193,38 @@ class AppViewModel @Inject constructor(
             is HubRepository.CommandOutcome.Refused -> toast(r.message, ok = false)
         }
         _busy.value = _busy.value - entity.id
+    }
+
+    // -- automations (More › Automations) ------------------------------------------------------
+
+    /** The hub's automations; null when they couldn't be loaded (the error is shown unless [quiet]). */
+    suspend fun automations(quiet: Boolean = false): List<Automation>? = try {
+        hubCall { api.automations() }
+    } catch (e: Exception) {
+        if (!quiet) toast(ApiErrors.message(e), ok = false)
+        null
+    }
+
+    /** Switch one on or off: the saved automation, or null after showing the hub's answer (403 for family accounts). */
+    suspend fun setAutomationEnabled(id: String, on: Boolean): Automation? = try {
+        api.patchAutomation(id, JsonObject(mapOf("enabled" to JsonPrimitive(on)))).orThrow()
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        null
+    }
+
+    suspend fun automationRuns(id: String): List<AutomationRun> = try {
+        hubCall { api.runs(id, 10) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    /** "Run now": the run, or null after showing why not. */
+    suspend fun runAutomation(a: Automation): AutomationRun? = try {
+        api.runAutomation(a.id).orThrow().also { toast(Automations.runResult(a.name, it)) }
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        null
     }
 
     // -- camera alerts (the Alerts tab's Cameras filter and the camera screen) --------------------

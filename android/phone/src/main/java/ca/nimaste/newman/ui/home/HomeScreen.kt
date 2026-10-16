@@ -59,7 +59,10 @@ import ca.nimaste.newman.core.model.number
 import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.core.model.strings
 import ca.nimaste.newman.ui.LocalApp
-import ca.nimaste.newman.ui.alerts.AlertsScreen
+import ca.nimaste.newman.ui.more.MoreTab
+import ca.nimaste.newman.ui.more.MoreView
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import ca.nimaste.newman.ui.common.BackPill
 import ca.nimaste.newman.ui.common.CappedFontScale
 import ca.nimaste.newman.core.model.TextScale
@@ -91,6 +94,7 @@ import ca.nimaste.newman.ui.tiles.DeviceListTile
 import ca.nimaste.newman.ui.tiles.DialModel
 import ca.nimaste.newman.ui.tiles.FullDial
 import ca.nimaste.newman.ui.tiles.GreetingTileView
+import ca.nimaste.newman.ui.tiles.HorizontalDial
 import ca.nimaste.newman.ui.tiles.LocalTileNav
 import ca.nimaste.newman.ui.tiles.ModeTile
 import ca.nimaste.newman.ui.tiles.PeopleTileView
@@ -108,7 +112,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private const val ALERTS_TAB = "__alerts"
+private const val MORE_TAB = "__more"
 private const val PEOPLE_TAB = "__people"
 
 /** openRequest "device:<id>": open that device's sheet (Device Controls). */
@@ -116,10 +120,11 @@ const val OPEN_DEVICE = "device:"
 
 /**
  * Up to five tabs. With a phone layout from the hub (PhoneGrid): its pages marked as tabs (at most
- * three), placed tile by tile on a 4-column grid, then People and Alerts. On older hubs, the
+ * three), placed tile by tile on a 4-column grid, then People and More. On older hubs, the
  * dashboard flows instead (PhoneTabs, TileFlow): its first three pages (Overview, Security,
- * Lights), People and Alerts; a Today page becomes the Today card at the top of the first tab.
+ * Lights), People and More; a Today page becomes the Today card at the top of the first tab.
  * Other pages (Climate) open from their thermostat tile or a link at the bottom of the first tab.
+ * More holds Alerts (its count is on the More tab), every device, and the automations.
  */
 @Composable
 fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String?) -> Unit, onMe: () -> Unit,
@@ -132,10 +137,12 @@ fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String
     val pages = plan.tabs + plan.more
     var tab by rememberSaveable { mutableStateOf<String?>(null) }
     var openPage by rememberSaveable { mutableStateOf<String?>(null) }
+    var moreView by rememberSaveable { mutableStateOf<String?>(null) }
     var sheetFor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(open) {
         if (open == "alerts" || open == "people") {
-            tab = if (open == "alerts") ALERTS_TAB else PEOPLE_TAB
+            tab = if (open == "alerts") MORE_TAB else PEOPLE_TAB
+            if (open == "alerts") moreView = MoreView.ALERTS
             openPage = null
             openRequest.value = null
         } else if (open?.startsWith(OPEN_DEVICE) == true) {
@@ -144,10 +151,11 @@ fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String
             openRequest.value = null
         }
     }
-    val current = tab?.takeIf { t -> t == ALERTS_TAB || t == PEOPLE_TAB || plan.tabs.any { it.id == t } } ?: plan.tabs.firstOrNull()?.id ?: ALERTS_TAB
+    val current = tab?.takeIf { t -> t == MORE_TAB || t == PEOPLE_TAB || plan.tabs.any { it.id == t } } ?: plan.tabs.firstOrNull()?.id ?: MORE_TAB
     val overlay = openPage?.let { id -> pages.firstOrNull { it.id == id } }
     val unseen = state.activity.count { it.ts > seen }
     BackHandler(enabled = overlay != null) { openPage = null }
+    BackHandler(enabled = overlay == null && current == MORE_TAB && moreView != null) { moreView = MoreView.parent(moreView) }
     // A People tile opens someone's map (in its own map look) or, from "+N more", the People tab.
     val tileNav = TileNav(person = onPerson, peopleTab = {
         tab = PEOPLE_TAB
@@ -162,7 +170,8 @@ fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String
                     overlay != null && state.loaded ->
                         PageView(overlay, first = false, state, plan, onCamera, onMe, onSheet = { sheetFor = it }, onOpenPage = { openPage = it },
                             onBack = { openPage = null })
-                    current == ALERTS_TAB -> AlertsScreen(onCamera = onCamera)
+                    current == MORE_TAB -> MoreTab(moreView, onView = { moreView = it }, unseen = unseen, onCamera = onCamera,
+                        onSheet = { sheetFor = it })
                     current == PEOPLE_TAB -> PeopleScreen(onPerson = { onPerson(it, false) }, onMe = onMe)
                     !state.loaded -> Loading(state)
                     else -> {
@@ -173,6 +182,8 @@ fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String
                 }
             }
             TabBar(plan.tabs, current, unseen) {
+                // More again (or More from elsewhere): its list, not the screen last open in it.
+                if (it == MORE_TAB) moreView = null
                 tab = it
                 openPage = null
             }
@@ -225,7 +236,7 @@ private fun FlowPageView(page: Page, first: Boolean, state: HubState, plan: Phon
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
         ) {
             item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
-                if (first) OverviewHeader(state, onMe) else PageHeader(page, state, onBack)
+                if (first) OverviewHeader(state, onMe, page) else PageHeader(page, state, onBack)
             }
             if (first && PhoneTabs.showsTodayCard(plan, page)) {
                 item(key = "today", span = { GridItemSpan(maxLineSpan) }) {
@@ -307,10 +318,13 @@ private fun Cell(cell: TileFlow.Cell, state: HubState, entities: Map<String, Ent
     }
 }
 
-/** One whole tile by its type (both the flowed and the placed grid). */
+/**
+ * One whole tile by its type (both the flowed and the placed grid). [fullWidth]: a placed tile
+ * across all 4 columns (a short one still gets its wide look: the thermostat side by side).
+ */
 @Composable
 internal fun TileBody(t: Tile, compact: Boolean, state: HubState, entities: Map<String, Entity>, onCamera: (String, String?) -> Unit,
-                      onSheet: (String) -> Unit, onDial: (Tile) -> Unit) {
+                      onSheet: (String) -> Unit, onDial: (Tile) -> Unit, fullWidth: Boolean = false) {
     val ts = t.textScale
     when (t.type) {
         "camera" -> CameraTile(t, entities) { onCamera(it, null) }
@@ -320,6 +334,8 @@ internal fun TileBody(t: Tile, compact: Boolean, state: HubState, entities: Map<
             val m = DialModel.of(t, e, state.kind(e))
             when {
                 m == null -> GlassCard(Modifier.fillMaxWidth()) { Text("This dial's device is missing.", style = T.tiny) }
+                // Full width but short (the Overview's thermostat): dial left, controls right.
+                compact && fullWidth -> HorizontalDial(m, onOpen = { onDial(t) }, textScale = ts)
                 compact -> CompactDial(m, onOpen = { onDial(t) }, textScale = ts)
                 else -> WideDialTile(m)
             }
@@ -340,9 +356,13 @@ internal fun TileBody(t: Tile, compact: Boolean, state: HubState, entities: Map<
     }
 }
 
-/** First page: the date, a greeting, the account button and the house's chips. */
+/**
+ * First page: the date, a greeting, the account button and the house's chips (wrapping onto more
+ * lines rather than running off the screen; no weather chip when [page] shows the weather itself).
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun OverviewHeader(state: HubState, onMe: () -> Unit) {
+internal fun OverviewHeader(state: HubState, onMe: () -> Unit, page: Page? = null) {
     val app = LocalApp.current
     val live by app.liveStatus.collectAsState()
     val name = state.auth?.user?.name ?: app.store.userName ?: ""
@@ -358,7 +378,7 @@ internal fun OverviewHeader(state: HubState, onMe: () -> Unit) {
             }
             Avatar(name, onMe)
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (live != LiveStatus.OPEN && state.loaded) Chip("Reconnecting…", dot = N.Amber)
             HubModel.securitySummary(state.named.values, state.meta)?.let { (ok, text) ->
                 Chip(text, icon = if (ok) "shield" else "alert", tone = if (ok) N.Teal else N.Coral)
@@ -366,7 +386,7 @@ internal fun OverviewHeader(state: HubState, onMe: () -> Unit) {
             state.named.values.firstOrNull { HubModel.isMode(state.kind(it)) }?.let { m ->
                 Chip("${m.name}: ${(HubModel.stateLabel(m, state.kind(m)) ?: "").lowercase()}")
             }
-            weatherChip(state.entities.values, state.meta)?.let { Chip(it) }
+            if (page?.tiles?.none { it.type == "weather" } != false) weatherChip(state.entities.values, state.meta)?.let { Chip(it) }
             val shownPages = if (state.plan.explicit) state.plan.tabs + state.plan.more else state.dashboard?.pages
             val dashIds = shownPages?.flatMap { p -> p.tiles.flatMap { it.config.strings("entities") } }?.toSet() ?: emptySet()
             val on = HubModel.onCount(state.entities.values.filter { it.id in dashIds }, state.meta)
@@ -417,10 +437,10 @@ fun Avatar(name: String, onClick: () -> Unit) {
     }
 }
 
-/** The tab bar: each page's icon and name, then People, then Alerts with a badge for unseen activity. */
+/** The tab bar: each page's icon and name, then People, then More with a badge for unseen activity (Alerts is in More). */
 @Composable
 private fun TabBar(pages: List<Page>, current: String, unseen: Int, onPick: (String) -> Unit) {
-    val tabs = pages.map { Triple(it.id, it.icon, it.name) } + Triple(PEOPLE_TAB, "people", "People") + Triple(ALERTS_TAB, "bell", "Alerts")
+    val tabs = pages.map { Triple(it.id, it.icon, it.name) } + Triple(PEOPLE_TAB, "people", "People") + Triple(MORE_TAB, "more", "More")
     val scroll = tabs.size > 5
     CappedFontScale { // a fixed 64dp bar
     Box(Modifier.fillMaxWidth().background(N.Bar).navigationBarsPadding()) {
@@ -435,7 +455,7 @@ private fun TabBar(pages: List<Page>, current: String, unseen: Int, onPick: (Str
                     (if (scroll) Modifier.widthIn(min = 76.dp) else Modifier.weight(1f)).height(56.dp)
                         .selectable(selected = on, role = Role.Tab) { onPick(id) }
                         .clearAndSetSemantics {
-                            contentDescription = if (id == ALERTS_TAB && unseen > 0) "$name, $unseen new" else name
+                            contentDescription = if (id == MORE_TAB && unseen > 0) "$name, $unseen new alerts" else name
                             selected = on
                             role = Role.Tab
                         },
@@ -446,7 +466,7 @@ private fun TabBar(pages: List<Page>, current: String, unseen: Int, onPick: (Str
                         Text(name, style = T.tiny.copy(fontSize = 11.sp, color = if (on) N.Text else N.TabOff,
                             fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (id == ALERTS_TAB && unseen > 0 && !on) {
+                    if (id == MORE_TAB && unseen > 0) { // the Alerts screen marks them seen
                         Box(
                             Modifier.align(Alignment.TopCenter).padding(start = 30.dp, top = 2.dp).height(18.dp).widthIn(min = 18.dp)
                                 .background(N.Red, CircleShape).padding(horizontal = 5.dp),

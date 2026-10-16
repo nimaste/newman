@@ -50,7 +50,7 @@ android/
                 LiveStatusNotifier + LiveActionReceiver (live statuses as ongoing notifications)
     security/   BiometricGate
     ui/         onboarding, home (tabs + 4-column grid), today (Today card), people (list + osmdroid map),
-                tiles, device sheet, camera, alerts, me (incl. "Share my location")
+                tiles, device sheet, camera, alerts, more (More tab: Devices, Automations), me (incl. "Share my location")
                 common/LiveVideo.kt: LiveCamera = still + live video (shared player page in a WebView)
     widgets/    WidgetSync (states + Home status cache, taps, live / FCM / 15-min refresh), DeviceGridWidget
                 (Glance: Devices – tiles / rows), HomeStatusWidget, WidgetFaces (colours, tile / row faces),
@@ -98,7 +98,8 @@ the sensitive-command check; WebSocket messages, the reducer, optimistic command
 reconnect against MockWebServer; `.p12` validation (valid, wrong password, expired, no key, junk);
 server addresses, the request interceptor, sign-in replies and push payloads; connecting (the
 newman://connect link, home-or-outside address choice, what a failed test means, hubs found over NSD); the phone's tabs
-(three pages, People, Alerts; a Today page becomes the Today card); phone layouts (parsing, tab
+(three pages, People, More; a Today page becomes the Today card); More's Devices (sections, search,
+filters) and Automations (order, last-run words); phone layouts (parsing, tab
 plan, cell rectangles, devices-tile fit, the 404 fallback); the People tile (who, how many rows fit,
 "+N more", one line) and the Greeting tile (by hour, its summary line, its size); the Today card's rows and
 buttons; People wording ("Home", "School", "3.2 km away", "updated 4 min ago"), the sharing switch
@@ -297,7 +298,7 @@ The Android counterparts of the iPhone's Control Center controls and Siri shortc
 
 - **Phone layouts** (`GET /api/phone-layout`, `PhoneGrid`): the hub sends the signed-in person's
   layout (their own, or the house default). Pages marked `tab` are the bottom tabs, in order, at
-  most three, then **People** and **Alerts**; other pages are links at the bottom of the first tab
+  most three, then **People** and **More**; other pages are links at the bottom of the first tab
   and open from their thermostat tile. Each page is a vertically scrolling grid of 4 columns of
   square cells; tiles sit exactly at their `x`/`y`/`w`/`h` (no reflow, empty cells stay empty) and
   are drawn by the same tile views as before, sized to their rectangle (a card fills its cell; a
@@ -315,6 +316,29 @@ The Android counterparts of the iPhone's Control Center controls and Siri shortc
   words), sized to its rectangle, both on one line when it's too short for two. The Today card is
   on the first tab only when the layout's `today` is on. A live `{"type":"dashboard"}` reloads the
   layout.
+- **Card look**: every card is the same glass card (22 dp corners); card headings are small capitals
+  (`CardHeader`: "CAMERAS", "QUICK CONTROLS", "SECURITY · 15") with an optional action on the right.
+  The first page's chips wrap onto more lines, with no weather chip when the page has a weather tile.
+  Devices with a problem from the Today briefing get their own coral card above it (the device's
+  name, all its health issues, **Open**). A **weather** tile across the phone is one row (icon,
+  temperature, sky and high/low, humidity and rain), with the week below when it is 200 dp or taller;
+  a **thermostat** across the phone but under 4 rows is side by side (`HorizontalDial`: the ring, tap
+  for the full dial; − / + and the device's own modes); a **camera** tile has its heading and the
+  camera pills above the picture, LIVE and the time on it; a devices grid of two or more devices
+  across the phone is headed "Quick controls" unless it has a title.
+- **More** (the last tab; its badge is the unseen alerts): **Alerts** (the old Alerts tab, with a
+  way back), **Devices** and **Automations**; the system Back button walks back up.
+  - **Devices**: every device the hub has (`DeviceList`), by the hub's categories in `/api/meta`'s
+    order, devices needing attention (offline or `health.ok` false) first in each; five per section
+    until "Show all"; a search box (by name) and filters *All*, *Needs attention*, *On now* (the
+    `onCount` rule). A row is the device's state (or its issues, in coral), its switch (an on/off
+    pair) or next action (Lock, Open…), and opens the device sheet.
+  - **Automations**: `GET /api/automations`, most recently run first (`Automations`): name, the hub's
+    `summary`, "Ran today 2:54 PM" / "Sent …" / "Checked … · nothing to do" / "Hasn't run yet", and a
+    switch (`PATCH /api/automations/{id}` `{"enabled"}`; a refusal - 403 for family accounts - shows
+    the hub's words and the switch goes back). Tap one: its summary, the switch, **Run now**
+    (`POST /api/automations/{id}/run`) and its recent runs (`GET /api/runs?automationId=`). Making and
+    editing automations stays on the web dashboard.
 - **Older hubs** (404): the default dashboard flows onto the phone as before (`PhoneTabs`,
   `TileFlow`): the first three non-Today pages are tabs, a Today page becomes the Today card, tiles
   flow onto 4 columns and a big-tiles devices tile becomes one card per device.

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -110,7 +111,31 @@ fun TodayCard(showWhenEmpty: Boolean, onOpenDevice: (String) -> Unit) {
         }
     }
 
-    GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+    // Devices with a problem get their own warning card on top: the device's name and all of its issues.
+    val state by app.state.collectAsState()
+    val deviceRows = card.rows.filter { it.item.source == "device" }
+    val rows = card.rows - deviceRows.toSet()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    if (deviceRows.isNotEmpty()) {
+        GlassCard(Modifier.fillMaxWidth(), background = N.CoralCard, border = N.CoralBorder, padding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+            deviceRows.forEachIndexed { i, r ->
+                val e = r.entity?.let { state.named[it] }
+                val issues = e?.health?.issues?.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(36.dp).background(N.CoralBg, CircleShape), contentAlignment = Alignment.Center) {
+                        NIcon("alert", size = 18.dp, color = N.Coral, stroke = 2.2f)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(e?.name ?: r.title.substringBefore(':'), style = T.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(issues ?: r.status, style = T.small.copy(color = N.CoralText), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (r.entity != null) GlassButton("Open", height = 36.dp, background = N.CoralBg, border = N.CoralBorder) { onOpenDevice(r.entity!!) }
+                }
+                if (i < deviceRows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.CoralBorder))
+            }
+        }
+    }
+    if (card.empty || rows.isNotEmpty() || card.events.isNotEmpty() || card.headsUp.isNotEmpty()) GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
         if (card.empty) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 NIcon("check", size = 20.dp, color = N.Teal)
@@ -118,15 +143,15 @@ fun TodayCard(showWhenEmpty: Boolean, onOpenDevice: (String) -> Unit) {
             }
             return@GlassCard
         }
-        if (card.rows.isNotEmpty()) {
+        if (rows.isNotEmpty()) {
             Text("TO DO", style = T.caps, modifier = Modifier.padding(bottom = 4.dp).heading())
-            card.rows.forEachIndexed { i, r ->
+            rows.forEachIndexed { i, r ->
                 TodoRow(r, busy = busy == r.id,
                     onDone = { act(r.id) { app.today.done(r.item) } },
                     onSnooze = { act(r.id) { app.today.snooze(r.item).also { if (it == null) app.toast("We'll remind you tomorrow") } } },
                     onUndo = { act(r.id) { app.today.undo(r.item) } },
                     onOpen = { r.entity?.let(onOpenDevice) })
-                if (i < card.rows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
+                if (i < rows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
             }
             if (card.more > 0) {
                 Text("${card.more} more", style = T.small.copy(color = N.Muted),
@@ -137,7 +162,7 @@ fun TodayCard(showWhenEmpty: Boolean, onOpenDevice: (String) -> Unit) {
             }
         }
         if (card.events.isNotEmpty()) {
-            Text("ON TODAY", style = T.caps, modifier = Modifier.padding(top = if (card.rows.isEmpty()) 0.dp else 10.dp, bottom = 6.dp).heading())
+            Text("ON TODAY", style = T.caps, modifier = Modifier.padding(top = if (rows.isEmpty()) 0.dp else 10.dp, bottom = 6.dp).heading())
             card.events.forEach { ev ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (ev.now) "Now" else ev.time, style = T.small.copy(color = if (ev.now) N.Teal else N.Muted), modifier = Modifier.width(68.dp), maxLines = 1)
@@ -160,6 +185,7 @@ fun TodayCard(showWhenEmpty: Boolean, onOpenDevice: (String) -> Unit) {
                 }
             }
         }
+    }
     }
 }
 

@@ -92,6 +92,21 @@ fun GlassCard(
     }
 }
 
+/**
+ * A card's heading: small capitals ("CAMERAS", "QUICK CONTROLS"), with an optional action on the
+ * right ("All 8", "Show all"). Every card of the phone uses this one look.
+ */
+@Composable
+fun CardHeader(title: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
+    Row(modifier.fillMaxWidth().heightIn(min = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title.uppercase(), style = T.caps, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).heading())
+        if (action != null) {
+            Text(action, style = T.small.copy(color = N.Blue),
+                modifier = (if (onAction != null) Modifier.clickable(role = Role.Button, onClick = onAction) else Modifier).padding(start = 8.dp))
+        }
+    }
+}
+
 /** A rounded glass button (the boards' 44-48dp secondary buttons). */
 @Composable
 fun GlassButton(

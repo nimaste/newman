@@ -79,7 +79,7 @@ internal fun GridPageView(page: Page, first: Boolean, state: HubState, plan: Pho
                 .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(GAP),
         ) {
-            if (first) OverviewHeader(state, onMe) else PageHeader(page, state, onBack)
+            if (first) OverviewHeader(state, onMe, page) else PageHeader(page, state, onBack)
             if (first && PhoneTabs.showsTodayCard(plan, page)) TodayCard(showWhenEmpty = PhoneTabs.todayWhenEmpty(plan), onOpenDevice = onSheet)
             if (tiles.isEmpty()) {
                 Text("Nothing on this page yet - add tiles in the Newman dashboard.", style = T.body.copy(color = N.Muted), modifier = Modifier.padding(8.dp))
@@ -102,7 +102,8 @@ internal fun GridPageView(page: Page, first: Boolean, state: HubState, plan: Pho
                                         // The tile's card fills its cell; a tile with more than fits scrolls inside it.
                                         Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                                             CompositionLocalProvider(LocalFillHeight provides r.height.dp) {
-                                                TileBody(t, compact = PhoneGrid.isCompact(t), state, entities, onCamera, onSheet, onDial)
+                                                TileBody(t, compact = PhoneGrid.isCompact(t), state, entities, onCamera, onSheet, onDial,
+                                                    fullWidth = t.w >= PhoneGrid.COLUMNS)
                                             }
                                         }
                                     }

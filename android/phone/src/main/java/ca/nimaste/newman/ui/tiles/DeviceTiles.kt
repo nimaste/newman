@@ -49,6 +49,7 @@ import ca.nimaste.newman.core.model.jsonOf
 import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.core.model.strings
 import ca.nimaste.newman.ui.LocalApp
+import ca.nimaste.newman.ui.common.CardHeader
 import ca.nimaste.newman.ui.common.GlassButton
 import ca.nimaste.newman.ui.common.GlassCard
 import ca.nimaste.newman.ui.common.IconBubble
@@ -225,7 +226,7 @@ fun DeviceListTile(tile: Tile, entities: Map<String, Entity>, kind: (Entity) -> 
     if (byArea) list = list.sortedBy { it.attrs.string("area") ?: "~" }
     GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
         tile.config.string("title")?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = T.label.copy(fontSize = 15.sp * textScale), modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
+            CardHeader(it, Modifier.padding(top = 12.dp, bottom = 2.dp))
         }
         if (list.isEmpty()) Text("No devices chosen.", style = T.tiny, modifier = Modifier.padding(vertical = 12.dp))
         list.forEachIndexed { i, e -> DeviceRow(e, kind(e), last = i == list.lastIndex, showArea = byArea, onSheet = { onSheet(e) }, textScale = textScale) }
@@ -242,12 +243,13 @@ fun DevicesGridTile(tile: Tile, width: Dp, height: Dp, entities: Map<String, Ent
                     onSheet: (Entity) -> Unit, onMore: () -> Unit, textScale: Float) {
     var list = tile.config.strings("entities").mapNotNull { entities[it] }
     if (tile.config.string("groupBy") == "area") list = list.sortedBy { it.attrs.string("area") ?: "~" }
+    // The card's heading: its title, else "Quick controls" for a grid of two or more devices across the phone.
     val title = tile.config.string("title")?.takeIf { it.isNotBlank() }
+        ?: if (tile.config.string("style") != "list" && list.size > 1 && width.value >= PhoneGrid.TWO_COLUMNS_FROM) "Quick controls" else null
     val fit = PhoneGrid.fitDevices(list.size, width.value, height.value, title != null, list = tile.config.string("style") == "list")
     GlassCard(Modifier.fillMaxSize(), padding = PaddingValues(PhoneGrid.DEVICE_PADDING.dp)) {
         title?.let {
-            Text(it, style = T.label.copy(fontSize = 15.sp * textScale), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.height(PhoneGrid.DEVICE_TITLE.dp).padding(start = 4.dp, top = 2.dp))
+            CardHeader(it, Modifier.height(PhoneGrid.DEVICE_TITLE.dp).padding(start = 4.dp, end = 4.dp))
         }
         if (list.isEmpty()) Text("No devices chosen.", style = T.tiny, modifier = Modifier.padding(4.dp))
         val slots: List<Entity?> = list.take(fit.shown) + (if (fit.more > 0) listOf(null) else emptyList())
