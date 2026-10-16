@@ -576,10 +576,11 @@ class MatterIntegration(Integration):
             merged.update(id(s) for s in extras)
         return [s for s in plan if id(s) not in merged]
 
-    def _local(self, values: dict[str, Any], nid: int, spec: dict[str, Any]) -> str:
-        """A spec's own device id (within this connection) - the same one it has always had."""
+    def _local(self, values: dict[str, Any], nid: int, spec: dict[str, Any], by_node: bool = False) -> str:
+        """A spec's own device id (within this connection) - the same one it has always had. by_node: the
+        id it had before the device told its unique id (some say it only once they're fully awake)."""
         info = self._info(values, spec["ep"])
-        unique = clean_id(info["unique"]) or f"node{nid}"
+        unique = (None if by_node else clean_id(info["unique"])) or f"node{nid}"
         return f"{unique}_{spec['role']}" if info["bridged"] else f"{unique}_{spec['ep']}_{spec['role']}"
 
     @staticmethod
@@ -648,6 +649,10 @@ class MatterIntegration(Integration):
             # of their own before they were merged into it hand over whatever used them (below).
             eid = self.entity_id(self._local(values, nid, spec))
             self.hub.upsert(eid, kind=spec["kind"], name=name, integration=self.id)
+            # Known as "node<N>" until it told its unique id: what used that id moves to this one.
+            early = self.entity_id(self._local(values, nid, spec, by_node=True))
+            if early != eid and early not in self._moved:
+                moved.append({"from": early, "to": eid})
             for x in spec.get("extras", ()):
                 old = self.entity_id(self._local(values, nid, x))
                 if old not in self._moved:

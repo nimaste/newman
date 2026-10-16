@@ -611,6 +611,21 @@ class HubTests(HubBase):
         await until(lambda: self.plugs.calls[-1:] == [("fake.plug", "turn_off")], "leak automation")
 
 
+    async def test_a_device_that_tells_its_unique_id_later_keeps_its_automations(self):
+        # The BILRESA button: first seen without its unique id ("node9"), then it said it while asleep the night after.
+        auto = self.h.engine.save({
+            "name": "Top button", "recipients": [], "notify": {"enabled": False},
+            "trigger": {"items": [{"type": "event", "entity": "matter.node9_1_buttons", "event": "button_1"}]},
+            "actions": [{"entities": ["fake.plug"], "command": "turn_on"}]})
+        later = copy.deepcopy(self.server.nodes[9])
+        later["attributes"]["0/40/18"] = "BTN-9"
+        await self.server.event("node_updated", later)
+        await until(lambda: self.h.hub.get("matter.btn_9_1_buttons") is not None, "the button's new id")
+        self.assertIsNone(self.h.hub.get("matter.node9_1_buttons"))
+        item = self.h.engine.autos[auto["id"]]["trigger"]["items"][0]
+        self.assertEqual(item["entity"], "matter.btn_9_1_buttons")
+
+
 MERGE_NODES = [
     # A temperature + humidity sensor on a battery (Power Source on the root), like most Thread climate sensors.
     node(21, {1: ([770], [1026, 29], {"1026/0": 1950}), 2: ([775], [1029, 29], {"1029/0": 5125})},
