@@ -133,11 +133,19 @@ function WallSignIn({ where, onDone }) {
 
 /* ---------------- top bar ---------------- */
 
+/** The time, for clocks that show minutes: redrawn as each minute starts, not every second. */
 function useNow() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
+    let t;
+    const next = () => {
+      t = setTimeout(() => {
+        setNow(new Date());
+        next();
+      }, 60000 - (Date.now() % 60000) + 50);
+    };
+    next();
+    return () => clearTimeout(t);
   }, []);
   return now;
 }
