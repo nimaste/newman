@@ -333,9 +333,10 @@ fun HorizontalDial(m: DialModel, onOpen: () -> Unit, textScale: Float) {
                 }) {
                 DialRing(m, target, ring, 12.dp, onDrag = null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 6.dp)) {
-                        Text(m.text(target), style = T.number.copy(fontSize = 28.sp * textScale))
+                        // Grows and shrinks with the ring.
+                        Text(m.text(target), style = T.number.copy(fontSize = (ring.value * 0.19f).sp * textScale), maxLines = 1)
                         val now = m.nowProp?.let { "Now ${HubModel.formatProp(it, it.value).replace(" °C", "°").replace(" °F", "°")}" }
-                        if (now != null) Text(now, style = T.tiny.copy(fontSize = 11.sp))
+                        if (now != null) Text(now, style = T.tiny.copy(fontSize = (ring.value * 0.08f).coerceAtLeast(9f).sp), maxLines = 1)
                     }
                 }
             }

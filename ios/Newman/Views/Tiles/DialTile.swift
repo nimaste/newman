@@ -140,15 +140,15 @@ struct DialRow: View {
             ZStack {
                 DialRing(dial: dial, value: shown, lineWidth: size > 110 ? 13 : 10, knob: size > 110 ? 10 : 8, nowValue: dial.nowValue)
                 VStack(spacing: 0) {
-                    Text(dial.text(shown)).font(AppFont.sora((size > 110 ? 30 : 24) * scale)).foregroundColor(Theme.text)
+                    Text(dial.text(shown)).font(AppFont.sora(size * 0.19 * scale)).foregroundColor(Theme.text)
                         .lineLimit(1).minimumScaleFactor(0.5)
                     if let n = dial.nowProperty {
                         Text("Now " + DeviceLogic.formatProp(n, n.value).replacingOccurrences(of: " °C", with: "°").replacingOccurrences(of: " °F", with: "°"))
-                            .font(AppFont.manrope(11 * scale, .bold)).foregroundColor(Theme.muted)
+                            .font(AppFont.manrope(max(9, size * 0.08) * scale, .bold)).foregroundColor(Theme.muted)
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
-                .padding(.horizontal, size * 0.16)
+                .padding(.horizontal, size * 0.2)
             }
             .frame(width: size, height: size)
             .contentShape(Circle())
