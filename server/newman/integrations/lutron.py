@@ -50,6 +50,10 @@ def _names(devices: dict[str, dict], areas: dict[str, str]) -> dict[str, str]:
     return out
 
 
+class DevicesChanged(Exception):
+    """The bridge's devices aren't the ones read when connecting."""
+
+
 class LutronIntegration(Integration):
     type = "lutron"
     name = "Lutron Caséta"
@@ -122,13 +126,20 @@ class LutronIntegration(Integration):
                 attempt = 0
                 recheck = asyncio.get_running_loop().create_task(self._recheck())
                 try:
-                    while self._bridge and self._bridge.is_connected():
+                    while self._bridge and self._bridge.is_connected() and not recheck.done():
                         await asyncio.sleep(CONNECTED_CHECK_S)
                 finally:
                     recheck.cancel()
+                if recheck.done() and not recheck.cancelled() and isinstance(recheck.exception(), DevicesChanged):
+                    raise recheck.exception()  # type: ignore[misc]
                 raise ConnectionError("connection lost")
             except asyncio.CancelledError:
                 raise
+            except DevicesChanged as e:
+                log.info("Lutron %s: %s - reading them again", self.config["host"], e)
+                await self._close()
+                attempt = 0
+                continue
             except Exception as e:
                 self.set_status("error", f"{self.config['host']}: {e}")
             finally:
@@ -196,6 +207,14 @@ class LutronIntegration(Integration):
                     if dev.get("zone") is not None:
                         status = await bridge._request("ReadRequest", f"/zone/{dev['zone']}/status")
                         bridge._handle_one_zone_status(status)
+                # A device added on the bridge since connecting (a new Pico, from the Lutron app): the library
+                # only reads the list when it connects, so connect again to read everything afresh.
+                listed = await bridge._request("ReadRequest", "/device")
+                ids = {str(d.get("href", "")).rsplit("/", 1)[-1] for d in ((listed.Body or {}).get("Devices") or [])}
+                if new := ids - set(bridge.get_devices()):
+                    raise DevicesChanged(f"{len(new)} device{'s' if len(new) != 1 else ''} added on the bridge")
+            except DevicesChanged:
+                raise
             except Exception as e:  # noqa: BLE001 - asked again next time
                 log.info("Lutron %s: couldn't ask for every light's level: %s", self.config["host"], e)
 

@@ -144,6 +144,7 @@ class DimmerBridge(FakeBridge):
         self.devices["9"] = {"device_id": "9", "type": "WallDimmer", "name": "Kitchen_Kitchen", "device_name": "Kitchen",
                              "area": "3", "zone": "5", "current_state": 0, "model": "PD-6WCL"}
         self.level, self.reads, self.connected = 40, [], True
+        self.on_bridge = list(self.devices)  # what the bridge lists now (a Pico added later shows up here)
         self.dev_subscribers = {}
 
     def is_connected(self):
@@ -154,6 +155,8 @@ class DimmerBridge(FakeBridge):
 
     async def _request(self, kind, url):
         self.reads.append((kind, url))
+        if url == "/device":
+            return mock.Mock(Body={"Devices": [{"href": f"/device/{i}"} for i in self.on_bridge]})
         return mock.Mock(Body={"ZoneStatus": {"Zone": {"href": "/zone/5"}, "Level": self.level}})
 
     def _handle_one_zone_status(self, response):
@@ -199,6 +202,30 @@ class CheckEverythingTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.15)
             self.assertEqual(len(self.bridge.reads), n)
             self.assertFalse(self.hub.get("lutron.device_9").available)
+            run.cancel()
+            await asyncio.gather(run, return_exceptions=True)
+
+    async def test_a_device_added_on_the_bridge_is_read_by_connecting_again(self):
+        bridges = [self.bridge, DimmerBridge()]
+        bridges[1].devices["20"] = {"device_id": "20", "type": "Pico3ButtonRaiseLower", "name": "Kitchen_New Pico",
+                                    "device_name": "New Pico", "area": "3", "model": "PJ2-3BRL"}
+        bridges[1].on_bridge = list(bridges[1].devices)
+
+        async def wait_forever(_attempt):
+            await asyncio.sleep(3600)
+        with mock.patch.object(lutron_mod.Smartbridge, "create_tls", side_effect=bridges), \
+                mock.patch.object(self.lut, "_paired", return_value=True), \
+                mock.patch.object(self.lut, "backoff_sleep", wait_forever):
+            run = asyncio.create_task(self.lut.run())
+            await asyncio.sleep(0.15)
+            self.assertEqual(self.lut._bridge, bridges[0])  # nothing new: stays connected
+            self.bridge.on_bridge.append("20")  # the Pico is added in the Lutron app
+            for _ in range(100):
+                if self.lut._bridge is bridges[1]:
+                    break
+                await asyncio.sleep(0.02)
+            self.assertIs(self.lut._bridge, bridges[1])
+            self.assertEqual(self.lut.status, "connected")
             run.cancel()
             await asyncio.gather(run, return_exceptions=True)
 
