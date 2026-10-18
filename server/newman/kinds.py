@@ -199,7 +199,18 @@ class Kind:
         """What an automation's "Do" may name: a command, or one of the automation-only ones."""
         return self.command(command_id) or next((c for c in self.automation_commands if c.id == command_id), None)
 
-    def event(self, event_id: str) -> Event:
+    def event(self, event_id: str, attrs: dict | None = None) -> Event:
+        """An event of this kind; with a device's attrs, a button it names in attrs["buttons"] ("Top" for its
+        "button_1") is worded by that name."""
+        base = event_id
+        for suffix in ("_double", "_long", "_released"):
+            if event_id.endswith(suffix):
+                base = event_id[: -len(suffix)]
+        named = next((b.get("label") for b in ((attrs or {}).get("buttons") or [])
+                      if isinstance(b, dict) and b.get("id") == base and b.get("label")), None)
+        if named:
+            return next(e for e in remote_button_events(base, str(named)) if e.id == event_id) \
+                if event_id in {e.id for e in remote_button_events(base, "")} else Event(event_id, str(named))
         return next((e for e in self.events if e.id == event_id), None) or \
             Event(event_id, event_id.replace("_", " ").capitalize())
 
@@ -714,9 +725,9 @@ def render(template: str, device: str, kind_: Kind, event: Event, detail: str = 
             .replace("{a_what}", _a(what)).replace("{what}", what.capitalize()))
 
 
-def event_phrase(kind_: Kind, event_id: str, device: str) -> str:
+def event_phrase(kind_: Kind, event_id: str, device: str, attrs: dict | None = None) -> str:
     """"someone rings the Front Door doorbell" - generic fallback for kinds without wording."""
-    ev = kind_.event(event_id)
+    ev = kind_.event(event_id, attrs)
     return render(ev.phrase or "{device} reports “" + ev.label.lower() + "”", device, kind_, ev)
 
 

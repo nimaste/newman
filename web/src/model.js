@@ -52,13 +52,29 @@ export function isModeKind(kind) {
  * Events a device can actually emit: the kind's events, narrowed to
  * entity.attrs.events when present (a Pico remote only has some buttons).
  */
+// How a remote's button events are worded (as the hub's kinds.remote_button_events words them).
+const PRESS_WORDS = { '': 'is pressed', _double: 'is double-pressed', _long: 'is long-pressed', _released: 'is let go after being long-pressed' };
+
+/** A button the device names in attrs.buttons ("Top" for its "button_1") is worded by that name. */
+function namedButton(entity, ev) {
+  const buttons = entity && entity.attrs && Array.isArray(entity.attrs.buttons) ? entity.attrs.buttons : null;
+  if (!buttons) return ev;
+  for (const [suffix, words] of Object.entries(PRESS_WORDS)) {
+    if (suffix && !ev.id.endsWith(suffix)) continue;
+    const base = suffix ? ev.id.slice(0, -suffix.length) : ev.id;
+    const b = buttons.find((x) => x && x.id === base && x.label);
+    if (b) return { ...ev, label: `“${b.label}” ${words}` };
+  }
+  return ev;
+}
+
 export function eventsFor(entity, kind) {
   const all = (kind && kind.events) || [];
   const own = entity && entity.attrs && Array.isArray(entity.attrs.events) ? entity.attrs.events : null;
   if (!own) return all;
   // In the kind's order; anything the device reports that its kind doesn't list goes last.
   const unknown = own.filter((id) => !all.some((e) => e.id === id)).map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' ') }));
-  return [...all.filter((e) => own.includes(e.id)), ...unknown];
+  return [...all.filter((e) => own.includes(e.id)), ...unknown].map((ev) => namedButton(entity, ev));
 }
 
 /** A button-only device (Pico remote): lists its events, takes no commands, has no real state. */

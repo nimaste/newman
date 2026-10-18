@@ -579,7 +579,7 @@ def event_phrase(item: dict[str, Any], hub: Hub) -> str:
         return "something happens"
     if not item.get("event"):
         return f"{ent.name} does something"
-    return kinds_event_phrase(KINDS[ent.kind], item.get("event", ""), ent.name)
+    return kinds_event_phrase(KINDS[ent.kind], item.get("event", ""), ent.name, ent.attrs)
 
 
 SUN_WORDS = {"sunrise": "sunrise", "sunset": "sunset", "dawn": "dawn (first light)", "dusk": "dusk (last light)"}
@@ -1096,7 +1096,7 @@ def notification_text(auto: dict[str, Any], hub: Hub, *, pending: list[str], tri
         if not ent:
             return title, f"Something happened · {clock}"
         k = KINDS[ent.kind]
-        e = k.event(ev)
+        e = k.event(ev, ent.attrs)
         # The event's own wording (from its kind); the automation's title always wins.
         ev_title = render(e.title, ent.name, k, e) if e.title else ""
         body = render(e.body or "{device}: " + e.label.lower(), ent.name, k, e, str(fired.get("detail") or ""))
