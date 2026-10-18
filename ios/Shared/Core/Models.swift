@@ -142,10 +142,12 @@ struct Entity: Decodable, Hashable, Identifiable {
     var live: String?
     var usedBy: [String]?
     var updatedAt: Double?
+    /// A remote's Controls (the lights it controls and what each press does); nil for everything else.
+    var controls: RemoteControls?
 
     enum CodingKeys: String, CodingKey {
         case id, name, kind, category, integration, integrationName, state, stateLabel, available, attrs, health
-        case properties, still, alerts, live, usedBy, updatedAt
+        case properties, still, alerts, live, usedBy, updatedAt, controls
     }
 
     init(id: String, name: String, kind: String, state: String? = nil, attrs: [String: JSONValue]? = nil) {
@@ -178,12 +180,66 @@ struct Entity: Decodable, Hashable, Identifiable {
         live = try? c.decodeIfPresent(String.self, forKey: .live)
         usedBy = try? c.decodeIfPresent([String].self, forKey: .usedBy)
         updatedAt = try? c.decodeIfPresent(Double.self, forKey: .updatedAt)
+        controls = try? c.decodeIfPresent(RemoteControls.self, forKey: .controls)
     }
 
     var isAvailable: Bool { available != false && state != "offline" }
     var issues: [String] { health?.issues ?? [] }
     func attr(_ key: String) -> JSONValue? { attrs?[key] }
     var area: String? { attr("area")?.stringValue.flatMap { $0.isEmpty ? nil : $0 } }
+}
+
+/// A remote's Controls, as the hub describes them: the lights it controls, the brightness "on" uses (nil =
+/// what they had last), whether holding brightens and dims, and one row per press ("Tap top" → "On at 60%").
+struct RemoteControls: Decodable, Hashable {
+    struct Row: Decodable, Hashable, Identifiable {
+        var key: String
+        var label: String
+        var does: String
+        var custom: Bool
+        var id: String { key }
+
+        enum CodingKeys: String, CodingKey { case key, label, does, custom }
+
+        init(key: String, label: String, does: String, custom: Bool = false) {
+            self.key = key
+            self.label = label
+            self.does = does
+            self.custom = custom
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            label = (try? c.decodeIfPresent(String.self, forKey: .label)) ?? ""
+            key = (try? c.decodeIfPresent(String.self, forKey: .key)) ?? label
+            does = (try? c.decodeIfPresent(String.self, forKey: .does)) ?? ""
+            custom = (try? c.decodeIfPresent(Bool.self, forKey: .custom)) ?? false
+        }
+    }
+
+    var lights: [String]
+    var onLevel: Int?
+    var hold: Bool
+    var rows: [Row]
+
+    enum CodingKeys: String, CodingKey { case lights, onLevel, hold, rows }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lights = (try? c.decodeIfPresent([String].self, forKey: .lights)) ?? []
+        onLevel = try? c.decodeIfPresent(Int.self, forKey: .onLevel)
+        hold = (try? c.decodeIfPresent(Bool.self, forKey: .hold)) ?? false
+        rows = (try? c.decodeIfPresent([Row].self, forKey: .rows)) ?? []
+    }
+
+    /// "Controls · 3 lights", "Controls · 1 light", or "Controls" when it controls no lights.
+    var heading: String {
+        switch lights.count {
+        case 0: return "Controls"
+        case 1: return "Controls · 1 light"
+        default: return "Controls · \(lights.count) lights"
+        }
+    }
 }
 
 // MARK: - Dashboards (GET /api/dashboards/current)

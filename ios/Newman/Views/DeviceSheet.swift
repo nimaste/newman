@@ -6,6 +6,7 @@ struct DeviceSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let entityId: String
+    @State private var openLight: AppModel.DeviceLink?
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,7 @@ struct DeviceSheet: View {
                         VStack(alignment: .leading, spacing: 14) {
                             header(e, kind)
                             commands(e, kind)
+                            remoteControls(e)
                             readings(e)
                             details(e, kind)
                         }
@@ -30,6 +32,9 @@ struct DeviceSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.foregroundColor(Theme.text) }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .sheet(item: $openLight) { link in
+                DeviceSheet(entityId: link.id).environmentObject(model)
+            }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -89,6 +94,89 @@ struct DeviceSheet: View {
                 .glassCard(radius: 18, padding: 14)
                 .disabled(!e.isAvailable)
         }
+    }
+
+    /// A remote's Controls (set on the dashboard): the lights it controls - each opens its own sheet - with
+    /// All on / All off, then what each press does.
+    @ViewBuilder private func remoteControls(_ e: Entity) -> some View {
+        if let controls = e.controls {
+            let lights = controls.lights.compactMap { model.entity($0) }
+            VStack(alignment: .leading, spacing: 10) {
+                CardHeader(text: controls.heading)
+                ForEach(Array(lights.enumerated()), id: \.element.id) { i, light in
+                    Button {
+                        openLight = AppModel.DeviceLink(id: light.id)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(DeviceLogic.isLit(light, model.kind(of: light)) ? Theme.amber : Theme.faint)
+                                .frame(width: 10, height: 10)
+                                .accessibilityHidden(true)
+                            Text(light.name).font(AppFont.manrope(15, .heavy)).foregroundColor(Theme.text).lineLimit(2)
+                            Spacer(minLength: 8)
+                            Text(lightLevel(light))
+                                .font(AppFont.manrope(13, .bold))
+                                .foregroundColor(DeviceLogic.isLit(light, model.kind(of: light)) ? Theme.amber : Theme.muted)
+                        }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityHint("Opens \(light.name)")
+                    if i < lights.count - 1 { Divider().overlay(Theme.divider) }
+                }
+                if !lights.isEmpty {
+                    HStack(spacing: 10) {
+                        allLights("All on", command: "turn_on", lights)
+                        allLights("All off", command: "turn_off", lights)
+                    }
+                }
+            }
+            .glassCard(radius: 18, padding: 14)
+            if !controls.rows.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(controls.rows.enumerated()), id: \.element.id) { i, row in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(row.label).font(AppFont.manrope(14, .heavy)).foregroundColor(Theme.text)
+                                .frame(minWidth: 96, alignment: .leading)
+                            Text(row.does).font(AppFont.manrope(14, .bold))
+                                .foregroundColor(row.custom ? Theme.text : Theme.muted)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.vertical, 11)
+                        .accessibilityElement(children: .combine)
+                        if i < controls.rows.count - 1 { Divider().overlay(Theme.divider) }
+                    }
+                }
+                .glassCard(radius: 18, padding: 14)
+            }
+        }
+    }
+
+    /// "60%" for a light that's on at a level, its state otherwise ("On", "Off").
+    private func lightLevel(_ light: Entity) -> String {
+        let kind = model.kind(of: light)
+        if DeviceLogic.isLit(light, kind), let b = light.attr("brightness")?.doubleValue,
+           light.attr("brightness")?.stringValue == nil, light.attr("dimmable")?.boolValue != false {
+            return "\(Int(b.rounded()))%"
+        }
+        return DeviceLogic.stateLabel(light, kind)
+    }
+
+    /// Turns every one of the remote's lights on or off (each through the usual command path).
+    private func allLights(_ title: String, command: String, _ lights: [Entity]) -> some View {
+        Button {
+            Task {
+                for light in lights where light.isAvailable {
+                    if let cmd = model.kind(of: light)?.command(command) { await model.run(light.id, cmd) }
+                }
+            }
+        } label: {
+            Text(title).frame(maxWidth: .infinity)
+        }
+        .buttonStyle(PillButtonStyle(height: 44))
+        .disabled(!lights.contains { $0.isAvailable })
     }
 
     @ViewBuilder private func readings(_ e: Entity) -> some View {
