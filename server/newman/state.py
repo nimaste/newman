@@ -47,32 +47,42 @@ class Entity:
         return not self.available or self.state == "offline"
 
     @property
-    def health_issues(self) -> list[str]:
-        a, issues = self.attrs, []
+    def health_items(self) -> list[tuple[str, str]]:
+        """Its problems as (id, words): the id stays the same while the words may change ("Battery 15%" ->
+        "Battery 9%"), so a problem can be muted (muting.py)."""
+        a, items = self.attrs, []
         if not self.available:
-            issues.append("Offline")
+            items.append(("offline", "Offline"))
         level = a.get("batteryLevel")
         if a.get("batteryStatus") == "failed":
-            issues.append("Battery failed")
+            items.append(("battery_failed", "Battery failed"))
         elif isinstance(level, (int, float)) and level <= 20 and a.get("charging") is not True:  # charging: in hand
-            issues.append(f"Battery {level:g}%")
+            items.append(("battery_low", f"Battery {level:g}%"))
         elif a.get("batteryLow") is True:  # the device itself says it's low / needs replacing (Matter)
-            issues.append(f"Battery low (takes {a['batteryType']})" if a.get("batteryType") else "Battery low")
+            items.append(("battery_low", f"Battery low (takes {a['batteryType']})" if a.get("batteryType")
+                          else "Battery low"))
         if a.get("tamperStatus") not in (None, "ok"):
-            issues.append("Tamper reported")
+            items.append(("tamper", "Tamper reported"))
         if a.get("acStatus") == "error":
-            issues.append("No AC power")
+            items.append(("no_ac", "No AC power"))
         if a.get("commStatus") not in (None, "ok"):
-            issues.append("Not responding to the hub")
+            items.append(("not_responding", "Not responding to the hub"))
         if a.get("linkQuality") not in (None, "ok"):
-            issues.append("Weak signal")
+            items.append(("weak_signal", "Weak signal"))
         if a.get("commandFailures"):
-            issues.append(f"Ignored {a['commandFailures']} remote command{'s' if a['commandFailures'] != 1 else ''}")
+            n = a["commandFailures"]
+            items.append(("ignored_commands", f"Ignored {n} remote command{'s' if n != 1 else ''}"))
         if self.state == JAMMED:
-            issues.append("Jammed")
+            items.append(("jammed", "Jammed"))
         if a.get("canComeBack") is False:  # a wall tablet that can't bring itself back with its screen on
-            issues.append("Allow 'Display over other apps' for Newman Wall so it can keep its screen on")
-        return issues
+            items.append(("overlay_permission",
+                          "Allow 'Display over other apps' for Newman Wall so it can keep its screen on"))
+        return items
+
+    @property
+    def health_issues(self) -> list[str]:
+        """Every problem it has, in words (muted ones too - muting.py leaves those out where people see them)."""
+        return [text for _, text in self.health_items]
 
 
 StateListener = Callable[[Entity | None, Entity], Awaitable[None]]

@@ -4121,3 +4121,89 @@ button.wt-chip {
   color: var(--wt-teal);
   animation: fam-spin 0.9s linear infinite;
 }
+/* ---- muting a device's problem (MuteProblems.jsx): each problem with Mute, then the four choices ---- */
+:is(.wall, .wt-overlay) .wt-sick-entry {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+:is(.wall, .wt-overlay) .wt-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:is(.wall, .wt-overlay) .wt-problem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 6px 8px 6px 16px;
+  border-radius: 14px;
+  background: rgba(255, 122, 89, 0.1);
+  border: 1px solid rgba(255, 122, 89, 0.28);
+}
+:is(.wall, .wt-overlay) .wt-problem-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--wt-coral);
+  font-size: 15px;
+  font-weight: 700;
+}
+:is(.wall, .wt-overlay) .wt-mute-open,
+:is(.wall, .wt-overlay) .wt-mute-btn,
+:is(.wall, .wt-overlay) .wt-mute-cancel {
+  font: inherit;
+  color: var(--wt-ink);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 800;
+}
+:is(.wall, .wt-overlay) .wt-mute-open {
+  flex: none;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.16);
+  background: rgba(var(--wt-ink-rgb, 238, 242, 255), 0.12);
+}
+:is(.wall, .wt-overlay) .wt-mute {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.14);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+}
+:is(.wall, .wt-overlay) .wt-mute-q {
+  color: var(--wt-ink);
+  font-size: 17px;
+  font-weight: 800;
+}
+:is(.wall, .wt-overlay) .wt-mute-sub {
+  color: var(--wt-dim);
+  font-size: 14px;
+  font-weight: 600;
+}
+:is(.wall, .wt-overlay) .wt-mute-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+:is(.wall, .wt-overlay) .wt-mute-btn {
+  height: 52px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.16);
+  background: rgba(var(--wt-ink-rgb, 238, 242, 255), 0.12);
+}
+:is(.wall, .wt-overlay) .wt-mute-cancel {
+  height: 48px;
+  border: none;
+  background: transparent;
+  color: var(--wt-dim);
+}
+:is(.wall, .wt-overlay) .wt-mute-err {
+  color: var(--wt-coral);
+  font-size: 14px;
+  font-weight: 700;
+}

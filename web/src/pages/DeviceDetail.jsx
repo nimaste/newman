@@ -8,6 +8,7 @@ import { StateText } from '../components/DeviceList.jsx';
 import { ActivityItem, CountChips, hasStill } from '../components/Camera.jsx';
 import LiveVideo from '../components/LiveVideo.jsx';
 import { AlertList } from '../components/AlertCard.jsx';
+import DeviceProblems from '../components/DeviceProblems.jsx';
 import { cameraForZone, ZoneLink, zonesForCamera } from '../components/CameraGrid.jsx';
 import VideoSettings, { hasVideoSettings } from '../components/VideoSettings.jsx';
 import LiveStatusSettings, { hasLiveStatus } from '../components/LiveStatusSettings.jsx';
@@ -15,7 +16,7 @@ import RemoteControls, { hasRemoteControls } from '../components/RemoteControls.
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
 import { Icon } from '../icons.jsx';
 import { fmtWhen } from '../format.js';
-import { eventsFor, issuesOf } from '../model.js';
+import { eventsFor } from '../model.js';
 import { formatPropValue, triggerItems } from '../automation.js';
 
 // Attributes worth showing, in this order; anything else scalar is shown after them.
@@ -112,7 +113,6 @@ export default function DeviceDetail({ id }) {
   }
 
   const kind = kindsById[e.kind];
-  const issues = issuesOf(e);
   const area = e.attrs && e.attrs.area;
   const list = autos.data || [];
   const byId = Object.fromEntries(list.map((a) => [a.id, a]));
@@ -223,12 +223,7 @@ export default function DeviceDetail({ id }) {
                 <span>{String(problem.value)}</span>
               </div>
             ) : null}
-            {issues.length ? (
-              <div className="warn" role="note">
-                <Icon name="alert" size={16} />
-                <span>{issues.join(' · ')}</span>
-              </div>
-            ) : null}
+            <DeviceProblems entity={e} />
             {isAdmin && isOffline(e) ? (
               <button type="button" className="btn btn-sm2 btn-danger" style={{ alignSelf: 'flex-start' }} onClick={() => setRemoving(true)}>
                 Remove device…

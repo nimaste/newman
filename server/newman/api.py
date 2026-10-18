@@ -27,6 +27,7 @@ from . import auth as A
 from . import backup as B
 from . import connect as CN
 from . import controls as C
+from . import muting as M
 from . import today as T
 from . import dashboards as D
 from . import phone_layouts as PL
@@ -136,16 +137,17 @@ def build_app(h: "Newman") -> web.Application:
     live = h.live = getattr(h, "live", None) or LiveStatuses(h.hub, h.store, h.notifier)
     h.engine.live = live
     h.engine.listeners.append(lambda: live.automations_changed(h.engine.autos))
+    # Problems someone muted ("No AC power" on a keypad that isn't meant to stay plugged in): muting.py.
+    muting = h.muting = getattr(h, "muting", None) or M.Muting(h.store, h.hub)
 
     def entity_json(e: Entity, origins: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         # origins: video.origins(), when building many devices at once (else worked out per device).
         inst = h.integrations.instances.get(e.integration)
-        issues = e.health_issues
         eid = quote(e.id, safe="")
         return {"id": e.id, "name": e.name, "kind": e.kind, "category": e.category,
                 "integration": e.integration, "integrationName": inst.display_name if inst else e.integration,
                 "state": e.state, "stateLabel": KINDS[e.kind].label_for(e.state, e.attrs), "available": e.available,
-                "attrs": e.attrs, "health": {"ok": not issues, "issues": issues},
+                "attrs": e.attrs, "health": muting.health(e),
                 # Every value it reports that automations can use (with its current value).
                 "properties": properties_for(e),
                 # Where to get its picture / recent alerts - null when its integration has none.
@@ -255,7 +257,7 @@ def build_app(h: "Newman") -> web.Application:
     def allowed(req: web.Request) -> bool:
         m, p, u, s = req.method, req.path, req["user"], req["session"]
         # Using the house (a device command, an alert's button) - which family and wall tablets may do.
-        command = (p.startswith("/api/entities/") and p.endswith("/command")) or \
+        command = (p.startswith("/api/entities/") and (p.endswith("/command") or "/mute" in p)) or \
             (p.startswith("/api/runs/") and p.endswith("/press")) or \
             (p.startswith("/api/upkeep/") and p.rsplit("/", 1)[-1] in ("done", "undo", "snooze")) or \
             p in ("/api/today/dismiss", "/api/tablet/battery", "/api/music/report", "/api/music/play", "/api/cook") or \
@@ -1256,6 +1258,7 @@ def build_app(h: "Newman") -> web.Application:
             h.hub.remove(i)  # the screens drop it ("entity-removed")
             h.store.forget_entity(i)
             h.engine.controls.remove(i)  # a remote that's gone takes its Controls with it
+            muting.forget(i)
         h.hub.set_name_overrides(h.store.entity_names())
         for lid in video.forget(ids):
             if ent := h.hub.get(lid):
@@ -1264,6 +1267,36 @@ def build_app(h: "Newman") -> web.Application:
         h.store.log_event("system", f"Removed {what}", f"By {req['user']['name']}" + (
             f": {', '.join(d['name'] for d in devices[:10])}" if len(devices) > 1 else ""))
         return web.json_response({"ok": True, "removed": ids, "devices": devices})
+
+    @r.put("/api/entities/{eid}/mute")
+    async def mute_issue(req: web.Request) -> web.Response:
+        """{"issue": id, "for": "day"|"week"|"fixed"|"always"}: one of its current problems stops being
+        mentioned (muting.py). Anyone signed in, wall tablets too."""
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        data = await body(req)
+        issue, mode = str(data.get("issue") or ""), str(data.get("for") or "")
+        try:
+            text = muting.mute(ent, issue, mode, req["user"]["name"])
+        except ValueError as e:
+            return _err(400, str(e))
+        how = {"day": "for a day", "week": "for a week", "fixed": "until it's fixed", "always": "always"}[mode]
+        h.store.log_event("system", f"{req['user']['name']} muted “{text}” on {ent.name} ({how})", entity_id=ent.id)
+        await broadcast({"type": "entity", "entity": entity_json(ent)})
+        return web.json_response({"health": muting.health(ent)})
+
+    @r.delete("/api/entities/{eid}/mute/{issue}")
+    async def unmute_issue(req: web.Request) -> web.Response:
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        issue = req.match_info["issue"]
+        if muting.unmute(ent, issue):
+            text = dict(ent.health_items).get(issue) or issue.replace("_", " ")
+            h.store.log_event("system", f"{req['user']['name']} unmuted “{text}” on {ent.name}", entity_id=ent.id)
+            await broadcast({"type": "entity", "entity": entity_json(ent)})
+        return web.json_response({"health": muting.health(ent)})
 
     @r.post("/api/entities/{eid}/command")
     async def command(req: web.Request) -> web.Response:
@@ -2316,6 +2349,7 @@ def build_app(h: "Newman") -> web.Application:
             await broadcast({"type": "entity-removed", "id": eid})
             await push_linked(eid)
 
+    h.hub.subscribe_changes(muting.on_change)  # first: a "fixed" mute goes before the screens hear of it
     h.hub.subscribe_changes(on_entity)
     h.hub.subscribe_changes(widget_push.changed)
     h.hub.subscribe_registry(on_entity_added, on_entities_removed)

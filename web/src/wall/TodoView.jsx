@@ -8,6 +8,7 @@ import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
 import { kindIcon } from '../model.js';
 import { useDeviceOpener } from './TodayTile.jsx';
+import { ProblemList } from './MuteProblems.jsx';
 import { PEOPLE_COLOURS, doItem, snooze, undoItem, useRecentlyDone, useToday, useUpkeep, withRecent, failed } from './today.js';
 
 export const GROUPS = [
@@ -223,6 +224,7 @@ export default function TodoView({ itemId, onBack }) {
                   Open the device
                 </button>
                 <span className="wtodo-note">This one clears by itself once the device is fine again.</span>
+                {e ? <ProblemList entity={e} /> : null}
               </>
             ) : current.justDone ? (
               <span className="wtodo-note">Done. It comes back if the appliance reports it again.</span>

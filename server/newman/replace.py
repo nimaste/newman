@@ -163,6 +163,11 @@ async def replace_entities(h: "Newman", pairs: Any) -> dict[str, Any]:
         counts["controls"] = n
         counts["references"] += n
 
+    if getattr(h, "muting", None):  # muted problems go with the device (muting.py)
+        if n := h.muting.replace_ids(mapping):
+            counts["muted"] = n
+            counts["references"] += n
+
     if getattr(h, "live", None):  # "Live status while…" settings (live.py)
         if n := h.live.replace_ids(mapping):
             counts["live"] = n

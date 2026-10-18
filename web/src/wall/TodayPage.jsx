@@ -99,7 +99,7 @@ export function TodoTile() {
   const upkeep = useUpkeep();
   const recent = useRecentlyDone();
   const [asking, setAsking] = useState(null);
-  const { openDevice, sheet } = useDeviceOpener();
+  const { openDevice, muteDevice, sheet } = useDeviceOpener();
   const bodyRef = useRef(null);
   const height = useHeight(bodyRef);
   const people = (upkeep.data && upkeep.data.people) || [];
@@ -131,7 +131,7 @@ export function TodoTile() {
           <div key={g.name} className="tt-group">
             <span className="tt-head">{g.name}</span>
             {g.items.map((item) => (
-              <TodoRow key={item.id} item={item} people={people} upkeep={upkeep.data} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} />
+              <TodoRow key={item.id} item={item} people={people} upkeep={upkeep.data} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} onMute={muteDevice} />
             ))}
           </div>
         ))}

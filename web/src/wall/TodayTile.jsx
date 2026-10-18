@@ -2,10 +2,11 @@
 // appliance needs) with Done / Open right there, today's events, and heads-up. Everything comes
 // from GET /api/today; tapping through goes to the To do, calendar and weather screens.
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
 import { DeviceSheet } from './DeviceSheet.jsx';
+import { MuteSheet } from './MuteProblems.jsx';
 import { dayKey } from './CalendarView.jsx';
 import { PEOPLE_COLOURS, doItem, greeting, levelColour, undoItem, useRecentlyDone, useToday, useUpkeep, withRecent } from './today.js';
 
@@ -20,7 +21,7 @@ function headsHref(h) {
 }
 
 /** One To do row: stripe, title + status (tap: the To do screen), and its button. */
-export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, upkeep }) {
+export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, onMute, upkeep }) {
   const done = !!item.justDone;
   const doneText = item.action === 'dismiss' ? 'Done just now' : `Done just now${item.doneBy ? ' · ' + item.doneBy : ''}`;
   return (
@@ -54,9 +55,16 @@ export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, upkeep })
           </button>
         ) : null
       ) : item.action === 'open' ? (
-        <button type="button" className="td-btn td-btn--ghost" onClick={() => onOpen(item)}>
-          Open
-        </button>
+        <>
+          {item.source === 'device' && onMute ? (
+            <button type="button" className="td-btn td-btn--ghost" onClick={() => onMute(item)}>
+              Mute
+            </button>
+          ) : null}
+          <button type="button" className="td-btn td-btn--ghost" onClick={() => onOpen(item)}>
+            Open
+          </button>
+        </>
       ) : (
         <button type="button" className="td-btn" onClick={() => (item.askWho && people.length ? onAsk(item) : doItem(item, upkeep, null))}>
           Done
@@ -66,14 +74,18 @@ export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, upkeep })
   );
 }
 
-/** The device behind a "needs a hand" item, in the wall's device sheet. */
+/** The device behind a "needs a hand" item, in the wall's device sheet - or just its problems, to mute one. */
 export function useDeviceOpener() {
   const { entitiesById, kindsById } = useHub();
   const [open, setOpen] = useState(null);
+  const [muting, setMuting] = useState(null);
+  const closeMute = useCallback(() => setMuting(null), []);
   const sheet = open && entitiesById[open.entity] ? (
     <DeviceSheet e={entitiesById[open.entity]} kind={kindsById[entitiesById[open.entity].kind]} main={null} note={open.status} onClose={() => setOpen(null)} />
+  ) : muting && entitiesById[muting] ? (
+    <MuteSheet entity={entitiesById[muting]} onClose={closeMute} />
   ) : null;
-  return { openDevice: setOpen, sheet };
+  return { openDevice: setOpen, muteDevice: (item) => setMuting(item.entity), sheet };
 }
 
 export default function TodayTile({ tile }) {
@@ -81,7 +93,7 @@ export default function TodayTile({ tile }) {
   const upkeep = useUpkeep();
   const recent = useRecentlyDone();
   const [asking, setAsking] = useState(null);
-  const { openDevice, sheet } = useDeviceOpener();
+  const { openDevice, muteDevice, sheet } = useDeviceOpener();
   const people = (upkeep.data && upkeep.data.people) || [];
   const limit = Math.max(1, Math.min(12, Number(tile.config.limit) || 4));
   if (!data) return <div className="wt-empty">Loading today…</div>;
@@ -126,7 +138,7 @@ export default function TodayTile({ tile }) {
                 <span>See all ›</span>
               </a>
               {shown.map((item) => (
-                <TodoRow key={item.id} item={item} people={people} upkeep={upkeep.data} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} />
+                <TodoRow key={item.id} item={item} people={people} upkeep={upkeep.data} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} onMute={muteDevice} />
               ))}
               {moreText ? (
                 <a className="td-more" href="#/wall/todo">

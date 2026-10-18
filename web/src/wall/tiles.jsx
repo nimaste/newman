@@ -2,6 +2,7 @@
 // each tile's `config` (never picked by kind); what a device can do comes from /api/meta.
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ProblemList } from './MuteProblems.jsx';
 import { createPortal } from 'react-dom';
 import { enc } from '../api.js';
 import { navigate, useApi, useHub } from '../hooks.js';
@@ -656,7 +657,8 @@ function AttentionSheet({ list, onClose, host }) {
         </div>
         <div className="wx-sheet-body">
           {list.map((e) => (
-            <button key={e.id} type="button" className="wt-sick-row" onClick={() => openDevice({ entity: e.id, status: issuesText(e) })}>
+            <div key={e.id} className="wt-sick-entry">
+            <button type="button" className="wt-sick-row" onClick={() => openDevice({ entity: e.id, status: issuesText(e) })}>
               <span className="wt-sick-icon">
                 <Icon name={kindIcon(kindsById[e.kind])} size={24} />
               </span>
@@ -666,6 +668,8 @@ function AttentionSheet({ list, onClose, host }) {
               </span>
               <Icon name="chevronRight" size={20} />
             </button>
+            <ProblemList entity={e} />
+            </div>
           ))}
         </div>
         <button type="button" className="wx-sheet-close" onClick={onClose}>

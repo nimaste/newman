@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../icons.jsx';
 import { choiceCommands, choiceItems, entityStateText, plainCommands, toggleDuo } from '../model.js';
 import { useWallCommand } from './PinPad.jsx';
+import { ProblemList } from './MuteProblems.jsx';
 
 /** Actions beyond the tile's main tap: only for devices with more than an on/off pair. */
 export function extraActions(e, kind, main) {
@@ -92,6 +93,7 @@ export function DeviceSheet({ e, kind, main, start, onClose, note }) {
               {problem ? ` · ${problem}` : ''}
             </div>
             {note ? <div className="wt-sheet-sub is-warn">{note}</div> : null}
+            <ProblemList entity={e} />
             <div className="wt-devsheet-btns">
               {actions.map((c) => (
                 <button

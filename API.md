@@ -187,6 +187,23 @@ source, has no `streams` or `choices` of its own and plays that device's chosen 
 → the updated Entity. 400 with a reason for a stream it doesn't offer, a link to itself, to a device without
 live video, or one that would loop. Every screen gets `{"type": "entity"}` for the device and for any device showing its video.
 
+
+### A device's problems and muting them
+
+Every device's `health` is `{"ok", "issues": [words], "items": [{"id", "text", "muted": null | {"mode",
+"until", "by"}}]}`. `ok` / `issues` count only problems nobody muted (what chips, Needs attention and
+To do use); `items` lists every current problem. Problem ids: `offline`, `battery_failed`, `battery_low`,
+`tamper`, `no_ac`, `not_responding`, `weak_signal`, `ignored_commands`, `jammed`, `overlay_permission`.
+
+* `PUT /api/entities/{id}/mute` `{"issue": id, "for": "day"|"week"|"fixed"|"always"}` → `{"health"}` -
+  only a problem the device reports right now (400 otherwise; 404 unknown device). `day` / `week` end by
+  themselves; `fixed` goes the moment the problem does; `always` stays until unmuted.
+* `DELETE /api/entities/{id}/mute/{issue}` → `{"health"}`.
+
+Any signed-in account may mute, wall tablets included; each change is logged in Activity and pushed live
+as an `entity` update. Settings key `mutedIssues` holds them; swapping a device moves them, removing it
+drops them.
+
 ## Dashboards and wall tablets
 
 A dashboard: `{"id", "userId", "isDefault", "name", "theme", "christmas", "pages": [{"id", "name", "icon", "tiles": [Tile]}], "names": {entityId: "Show as"}, "home": Home, "tabNames": "current"}`

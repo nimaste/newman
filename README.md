@@ -228,6 +228,17 @@ watering), Weather (the weather every 15 min, at least 5; warnings every 5 min, 
 TVs, Kasa, Meross, Sonos, Shelly, DNS filters and calendars as before. Saving less than a setting's
 lowest value is refused.
 
+### Muting a device's problem
+
+A device that reports a problem (offline, low battery, no AC power, tamper, jammed…) shows in Needs
+attention, the To do list and the chips at the top. Any one of those problems can be muted, on its own:
+on the device's page (**Mute ▾**), in the wall tablet's Needs attention sheet, a To do row's **Mute**, or
+the device's sheet on the wall - for **1 day**, **1 week**, **until it's fixed** (it stays quiet while
+the problem lasts and comes back if it clears and returns) or **always**. Only that problem is muted: a
+keypad whose "No AC power" is muted still says when its battery runs low. Muted problems stay listed,
+in grey with who muted them and until when, on the device's page, with **Unmute**. Anyone signed in -
+wall tablets too - can mute; the Activity log says who did.
+
 ### Reconnecting a connection
 
 Every connection's page has **Reconnect** (also in its ⋯ menu, admins only): it starts the connection
