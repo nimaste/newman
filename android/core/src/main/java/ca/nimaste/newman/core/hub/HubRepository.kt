@@ -10,6 +10,7 @@ import ca.nimaste.newman.core.live.LiveStatus
 import ca.nimaste.newman.core.model.Command
 import ca.nimaste.newman.core.model.CommandRequest
 import ca.nimaste.newman.core.model.Entity
+import ca.nimaste.newman.core.model.Health
 import ca.nimaste.newman.core.model.PhoneGrid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -163,6 +164,11 @@ class HubRepository(
     }
 
     /** Send [cmd] to a device, showing the expected result right away; undone if the hub says no. */
+    /** A device's health as the hub just answered it (after muting or unmuting one of its problems). */
+    fun setHealth(entityId: String, health: Health) {
+        _state.update { s -> s.entities[entityId]?.let { HubReducer.replaceEntity(s, it.copy(health = health)) } ?: s }
+    }
+
     suspend fun command(entity: Entity, cmd: Command, value: JsonElement? = null): CommandOutcome {
         val kind = _state.value.kind(entity)
         val previous = _state.value.entities[entity.id] ?: entity

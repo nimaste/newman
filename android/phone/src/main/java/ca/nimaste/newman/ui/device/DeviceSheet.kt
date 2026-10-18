@@ -45,6 +45,8 @@ import ca.nimaste.newman.core.model.Command
 import ca.nimaste.newman.core.model.ControlType
 import ca.nimaste.newman.core.model.Controls
 import ca.nimaste.newman.core.model.Entity
+import ca.nimaste.newman.core.model.HealthItem
+import ca.nimaste.newman.core.model.Muting
 import ca.nimaste.newman.core.model.HubModel
 import ca.nimaste.newman.core.model.Kind
 import ca.nimaste.newman.core.model.RemoteControls
@@ -54,6 +56,7 @@ import ca.nimaste.newman.core.model.jsonOf
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.common.GlassButton
 import ca.nimaste.newman.ui.common.CardHeader
+import ca.nimaste.newman.ui.common.MuteSheet
 import ca.nimaste.newman.ui.common.GlassCard
 import ca.nimaste.newman.ui.common.NSwitch
 import ca.nimaste.newman.ui.common.NTextField
@@ -198,11 +201,58 @@ private fun Header(e: Entity, k: Kind?) {
             Text(listOfNotNull(k?.name, e.integrationName.ifEmpty { null }, e.attrs["area"].asStringOrNull).joinToString(" · "), style = T.tiny)
         }
     }
-    if (e.health.issues.isNotEmpty()) {
-        GlassCard(Modifier.fillMaxWidth(), background = N.CoralCard, border = N.CoralBorder) {
-            Text(e.health.issues.joinToString(" · "), style = T.small.copy(color = N.CoralText))
+    Problems(e)
+}
+
+/**
+ * The device's problems: each one that shows with Mute (a day, a week, until it's fixed, always), then
+ * the muted ones, greyed, with when they come back and Unmute. An older hub sends plain issues: shown as before.
+ */
+@Composable
+private fun Problems(e: Entity) {
+    val app = LocalApp.current
+    val scope = rememberCoroutineScope()
+    var muting by remember { mutableStateOf<HealthItem?>(null) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    val active = Muting.active(e.health)
+    val muted = Muting.muted(e.health)
+    if (active.isNotEmpty()) {
+        GlassCard(Modifier.fillMaxWidth(), background = N.CoralCard, border = N.CoralBorder,
+            padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+            if (e.health.items.isEmpty()) {
+                Text(active.joinToString(" · ") { it.text }, style = T.small.copy(color = N.CoralText), modifier = Modifier.padding(vertical = 10.dp))
+            } else {
+                active.forEachIndexed { i, p ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(p.text, style = T.label.copy(color = N.CoralText), modifier = Modifier.weight(1f))
+                        GlassButton("Mute", height = 36.dp, background = N.CoralBg, border = N.CoralBorder) { muting = p }
+                    }
+                    if (i < active.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.CoralBorder))
+                }
+            }
         }
     }
+    if (muted.isNotEmpty()) {
+        GlassCard(Modifier.fillMaxWidth(), padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp)) {
+            CardHeader("Muted")
+            muted.forEachIndexed { i, p ->
+                Row(Modifier.fillMaxWidth().heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(p.text, style = T.label.copy(color = N.Muted))
+                        Text(p.muted?.let { Muting.label(it) } ?: "Muted", style = T.tiny)
+                    }
+                    GlassButton("Unmute", height = 36.dp, busy = busy == p.id, enabled = busy == null) {
+                        busy = p.id
+                        scope.launch { app.unmute(e, p.id); busy = null }
+                    }
+                }
+                if (i < muted.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
+            }
+        }
+    }
+    muting?.let { MuteSheet(e, it) { muting = null } }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

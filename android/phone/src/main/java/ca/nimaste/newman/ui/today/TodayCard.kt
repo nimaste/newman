@@ -32,9 +32,13 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ca.nimaste.newman.core.model.Entity
+import ca.nimaste.newman.core.model.HealthItem
+import ca.nimaste.newman.core.model.Muting
 import ca.nimaste.newman.core.today.TodayView
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.common.GlassButton
+import ca.nimaste.newman.ui.common.MuteSheet
 import ca.nimaste.newman.ui.common.heading
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.semantics.Role
@@ -111,27 +115,43 @@ fun TodayCard(showWhenEmpty: Boolean, onOpenDevice: (String) -> Unit) {
         }
     }
 
-    // Devices with a problem get their own warning card on top: the device's name and all of its issues.
+    // Devices with a problem get their own warning card on top: one row per problem that shows, each with
+    // Mute (muted ones are gone; a device whose problems are all muted drops out until the hub's list catches up).
     val state by app.state.collectAsState()
-    val deviceRows = card.rows.filter { it.item.source == "device" }
+    var muting by remember { mutableStateOf<Pair<Entity, HealthItem>?>(null) }
+    val deviceRows = card.rows.filter { it.item.source == "device" }.filter { r ->
+        val e = r.entity?.let { state.named[it] }
+        e == null || e.health.items.isEmpty() || Muting.active(e.health).isNotEmpty()
+    }
     val rows = card.rows - deviceRows.toSet()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     if (deviceRows.isNotEmpty()) {
         GlassCard(Modifier.fillMaxWidth(), background = N.CoralCard, border = N.CoralBorder, padding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-            deviceRows.forEachIndexed { i, r ->
+            // (device row, the problem it shows: one of health.items, or null on an older hub - then all its issues)
+            val lines = deviceRows.flatMap { r ->
                 val e = r.entity?.let { state.named[it] }
+                val problems = e?.health?.items?.takeIf { it.isNotEmpty() }?.let { Muting.active(e.health) }
+                if (problems.isNullOrEmpty()) listOf(Triple(r, e, null as HealthItem?)) else problems.map { Triple(r, e, it) }
+            }
+            lines.forEachIndexed { i, (r, e, problem) ->
                 val issues = e?.health?.issues?.takeIf { it.isNotEmpty() }?.joinToString(" · ")
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(36.dp).background(N.CoralBg, CircleShape), contentAlignment = Alignment.Center) {
                         NIcon("alert", size = 18.dp, color = N.Coral, stroke = 2.2f)
                     }
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(1f).clickable(enabled = r.entity != null, onClickLabel = "open ${e?.name ?: "the device"}", role = Role.Button) {
+                        r.entity?.let(onOpenDevice)
+                    }) {
                         Text(e?.name ?: r.title.substringBefore(':'), style = T.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(issues ?: r.status, style = T.small.copy(color = N.CoralText), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(problem?.text ?: issues ?: r.status, style = T.small.copy(color = N.CoralText), maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
-                    if (r.entity != null) GlassButton("Open", height = 36.dp, background = N.CoralBg, border = N.CoralBorder) { onOpenDevice(r.entity!!) }
+                    if (e != null && problem != null && problem.id.isNotEmpty()) {
+                        GlassButton("Mute", height = 36.dp, background = N.CoralBg, border = N.CoralBorder) { muting = e to problem }
+                    } else if (r.entity != null) {
+                        GlassButton("Open", height = 36.dp, background = N.CoralBg, border = N.CoralBorder) { onOpenDevice(r.entity!!) }
+                    }
                 }
-                if (i < deviceRows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.CoralBorder))
+                if (i < lines.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.CoralBorder))
             }
         }
     }
@@ -187,6 +207,7 @@ fun TodayCard(showWhenEmpty: Boolean, onOpenDevice: (String) -> Unit) {
         }
     }
     }
+    muting?.let { (e, problem) -> MuteSheet(e, problem) { muting = null } }
 }
 
 @Composable

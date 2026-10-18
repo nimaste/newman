@@ -12,6 +12,8 @@ import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.LoginRequest
 import ca.nimaste.newman.core.model.LoginResponse
 import ca.nimaste.newman.core.model.Meta
+import ca.nimaste.newman.core.model.MuteReply
+import ca.nimaste.newman.core.model.MuteRequest
 import ca.nimaste.newman.core.model.NewmanJson
 import ca.nimaste.newman.core.model.OkResponse
 import ca.nimaste.newman.core.model.PushCategory
@@ -78,6 +80,13 @@ interface NewmanApi {
 
     @POST("api/entities/{id}/command")
     suspend fun command(@Path("id") entityId: String, @Body body: CommandRequest): Response<OkResponse>
+
+    /** Mute one of a device's problems ({"issue", "for": day|week|fixed|always}); the device's health now. */
+    @PUT("api/entities/{id}/mute")
+    suspend fun mute(@Path("id") entityId: String, @Body body: MuteRequest): Response<MuteReply>
+
+    @DELETE("api/entities/{id}/mute/{issue}")
+    suspend fun unmute(@Path("id") entityId: String, @Path("issue") issue: String): Response<MuteReply>
 
     @GET("api/events")
     suspend fun events(@Query("limit") limit: Int = 100, @Query("before") before: Double? = null): List<ActivityEntry>

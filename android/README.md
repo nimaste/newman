@@ -328,6 +328,10 @@ The Android counterparts of the iPhone's Control Center controls and Siri shortc
   "All N" (every camera, `HubModel.cameras`: not zones; opens the camera screen, which steps through
   the same cameras) and the camera pills above the picture, LIVE and the time on it; a devices grid of two or more devices
   across the phone is headed "Quick controls" unless it has a title.
+  Each problem that shows is its own row with **Mute** (a sheet: for 1 day, for 1 week, until it's fixed,
+  always; `PUT api/entities/{id}/mute`); a device's sheet lists its problems with Mute and its muted ones
+  ("Muted until …") with Unmute (`DELETE api/entities/{id}/mute/{issue}`). Muted problems leave To do,
+  the chips and Needs attention (the hub leaves them out of `health.issues`; `health.items` has them all).
 - **More** (the last tab; its badge is the unseen alerts): **Alerts** (the old Alerts tab, with a
   way back), **Devices** and **Automations**; the system Back button walks back up.
   - **Devices**: every device the hub has (`DeviceList`), by the hub's categories in `/api/meta`'s

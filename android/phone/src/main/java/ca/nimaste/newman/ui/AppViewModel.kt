@@ -19,6 +19,7 @@ import ca.nimaste.newman.core.model.CameraAlert
 import ca.nimaste.newman.core.model.Command
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.HubModel
+import ca.nimaste.newman.core.model.MuteRequest
 import ca.nimaste.newman.core.model.Sensitive
 import ca.nimaste.newman.core.mtls.MTLSStore
 import ca.nimaste.newman.core.net.HubSelector
@@ -225,6 +226,27 @@ class AppViewModel @Inject constructor(
     } catch (e: Exception) {
         toast(ApiErrors.message(e), ok = false)
         null
+    }
+
+    // -- muting a device's problems -------------------------------------------------------------
+
+    /** Mute one of [e]'s problems ([mode]: day, week, fixed, always); false after showing why not. */
+    suspend fun mute(e: Entity, issue: String, mode: String): Boolean = try {
+        api.mute(e.id, MuteRequest(issue, mode)).orThrow()?.health?.let { hub.setHealth(e.id, it) }
+        today.refresh()
+        true
+    } catch (ex: Exception) {
+        toast(ApiErrors.message(ex), ok = false)
+        false
+    }
+
+    suspend fun unmute(e: Entity, issue: String): Boolean = try {
+        api.unmute(e.id, issue).orThrow()?.health?.let { hub.setHealth(e.id, it) }
+        today.refresh()
+        true
+    } catch (ex: Exception) {
+        toast(ApiErrors.message(ex), ok = false)
+        false
     }
 
     // -- camera alerts (the Alerts tab's Cameras filter and the camera screen) --------------------

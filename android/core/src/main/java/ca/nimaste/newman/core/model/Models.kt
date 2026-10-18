@@ -129,8 +129,9 @@ data class Kind(
 
 // -- entities ------------------------------------------------------------------------------------
 
+/** A device's problems: [issues] are the ones that show (muted ones left out); [items] all of them, muted or not. */
 @Serializable
-data class Health(val ok: Boolean = true, val issues: List<String> = emptyList())
+data class Health(val ok: Boolean = true, val issues: List<String> = emptyList(), val items: List<HealthItem> = emptyList())
 
 /** One value a device reports, with its current value (kinds.properties_for). */
 @Serializable
