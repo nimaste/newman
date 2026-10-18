@@ -20,6 +20,7 @@ from typing import Any
 from .. import sun
 from ..integrations.base import CommandError
 from ..integrations.manager import IntegrationManager
+from ..controls import RemoteControls
 from ..kinds import KINDS, Command, find_property, format_value, join_names
 from ..push.notifier import Notification, Notifier, category_for  # noqa: F401 (charging imports it from here)
 from ..state import Entity, Hub
@@ -98,6 +99,7 @@ class Engine:
         self.wall_listeners: list[Any] = []
         # Called (no arguments) after an automation is saved or deleted - the voice name index.
         self.listeners: list[Any] = []
+        self.controls = RemoteControls(self)  # remotes' Controls: their lights and what each press does
         hub.subscribe(self._on_change)
         hub.subscribe_events(self._on_event)
         hub.subscribe_changes(self._on_values)
@@ -133,6 +135,7 @@ class Engine:
 
     def delete(self, auto_id: str) -> bool:
         self.autos.pop(auto_id, None)
+        self.controls.forget_automation(auto_id)  # a press that ran it does nothing now
         gone = self.store.remove_automation(auto_id)
         self._changed()
         return gone
@@ -329,9 +332,42 @@ class Engine:
         for r in self._ramps.values():
             if r["until"] == (ent.id, event):
                 r["stop"].set()
+        if self.controls.get(ent.id):
+            await self._controls_press(ent, event)
         for a in list(self.autos.values()):
             if a.get("enabled") and (hits := d.event_item_hit(a, ent.id, event)):
                 await self._item_fired(a, hits, {"type": "event", "entity": ent.id, "event": event, **data})
+
+    async def _controls_press(self, remote: Entity, event: str) -> None:
+        """A press on a remote with Controls: its lights (or the device, or automation, set for that press)."""
+        try:
+            steps = self.controls.plan(remote, event)
+        except Exception:  # noqa: BLE001 - a remote must never take the engine down
+            log.exception("Controls of %s failed", remote.name)
+            return
+        if not steps:
+            return
+        # A ramp's run: it stops when this press is let go; nothing about it is saved as an automation run.
+        run: dict[str, Any] = {"trigger": {"type": "event", "entity": remote.id, "event": event}, "log": []}
+
+        async def one(step: tuple) -> None:
+            try:
+                if step[0] == "command":
+                    await self._command(None, step[1], step[2], remote.name, step[3])
+                elif step[0] == "ramp":
+                    ent = self.hub.get(step[1])
+                    cmd = KINDS[ent.kind].action(step[2]) if ent else None
+                    if ent and cmd:
+                        self._start_ramp(run, ent, cmd)
+                elif step[0] == "automation":
+                    auto = self.autos.get(step[1])
+                    if auto and auto.get("enabled"):
+                        await self._safe_trigger(auto, {"type": auto["trigger"]["type"], "manual": True,
+                                                        "entity": remote.id, "event": event})
+            except ActionError as e:
+                log.info("%s: couldn't %s %s: %s", remote.name, step[2] if len(step) > 2 else step[0],
+                         self.hub.name(step[1]), e)
+        await asyncio.gather(*(one(s) for s in steps))
 
     async def _item_fired(self, auto: dict[str, Any], hits: list[int], trig: dict[str, Any]) -> None:
         """One part of an automation's "When" just happened. Under "any" that starts it; under "all"
@@ -600,7 +636,8 @@ class Engine:
     async def _ramp_steps(self, run: dict[str, Any], eid: str, cmd: Command, r: dict[str, Any]) -> None:
         def note(text: str) -> None:
             run["log"].append({"ts": time.time(), "text": text})
-            self.store.save_run(run)
+            if run.get("id"):  # a remote's Controls ramp has no automation run to save
+                self.store.save_run(run)
         ent = self.hub.get(eid)
         if not ent:
             return

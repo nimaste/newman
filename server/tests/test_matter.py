@@ -409,6 +409,25 @@ class MappingTests(MatterBase):
             await m.command(plug, "turn_off")
         await self.stop()
 
+    async def test_tagged_buttons_say_where_they_are_and_what_they_do(self):
+        # IKEA's BILRESA tags its endpoints (Descriptor TagList): Top + On + Up, Bottom + Off + Down.
+        a = self.server.nodes[9]["attributes"]
+        a.update({"1/29/4": [{"0": None, "1": 8, "2": 2}, {"0": None, "1": 67, "2": 0}, {"0": None, "1": 67, "2": 3},
+                             {"0": None, "1": 67, "2": 8, "3": "button 1"}],
+                  "2/29/4": [{"0": None, "1": 8, "2": 3}, {"0": None, "1": 67, "2": 1}, {"0": None, "1": 67, "2": 4}]})
+        await self.start()
+        remote = self.by_name()["Bedside button"]
+        self.assertEqual(remote.attrs["buttons"], [{"id": "button_1", "label": "Top", "role": "on"},
+                                                   {"id": "button_2", "label": "Bottom", "role": "off"}])
+        await self.stop()
+
+    async def test_untagged_buttons_are_numbered(self):
+        await self.start()
+        self.assertEqual(self.by_name()["Bedside button"].attrs["buttons"],
+                         [{"id": "button_1", "label": "Button 1", "role": None},
+                          {"id": "button_2", "label": "Button 2", "role": None}])
+        await self.stop()
+
     async def test_buttons_tell_a_press_from_a_long_press(self):
         a = self.server.nodes[9]["attributes"]
         # Button 1 is what IKEA's BILRESA reports (FeatureMap 30: release, long press, counts up to 2 presses);

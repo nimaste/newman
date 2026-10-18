@@ -26,6 +26,7 @@ from yarl import URL
 from . import auth as A
 from . import backup as B
 from . import connect as CN
+from . import controls as C
 from . import today as T
 from . import dashboards as D
 from . import phone_layouts as PL
@@ -157,6 +158,8 @@ def build_app(h: "Newman") -> web.Application:
                 "video": video.to_json(e.id, origins),
                 # "Live status while…" (null when its kind has no states to pick): live.py.
                 "liveStatus": live.setting_json(e),
+                # A remote's Controls - its lights and what each press does (controls.py); null when none.
+                "controls": h.engine.controls.json(e),
                 "usedBy": h.engine.used_by(e.id), "updatedAt": e.updated_at}
 
     def person_json(p: dict[str, Any], viewer: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
@@ -1166,6 +1169,48 @@ def build_app(h: "Newman") -> web.Application:
         await broadcast({"type": "entity", "entity": entity_json(ent)})
         return web.json_response(entity_json(ent))
 
+    # -- a remote's Controls (controls.py) ---------------------------------------------------------
+
+    def controls_json(ent: Entity) -> dict[str, Any]:
+        c = h.engine.controls
+        return {"controls": c.get(ent.id), "rows": c.rows(ent), "buttons": C.buttons(ent),
+                "choices": c.choices(ent)}
+
+    @r.get("/api/entities/{eid}/controls")
+    async def get_controls(req: web.Request) -> web.Response:
+        """A remote's Controls with what each press does now, its buttons, and the devices / automations
+        a press can be set to (for the editor). Not for wall tablets."""
+        if req["session"]["kind"] == "tablet":
+            return _err(403, "Change this from the Newman dashboard, not the wall tablet")
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        return web.json_response(controls_json(ent))
+
+    @r.put("/api/entities/{eid}/controls")
+    async def put_controls(req: web.Request) -> web.Response:
+        """Admins: {"lights": [ids], "onLevel": 1-100 | null, "hold": bool, "buttons": {press: override}}."""
+        require_admin(req)
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        try:
+            h.engine.controls.set(ent.id, await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        await broadcast({"type": "entity", "entity": entity_json(ent)})
+        return web.json_response(controls_json(ent))
+
+    @r.delete("/api/entities/{eid}/controls")
+    async def delete_controls(req: web.Request) -> web.Response:
+        require_admin(req)
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        h.engine.controls.remove(ent.id)
+        await broadcast({"type": "entity", "entity": entity_json(ent)})
+        return web.json_response(controls_json(ent))
+
     @r.post("/api/entities/replace")
     async def replace_entities(req: web.Request) -> web.Response:
         """{"pairs": [{"from": old device id, "to": new device id}]}: everything that used the old devices
@@ -1210,6 +1255,7 @@ def build_app(h: "Newman") -> web.Application:
         for i in ids:
             h.hub.remove(i)  # the screens drop it ("entity-removed")
             h.store.forget_entity(i)
+            h.engine.controls.remove(i)  # a remote that's gone takes its Controls with it
         h.hub.set_name_overrides(h.store.entity_names())
         for lid in video.forget(ids):
             if ent := h.hub.get(lid):

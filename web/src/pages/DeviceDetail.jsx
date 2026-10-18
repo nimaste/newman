@@ -11,6 +11,7 @@ import { AlertList } from '../components/AlertCard.jsx';
 import { cameraForZone, ZoneLink, zonesForCamera } from '../components/CameraGrid.jsx';
 import VideoSettings, { hasVideoSettings } from '../components/VideoSettings.jsx';
 import LiveStatusSettings, { hasLiveStatus } from '../components/LiveStatusSettings.jsx';
+import RemoteControls, { hasRemoteControls } from '../components/RemoteControls.jsx';
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
 import { Icon } from '../icons.jsx';
 import { fmtWhen } from '../format.js';
@@ -37,7 +38,7 @@ const ATTR_LABELS = {
   model: 'Model',
   firmware: 'Firmware',
 };
-const HIDDEN = new Set(['events', 'area', 'dimmable', 'unit', 'counts', 'zones', 'streams', 'camera']);
+const HIDDEN = new Set(['events', 'buttons', 'area', 'dimmable', 'unit', 'counts', 'zones', 'streams', 'camera']);
 const PERCENT = new Set(['batteryLevel', 'brightness', 'humidity']);
 const TEMPS = new Set(['currentTemp', 'targetTemp', 'heatTo', 'coolTo', 'temperature']);
 
@@ -140,6 +141,8 @@ export default function DeviceDetail({ id }) {
   const alertsPath = alertsPathFor(e);
   const zones = own ? zonesForCamera(e, entities) : [];
 
+  // Presses the remote's Controls do something with (its "Events" rows say so).
+  const ctlKeys = new Set(((e.controls && e.controls.rows) || []).filter((r) => r.does !== 'Nothing').map((r) => r.key));
   const eventAutos = (evId) =>
     list.filter((a) => triggerItems(a.trigger).some((i) => i.type === 'event' && i.entity === id && (i.event === evId || (!i.event && evs.length === 1))));
 
@@ -241,6 +244,7 @@ export default function DeviceDetail({ id }) {
                 }}
               />
             ) : null}
+            {hasRemoteControls(e) ? <RemoteControls entity={e} isAdmin={isAdmin} /> : null}
             {hasControls ? (
               <div className="device-controls">
                 <DeviceControls entity={e} kind={kind} busy={busy[e.id]} run={run} size="lg" />
@@ -284,6 +288,7 @@ export default function DeviceDetail({ id }) {
                       <div style={{ minWidth: 0 }}>
                         <div className="strong">{ev.label}</div>
                         <div className="muted" style={{ fontSize: 13 }}>
+                          {ctlKeys.has(ev.id) ? 'Used by Controls' + (acts.length ? ' · ' : '') : null}
                           {acts.length
                             ? acts.map((a, i) => (
                                 <span key={a.id}>
@@ -291,7 +296,7 @@ export default function DeviceDetail({ id }) {
                                   <a href={'#/automations/' + enc(a.id)}>{a.name}</a>
                                 </span>
                               ))
-                            : 'No actions yet'}
+                            : ctlKeys.has(ev.id) ? null : 'No actions yet'}
                         </div>
                       </div>
                       {isAdmin ? <button type="button" className="btn btn-sm2" onClick={() => navigate(`automations/new?entity=${enc(id)}&event=${enc(ev.id)}`)} aria-label={`Add an action for ${ev.label}`}>

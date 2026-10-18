@@ -51,6 +51,10 @@ DESCRIPTOR, BASIC, BRIDGED, POWER_SOURCE, NETWORK = 0x1D, 0x28, 0x39, 0x2F, 0x31
 ON_OFF, LEVEL, DOOR_LOCK, COVER, THERMOSTAT, FAN = 0x06, 0x08, 0x101, 0x102, 0x201, 0x202
 BOOLEAN, OCCUPANCY, TEMPERATURE, HUMIDITY, ILLUMINANCE, SMOKE_CO = 0x45, 0x406, 0x402, 0x405, 0x400, 0x5C
 SWITCH, POWER, ENERGY = 0x3B, 0x90, 0x91
+# Semantic tags on a button's endpoint (Descriptor TagList): Common Position (0x08) and Switches (0x43).
+NS_POSITION, NS_SWITCHES = 0x08, 0x43
+POSITION_TAGS = {0: "Left", 1: "Right", 2: "Top", 3: "Bottom", 4: "Middle"}
+SWITCH_TAGS = {0: "on", 1: "off", 3: "raise", 4: "lower"}
 # Switch cluster (buttons): FeatureMap bits - it reports a release, a long press, counts presses - and events.
 SW_RELEASE, SW_LONG, SW_MULTI = 0x04, 0x08, 0x10
 INITIAL_PRESS, LONG_PRESS, SHORT_RELEASE, LONG_RELEASE, MULTI_PRESS_COMPLETE = 1, 2, 3, 4, 6
@@ -489,6 +493,17 @@ class MatterIntegration(Integration):
                 "double": bool(f & SW_MULTI) and isinstance(most, int) and most >= 2}
 
     @staticmethod
+    def _button_place(values: dict[str, Any], ep: int, i: int) -> dict[str, Any]:
+        """A button's name and job from its endpoint's semantic tags (Descriptor TagList): where it is
+        (Common Position: top, bottom…) and what it's for (Switches: on, off, up, down) - IKEA's BILRESA
+        tags its top button Top + On + Up and the bottom one Bottom + Off + Down."""
+        tags = [(t.get("1"), t.get("2")) for t in values.get(_p(ep, DESCRIPTOR, 4)) or [] if isinstance(t, dict)]
+        place = next((POSITION_TAGS[tag] for ns, tag in tags if ns == NS_POSITION and tag in POSITION_TAGS), None)
+        jobs = {SWITCH_TAGS[tag] for ns, tag in tags if ns == NS_SWITCHES and tag in SWITCH_TAGS}
+        role = next((r for r in ("on", "off", "raise", "lower") if r in jobs), None)
+        return {"label": place or f"Button {i + 1}", "role": role}
+
+    @staticmethod
     def _bridged(values: dict[str, Any], ep: int) -> bool:
         return any(_p(ep, BRIDGED, a) in values for a in (1, 3, 5, 17, 18))
 
@@ -690,8 +705,10 @@ class MatterIntegration(Integration):
                 attrs["protocol"] = f"Matter over {network}"
             if spec["role"] == "buttons":
                 attrs["events"] = []
+                attrs["buttons"] = []
                 for i, bep in enumerate(spec["buttons"]):
                     base, can = f"button_{i + 1}", self._button(values, bep)
+                    attrs["buttons"].append({"id": base, **self._button_place(values, bep, i)})
                     attrs["events"] += [base] + [f"{base}_{x}" for x, ok in (("double", can["double"]), ("long", can["long"]),
                                                                             ("released", can["long"])) if ok]
                     self._buttons[(nid, bep)] = (eid, base, can)

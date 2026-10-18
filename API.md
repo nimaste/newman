@@ -831,6 +831,22 @@ copy is served at once and refreshed behind, and still served if OpenFreeMap can
 one server: path segments are letters, digits and ` ._,@+-`, no `..`, known file types only — anything
 else is 404; OpenFreeMap unreachable with nothing kept → 502.
 
+### A remote's Controls
+
+`attrs.buttons` on a remote (from its connection): `[{"id": "<event id>", "label": "Top" | "On" | "★" | "Button 3", "role": "on" | "off" | "raise" | "lower" | null}]`.
+A remote with Controls has `controls` in its entity JSON (null otherwise):
+`{"lights": [ids], "onLevel": 1-100 | null, "hold": bool, "rows": [{"key": "button_1" | "button_1_long", "label": "Tap top", "does": "On at 60%", "custom": false}]}`.
+
+* `GET /api/entities/{id}/controls` (not wall tablets) → `{"controls": stored | null, "rows", "buttons", "choices": {"devices": [{id, name, kind, switchable, area, commands: [Command + holdOnly?]}], "automations": [{id, name}]}}`
+* `PUT /api/entities/{id}/controls` (admins) `{"lights": [ids], "onLevel": 1-100 | null, "hold": bool, "buttons": {press: override}}` → like GET; 400 with a plain message when something's wrong.
+  A press is the event it fires (`"button_1"` tap, `"button_1_long"` hold); an override is
+  `{"do": "device", "entity", "command", "value"?}` (a "…while held" command only on a hold) |
+  `{"do": "automation", "automation": id}` | `{"do": "nothing"}`. Presses without one do the standard thing.
+* `DELETE /api/entities/{id}/controls` (admins) → like GET.
+
+Settings key `remoteControls` holds them; `references` / `replace` count them (`"remoteControls"`,
+counts `"controls"`). Deleting an automation a press runs leaves that press doing nothing (Activity says so).
+
 ## Automations
 
 ```json

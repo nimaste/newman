@@ -68,6 +68,8 @@ class Newman:
         discovery = asyncio.create_task(self._discover(), name="discovery")
         backups = asyncio.create_task(self._auto_backups(), name="backups")
         tablets = asyncio.create_task(self._tablet_sign_ins(), name="tablet-sign-ins")
+        # Button automations that only switched and dimmed a remote's lights become its Controls (once).
+        controls = asyncio.create_task(self.engine.controls.migrate_soon(), name="controls-migration")
 
         stop = self._stop = asyncio.Event()
         loop = asyncio.get_running_loop()
@@ -80,6 +82,7 @@ class Newman:
         discovery.cancel()
         backups.cancel()
         tablets.cancel()
+        controls.cancel()
         await self.integrations.stop_all()
         await self.notifier.close()
         await runner.cleanup()

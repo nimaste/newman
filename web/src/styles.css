@@ -8147,3 +8147,182 @@ span.place-bar-name {
     padding: 12px 14px 14px;
   }
 }
+/* A remote's Controls (components/RemoteControls.jsx) */
+.rc-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--r-md);
+  background: var(--line-softer);
+  border: 1px solid var(--line);
+}
+.rc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rc-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+.rc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rc-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+.rc-rows {
+  display: flex;
+  flex-direction: column;
+}
+.rc-row {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.rc-press {
+  flex: none;
+  width: 120px;
+  font-weight: 800;
+}
+.rc-does {
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+.rc-does.is-custom {
+  color: var(--ink);
+}
+.rc-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.rc-group {
+  padding: 7px 12px;
+  background: var(--line-softer);
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.rc-pick {
+  padding: 4px 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.rc-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rc-radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.rc-radio input,
+.rc-level input {
+  accent-color: var(--teal);
+}
+.rc-level {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 28px;
+}
+.rc-level input {
+  flex: 1;
+  min-width: 0;
+}
+.rc-level-value {
+  width: 48px;
+  text-align: right;
+  font-weight: 800;
+}
+.rc-presses {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+.rc-press-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.rc-press-row:first-child {
+  border-top: 0;
+}
+.rc-press-row.is-custom {
+  background: var(--line-softer);
+}
+.rc-press-line,
+.rc-press-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.rc-press-line .select {
+  flex: 1;
+  min-width: 180px;
+}
+.rc-press-more {
+  padding-left: 130px;
+}
+.rc-press-more .select {
+  flex: 1;
+  min-width: 140px;
+}
+.rc-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rc-value .input {
+  width: 90px;
+}
+.rc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.rc-foot-right {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  .rc-press-more {
+    padding-left: 0;
+  }
+  .rc-press {
+    width: auto;
+  }
+}

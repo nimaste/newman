@@ -19,6 +19,7 @@
 - [Voice on the wall tablet](#voice-on-the-wall-tablet) — “Hey Newman”, what it understands, timers, teaching it your voices
 - [Where people are](#where-people-are) — location sharing, places, the Household map
 - [Automations](#automations)
+- [Remotes and their Controls](#remotes-and-their-controls) — what a remote's buttons do, without automations
 - [Upkeep and Today](#upkeep-and-today)
 - [Dashboards and the wall tablet](#dashboards-and-the-wall-tablet) (and [phone layouts](#phone-layouts), [wall tablet battery and smart charging](#wall-tablet-battery))
 - [Apps](#apps) — the phone and wall apps, connecting them, widgets, live statuses
@@ -1094,6 +1095,30 @@ conversation still gets it. Two ordinary automations about the same change, with
 both notify as usual. Wall-tablet alerts are unaffected (follow-ups only go to phones).
 
 Every reading a device reports is available — not just the ones Newman has a friendly name for.
+
+## Remotes and their Controls
+
+A remote (a Pico, IKEA's BILRESA, any button its connection reports) has **Controls** on its page:
+the lights it controls and what each press does. It's a setting of the remote, not automations, so
+the Automations list stays for real automations.
+
+* **Lights** - tick the lights (or switches) it controls; the remote's own room is listed first.
+* **When it turns them on** - at a set brightness, or at the brightness they had last.
+* **Hold to brighten and dim** - holding the top (on) button brightens, the bottom (off) one dims,
+  smoothly, until you let go.
+* **Buttons** - every press the remote has (a tap and, where it can be held, a hold). Each does the
+  standard thing for its button unless you pick something else: **Control a device** (any device and
+  anything it can do), **Run an automation**, or **Nothing**.
+
+The standard thing comes from the button's job, which the connection reports: on, off, raise (a bit
+brighter; held, brighten), lower (a bit dimmer; held, dim). Lutron Picos' On / Off / Raise / Lower
+and the paddle Pico's top and bottom, and Matter buttons tagged Top + On / Bottom + Off (the BILRESA),
+are known; a button without a job (a Pico's ★, numbered buttons) does nothing until you give it one.
+A remote can also control no lights and give each button its own job.
+
+Remotes whose button automations only switched and dimmed one set of lights (on at a level, off,
+brighten and dim while held) had those automations turned into their Controls once, when this came in;
+Activity says which. The phone apps show a remote's Controls; they're changed on the dashboard.
 
 ## Upkeep and Today
 

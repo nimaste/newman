@@ -158,6 +158,11 @@ async def replace_entities(h: "Newman", pairs: Any) -> dict[str, Any]:
             counts["video"] = n
             counts["references"] += n
 
+    # Remotes' Controls: their lights and the devices a press is set to.
+    if (ctl := getattr(h.engine, "controls", None)) and (n := ctl.replace_ids(mapping)):
+        counts["controls"] = n
+        counts["references"] += n
+
     if getattr(h, "live", None):  # "Live status while…" settings (live.py)
         if n := h.live.replace_ids(mapping):
             counts["live"] = n
@@ -181,6 +186,9 @@ def uses(h: "Newman", entity_id: str) -> list[str]:
     out = []
     if any(found(a) for a in h.engine.autos.values()):
         out.append("automation")
+    ctl = getattr(h.engine, "controls", None)
+    if ctl and [r for r in ctl.remotes_using(entity_id) if r != entity_id]:
+        out.append("remote controls")
     if any(found({k: v for k, v in dash.items() if k not in DASHBOARD_META}) for dash in h.store.dashboards()):
         out.append("dashboard")
     for uid in [h.store.PHONE_DEFAULT, *h.store.phone_layout_times()]:
@@ -196,7 +204,7 @@ def uses(h: "Newman", entity_id: str) -> list[str]:
 
 def references(h: "Newman", entity_id: str) -> list[dict[str, Any]]:
     """Each thing that still uses a device, by name - the places uses() looks at:
-    [{"type": "automation" | "dashboard" | "phoneLayout" | "widget", "id", "name"}]."""
+    [{"type": "automation" | "remoteControls" | "dashboard" | "phoneLayout" | "widget", "id", "name"}]."""
     def found(value: Any) -> bool:
         return swap(value, {entity_id: entity_id})[1] > 0
 
@@ -204,6 +212,10 @@ def references(h: "Newman", entity_id: str) -> list[dict[str, Any]]:
     for aid, auto in h.engine.autos.items():
         if found(auto):
             out.append({"type": "automation", "id": aid, "name": auto.get("name") or aid})
+    ctl = getattr(h.engine, "controls", None)
+    for rid in ctl.remotes_using(entity_id) if ctl else []:
+        if rid != entity_id:  # a remote's own Controls go with it
+            out.append({"type": "remoteControls", "id": rid, "name": f"{h.hub.name(rid)}'s controls"})
     for dash in h.store.dashboards():
         if found({k: v for k, v in dash.items() if k not in DASHBOARD_META}):
             out.append({"type": "dashboard", "id": dash["id"], "name": dash.get("name") or "A dashboard"})

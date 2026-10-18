@@ -34,6 +34,11 @@ PICO_BUTTONS = {
     "Pico3Button": {0: "on", 1: "favorite", 2: "off"},
     "Pico3ButtonRaiseLower": {0: "on", 1: "favorite", 2: "off", 3: "raise", 4: "lower"},
 }
+# What each Pico event is called on the remote and what it does for a remote's Controls (attrs.buttons).
+BUTTON_INFO = {"on": ("On", "on"), "favorite": ("★", None), "off": ("Off", "off"), "raise": ("Raise", "raise"),
+               "lower": ("Lower", "lower")}
+# Picos whose buttons keep their numbered events but have a place on the remote: the paddle's top and bottom.
+POSITION_BUTTONS = {"PaddleSwitchPico": {0: ("Top", "on"), 2: ("Bottom", "off")}}
 
 
 def _names(devices: dict[str, dict], areas: dict[str, str]) -> dict[str, str]:
@@ -171,6 +176,7 @@ class LutronIntegration(Integration):
                 lights += 1
         # One "remote" device per Pico; each physical button becomes its events: pressed, long-pressed and let go.
         remotes: dict[str, list[str]] = {}
+        pressable: dict[str, list[tuple[int, dict[str, Any]]]] = {}
         for btn_id, btn in bridge.get_buttons().items():
             parent_id = str(btn.get("parent_device"))
             parent = devices.get(parent_id, {})
@@ -184,10 +190,15 @@ class LutronIntegration(Integration):
                 remotes[parent_id] = []
                 self.hub.upsert(eid, kind="remote", name=names.get(parent_id, "Remote"), integration=self.id)
             remotes[parent_id] += [event, f"{event}_long", f"{event}_released"]
+            label, role = POSITION_BUTTONS.get(parent.get("type", ""), {}).get(num) or BUTTON_INFO.get(event) or (
+                f"Button {int(num) + 1}" if isinstance(num, int) else event, None)
+            pressable.setdefault(parent_id, []).append(
+                (num if isinstance(num, int) else 99, {"id": event, "label": label, "role": role}))
             bridge.add_button_subscriber(btn_id, self._on_button(eid, event))
         for parent_id, events in remotes.items():
             await self.hub.update(self.entity_id(f"remote_{parent_id}"), state="idle", available=True, attrs={
-                "events": events, "model": devices.get(parent_id, {}).get("model"),
+                "events": events, "buttons": [b for _, b in sorted(pressable[parent_id], key=lambda x: x[0])],
+                "model": devices.get(parent_id, {}).get("model"),
                 "area": areas.get(str(devices.get(parent_id, {}).get("area")), "")})
         n = len(remotes)
         self.set_status("connected", f"{self.config['host']} · {lights} light{'s' if lights != 1 else ''}"

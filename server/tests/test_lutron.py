@@ -101,6 +101,26 @@ class PicoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kind.event("raise_released").label, "“Raise” is let go after being long-pressed")
         self.assertEqual(kind.event("lower_long").ends, "lower_released")  # what a "…while held" stops on
 
+    async def test_buttons_say_their_names_and_jobs_for_controls(self):
+        self.assertEqual(self.hub.get("lutron.remote_7").attrs["buttons"], [
+            {"id": "on", "label": "On", "role": "on"}, {"id": "favorite", "label": "★", "role": None},
+            {"id": "off", "label": "Off", "role": "off"}, {"id": "raise", "label": "Raise", "role": "raise"},
+            {"id": "lower", "label": "Lower", "role": "lower"}])
+        # The paddle Pico (PJ2-1P): its two buttons keep their numbered events; top switches on, bottom off.
+        bridge = FakeBridge()
+        bridge.devices["14"] = {"type": "PaddleSwitchPico", "name": "Kitchen_Kitchen Under Cabinet",
+                                "device_name": "Kitchen Under Cabinet", "area": "3", "model": "PJ2-1P-GXX"}
+        bridge.buttons.update({"201": {"parent_device": "14", "button_number": 0},
+                               "203": {"parent_device": "14", "button_number": 2}})
+        lut = LutronIntegration("lutron2", "Lutron", {"host": "10.0.0.9"}, Context(self.hub, Path(self.tmp.name), Path(self.tmp.name)))
+        with mock.patch.object(lutron_mod.Smartbridge, "create_tls", return_value=bridge):
+            await lut._connect()
+        paddle = self.hub.get("lutron2.remote_14")
+        self.assertEqual(paddle.attrs["events"][::3], ["button_1", "button_3"])
+        self.assertEqual(paddle.attrs["buttons"], [{"id": "button_1", "label": "Top", "role": "on"},
+                                                   {"id": "button_3", "label": "Bottom", "role": "off"}])
+        await lut._close()
+
     async def test_a_short_press_fires_once_let_go(self):
         self.button(RAISE, PRESS)
         await asyncio.sleep(0.03)
