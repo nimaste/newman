@@ -165,6 +165,8 @@ data class Entity(
     val live: String? = null,
     val usedBy: List<String> = emptyList(),
     val updatedAt: Double = 0.0,
+    /** A remote's controls (RemoteControls); null when it has none. */
+    val controls: RemoteControls? = null,
 )
 
 // -- dashboards ----------------------------------------------------------------------------------

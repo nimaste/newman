@@ -47,11 +47,13 @@ import ca.nimaste.newman.core.model.Controls
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.HubModel
 import ca.nimaste.newman.core.model.Kind
+import ca.nimaste.newman.core.model.RemoteControls
 import ca.nimaste.newman.core.model.asNumberOrNull
 import ca.nimaste.newman.core.model.asStringOrNull
 import ca.nimaste.newman.core.model.jsonOf
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.common.GlassButton
+import ca.nimaste.newman.ui.common.CardHeader
 import ca.nimaste.newman.ui.common.GlassCard
 import ca.nimaste.newman.ui.common.NSwitch
 import ca.nimaste.newman.ui.common.NTextField
@@ -94,6 +96,7 @@ fun DeviceSheet(entityId: String, onDismiss: () -> Unit, onCamera: ((String) -> 
     val state by app.state.collectAsState()
     val e = state.named[entityId]
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var openLight by remember { mutableStateOf<String?>(null) } // a light a remote's Controls card opened
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = Color(0xFF141A33), contentColor = N.Text) {
         if (e == null) {
             Text("This device is gone.", style = T.body, modifier = Modifier.padding(24.dp))
@@ -117,8 +120,63 @@ fun DeviceSheet(entityId: String, onDismiss: () -> Unit, onCamera: ((String) -> 
             } else {
                 DeviceControls(e, k, skip = emptySet())
             }
+            e.controls?.let { RemoteControlsCards(it) { id -> openLight = id } }
             Readings(e)
             AddToHomeScreen(e, k)
+        }
+    }
+    openLight?.let { DeviceSheet(it, onDismiss = { openLight = null }, onCamera = onCamera) }
+}
+
+/**
+ * A remote's Controls (entity.controls, set on the dashboard): the lights it works, each with its level
+ * (tap = that light's sheet), All on / All off, then what each press does. Read-only here.
+ */
+@Composable
+private fun RemoteControlsCards(c: RemoteControls, onOpen: (String) -> Unit) {
+    val app = LocalApp.current
+    val state by app.state.collectAsState()
+    val busy by app.busy.collectAsState()
+    val run = rememberRunner()
+    val lights = c.lights.mapNotNull { state.named[it] }
+    fun all(commandId: String) = lights.forEach { l ->
+        state.kind(l)?.commands?.firstOrNull { it.id == commandId }?.let { cmd -> if (l.available && l.id !in busy) run.run(l, cmd) }
+    }
+    GlassCard(Modifier.fillMaxWidth(), padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 12.dp)) {
+        CardHeader(c.header)
+        lights.forEachIndexed { i, l ->
+            val status = RemoteControls.lightStatus(l, state.kind(l))
+            val on = status != "Off" && status != "Offline"
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 46.dp).clickable(onClickLabel = "open ${l.name}", role = Role.Button) { onOpen(l.id) },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(Modifier.size(10.dp).background(if (on) N.Amber else N.BorderHi, CircleShape))
+                Text(l.name, style = T.label, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(status, style = T.small.copy(color = if (on) N.Amber else N.Muted))
+            }
+            if (i < lights.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
+        }
+        if (lights.isNotEmpty()) {
+            val enabled = lights.any { it.available }
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassButton("All on", Modifier.weight(1f), enabled = enabled) { all("turn_on") }
+                GlassButton("All off", Modifier.weight(1f), enabled = enabled) { all("turn_off") }
+            }
+        }
+    }
+    if (c.rows.isNotEmpty()) {
+        GlassCard(Modifier.fillMaxWidth(), padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
+            c.rows.forEachIndexed { i, r ->
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 44.dp).semantics(mergeDescendants = true) {},
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(r.label, style = T.label, modifier = Modifier.width(110.dp))
+                    Text(r.does, style = T.body.copy(color = N.Muted), modifier = Modifier.weight(1f))
+                }
+                if (i < c.rows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
+            }
         }
     }
 }
