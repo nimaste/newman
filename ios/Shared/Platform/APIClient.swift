@@ -161,6 +161,20 @@ final class APIClient {
         return try? JSONDecoder().decode(AutomationRun.self, from: data)
     }
 
+    // MARK: Muting a device's problem (any signed-in account)
+
+    /// PUT /api/entities/{id}/mute {"issue", "for"}: the device's health after (nil if the reply has none).
+    func mute(_ entityId: String, issue: String, mode: String) async throws -> Health? {
+        let data = try await call("PUT", "api/entities/\(pathPart(entityId))/mute", body: MuteLogic.body(issue: issue, mode: mode))
+        return MuteLogic.health(from: data)
+    }
+
+    /// DELETE /api/entities/{id}/mute/{issue}: the device's health after.
+    func unmute(_ entityId: String, issue: String) async throws -> Health? {
+        let data = try await call("DELETE", "api/entities/\(pathPart(entityId))/mute/\(pathPart(issue))")
+        return MuteLogic.health(from: data)
+    }
+
     // MARK: People & location
 
     func people() async throws -> [Person] { try await get("api/people") }

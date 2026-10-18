@@ -7,6 +7,7 @@ struct DeviceSheet: View {
     @Environment(\.dismiss) private var dismiss
     let entityId: String
     @State private var openLight: AppModel.DeviceLink?
+    @State private var muteTarget: MuteTarget?
 
     var body: some View {
         NavigationStack {
@@ -17,6 +18,7 @@ struct DeviceSheet: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
                             header(e, kind)
+                            problems(e)
                             commands(e, kind)
                             remoteControls(e)
                             readings(e)
@@ -35,6 +37,7 @@ struct DeviceSheet: View {
             .sheet(item: $openLight) { link in
                 DeviceSheet(entityId: link.id).environmentObject(model)
             }
+            .muteDialog($muteTarget)
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
@@ -198,12 +201,57 @@ struct DeviceSheet: View {
         }
     }
 
-    @ViewBuilder private func details(_ e: Entity, _ kind: Kind?) -> some View {
-        let issues = e.issues
-        VStack(alignment: .leading, spacing: 6) {
-            if !issues.isEmpty {
-                Text(issues.joined(separator: " · ")).font(AppFont.manrope(13, .bold)).foregroundColor(Theme.coralText)
+    /// Its problems, each with Mute, then the muted ones (until when, and Unmute).
+    @ViewBuilder private func problems(_ e: Entity) -> some View {
+        let active = MuteLogic.active(e)
+        let muted = MuteLogic.muted(e)
+        if !active.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(Array(active.enumerated()), id: \.offset) { i, p in
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle").font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Theme.coralText).accessibilityHidden(true)
+                        Text(p.text).font(AppFont.manrope(14, .heavy)).foregroundColor(Theme.coralText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if MuteLogic.canMute(p) {
+                            Button("Mute") { muteTarget = MuteTarget(entityId: e.id, device: e.name, issue: p.id, text: p.text) }
+                                .buttonStyle(PillButtonStyle(height: 36))
+                                .accessibilityHint(p.text)
+                        }
+                    }
+                    .frame(minHeight: 44)
+                    if i < active.count - 1 { Divider().overlay(Theme.divider) }
+                }
             }
+            .glassCard(padding: 14, fill: Theme.coral.opacity(0.10), border: Theme.coral.opacity(0.35))
+        }
+        if !muted.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                CardHeader(text: "Muted").padding(.bottom, 4)
+                ForEach(Array(muted.enumerated()), id: \.offset) { i, p in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.text).font(AppFont.manrope(14, .bold)).foregroundColor(Theme.muted)
+                            if let m = p.muted {
+                                Text(MuteLogic.mutedText(m)).font(AppFont.manrope(12, .bold)).foregroundColor(Theme.dim)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Unmute") { Task { await model.unmute(e.id, issue: p.id) } }
+                            .buttonStyle(PillButtonStyle(height: 36))
+                            .accessibilityHint(p.text)
+                    }
+                    .padding(.vertical, 6)
+                    if i < muted.count - 1 { Divider().overlay(Theme.divider) }
+                }
+            }
+            .glassCard(padding: 14)
+        }
+    }
+
+    @ViewBuilder private func details(_ e: Entity, _ kind: Kind?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             Text([kind?.name, e.integrationName, e.area].compactMap { $0 }.joined(separator: " · "))
                 .font(AppFont.manrope(12, .bold)).foregroundColor(Theme.dim)
         }

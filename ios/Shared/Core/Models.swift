@@ -103,9 +103,41 @@ struct Command: Decodable, Hashable, Identifiable {
 
 // MARK: - Entities (GET /api/entities)
 
+/// A device's problems. `ok`/`issues` leave out the ones someone muted; `items` (newer hubs) lists every
+/// problem with its id and, when muted, until when (MuteLogic).
 struct Health: Decodable, Hashable {
+    /// Who muted a problem and for how long: mode "day" | "week" (until a time), "fixed", "always".
+    struct Muted: Decodable, Hashable {
+        var mode: String?
+        var until: Double?
+        var by: String?
+    }
+
+    struct Item: Decodable, Hashable, Identifiable {
+        var id: String
+        var text: String
+        var muted: Muted?
+    }
+
     var ok: Bool?
     var issues: [String]?
+    var items: [Item]?
+
+    enum CodingKeys: String, CodingKey { case ok, issues, items }
+
+    init(ok: Bool? = nil, issues: [String]? = nil, items: [Item]? = nil) {
+        self.ok = ok
+        self.issues = issues
+        self.items = items
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try? c.decodeIfPresent(Bool.self, forKey: .ok)
+        issues = try? c.decodeIfPresent([String].self, forKey: .issues)
+        // An older hub has no items; one it can't read falls back to the plain issues.
+        items = try? c.decodeIfPresent([Item].self, forKey: .items)
+    }
 }
 
 struct PropertyOption: Decodable, Hashable {

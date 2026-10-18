@@ -10,6 +10,7 @@ struct TodayCardView: View {
     @State private var expanded = false
     @State private var busy: String?
     @State private var sheetFor: SheetTarget?
+    @State private var muteTarget: MuteTarget?
 
     private struct SheetTarget: Identifiable { var id: String }
 
@@ -23,6 +24,7 @@ struct TodayCardView: View {
                 }
             }
             .sheet(item: $sheetFor) { t in DeviceSheet(entityId: t.id).environmentObject(model) }
+            .muteDialog($muteTarget)
     }
 
     @ViewBuilder private var content: some View {
@@ -103,20 +105,59 @@ struct TodayCardView: View {
         CardHeader(text: s).padding(.bottom, 4)
     }
 
-    private func row(_ r: TodayView.Row) -> some View {
+    /// A device's problems: one row each (its name, the problem, Mute); the rest of To do as before.
+    @ViewBuilder private func row(_ r: TodayView.Row) -> some View {
+        if let device = problemDevice(r) {
+            let problems = MuteLogic.active(device)
+            VStack(spacing: 0) {
+                ForEach(Array(problems.enumerated()), id: \.offset) { i, p in
+                    problemRow(device, p, r)
+                    if i < problems.count - 1 { Divider().overlay(Theme.divider) }
+                }
+            }
+        } else {
+            plainRow(r)
+        }
+    }
+
+    private func problemRow(_ e: Entity, _ p: Health.Item, _ r: TodayView.Row) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2).fill(toneColor(r.tone)).frame(width: 4, height: 34)
+                .accessibilityHidden(true)
+            Button { sheetFor = SheetTarget(id: e.id) } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(e.name).font(AppFont.manrope(14, .heavy)).foregroundColor(Theme.text).lineLimit(2)
+                    Text(p.text).font(AppFont.manrope(12, .bold)).foregroundColor(Theme.coralText).lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens \(e.name)")
+            if MuteLogic.canMute(p) {
+                Button("Mute") { muteTarget = MuteTarget(entityId: e.id, device: e.name, issue: p.id, text: p.text) }
+                    .buttonStyle(PillButtonStyle(height: 36))
+                    .accessibilityHint(p.text) // which problem the button mutes
+            } else {
+                Button("Open") { sheetFor = SheetTarget(id: e.id) }
+                    .buttonStyle(PillButtonStyle(height: 36))
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func plainRow(_ r: TodayView.Row) -> some View {
         let done = r.tone == .done
-        let device = problemDevice(r)
-        let title = device?.name ?? r.title
-        let status = device.map { $0.issues.joined(separator: " · ") } ?? r.status
+        let status = r.status
         return HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 2).fill(toneColor(r.tone)).frame(width: 4, height: 34)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(AppFont.manrope(14, .heavy)).foregroundColor(done ? Theme.muted : Theme.text)
+                Text(r.title).font(AppFont.manrope(14, .heavy)).foregroundColor(done ? Theme.muted : Theme.text)
                     .strikethrough(done).lineLimit(2)
                 if !status.isEmpty {
                     Text(status).font(AppFont.manrope(12, .bold))
-                        .foregroundColor(device != nil ? Theme.coralText : (r.tone == .later ? Theme.muted : toneColor(r.tone))).lineLimit(3)
+                        .foregroundColor(r.tone == .later ? Theme.muted : toneColor(r.tone)).lineLimit(3)
                 }
             }
             .accessibilityElement(children: .combine)
