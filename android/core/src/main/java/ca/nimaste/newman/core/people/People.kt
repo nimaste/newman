@@ -79,6 +79,17 @@ data class Place(val id: String, val name: String = "", val lat: Double? = null,
 
 /** How a person reads in the People list and on the map. */
 object PeopleText {
+    /** Who's home, in one line (both apps): "Chris is home", "2 people home", "No one is home". */
+    fun summary(people: List<Person>): String {
+        if (people.isEmpty()) return "Where everyone is"
+        val home = people.filter { it.home }
+        return when (home.size) {
+            0 -> "No one is home"
+            1 -> "${home[0].name.ifBlank { "Someone" }} is home"
+            else -> "${home.size} people home"
+        }
+    }
+
     /** "850 m", "3.2 km", "12 km". */
     fun distance(meters: Double): String {
         val m10 = (meters / 10).roundToLong().coerceAtLeast(1) * 10

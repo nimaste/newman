@@ -11,7 +11,6 @@ import ca.nimaste.newman.core.model.Command
 import ca.nimaste.newman.core.model.CommandRequest
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.Health
-import ca.nimaste.newman.core.model.PhoneGrid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -110,16 +109,15 @@ class HubRepository(
                 val dash = async { hubCall { api.currentDashboard() } }
                 val auth = async { hubCall { api.authState() } }
                 val activity = async { runCatching { hubCall { api.events(limit = 100) } }.getOrNull() }
-                val layout = async { fetchLayout() }
                 val m = meta.await()
                 val list = entities.await()
                 val d = dash.await()
                 val a = auth.await()
                 val act = activity.await()
-                val l = layout.await()
+                // The phone layout (GET /api/phone-layout) isn't used any more: the Home screen comes from GET /api/home.
                 _state.update {
                     it.copy(meta = m, entities = LinkedHashMap(list.associateBy { e -> e.id }), dashboard = d, auth = a,
-                        phoneLayout = PhoneGrid.next(it.phoneLayout, l), activity = act ?: it.activity, loaded = true, error = null)
+                        activity = act ?: it.activity, loaded = true, error = null)
                 }
             }
             Result.success(Unit)
@@ -132,23 +130,10 @@ class HubRepository(
 
     suspend fun reloadDashboard() {
         runCatching { hubCall { api.currentDashboard() } }.onSuccess { d -> _state.update { it.copy(dashboard = d) } }
-        reloadLayout()
     }
 
-    suspend fun reloadLayout() {
-        val l = fetchLayout()
-        _state.update { it.copy(phoneLayout = PhoneGrid.next(it.phoneLayout, l)) }
-    }
-
-    /** GET /api/phone-layout; never throws (a 404 means an older hub: flow the dashboard). */
-    private suspend fun fetchLayout(): PhoneGrid.Fetch = try {
-        val res = api.phoneLayout()
-        val body = if (res.isSuccessful) res.body()?.string() else res.errorBody()?.string()
-        PhoneGrid.outcome(res.code(), body)
-    } catch (e: Exception) {
-        if (e is kotlinx.coroutines.CancellationException) throw e
-        PhoneGrid.Fetch.Failed
-    }
+    /** Nothing to do: the phone no longer follows a phone layout (kept for the live message's effect). */
+    suspend fun reloadLayout() = Unit
 
     suspend fun reloadAuth() {
         runCatching { hubCall { api.authState() } }.onSuccess { a -> _state.update { it.copy(auth = a) } }

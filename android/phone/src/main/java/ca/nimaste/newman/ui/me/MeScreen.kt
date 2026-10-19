@@ -28,6 +28,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +72,7 @@ fun MeScreen(onBack: () -> Unit, onServer: () -> Unit = {}) {
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
     var editCf by remember { mutableStateOf(false) }
+    var changingPassword by remember { mutableStateOf(false) }
     val importCert = rememberCertificateImport { msg -> app.toast(msg) }
     LaunchedEffect(Unit) { app.hub.reloadAuth() }
 
@@ -117,6 +120,9 @@ fun MeScreen(onBack: () -> Unit, onServer: () -> Unit = {}) {
 
                 GlassCard(Modifier.fillMaxWidth(), radius = 20.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
                     // The Connect step: new addresses for this hub, or another hub (signs out of this one first).
+                    SectionRow("Password", "Change the password you sign in with", onClick = { changingPassword = true }) {
+                        Text("Change", style = T.small.copy(color = N.Muted))
+                    }
                     SectionRow("Server", serverText(conn.hub.name, conn.serverUrl), onClick = onServer) {
                         Text("Change", style = T.small.copy(color = N.Muted))
                     }
@@ -156,6 +162,7 @@ fun MeScreen(onBack: () -> Unit, onServer: () -> Unit = {}) {
         Confirm("Sign out of this phone?", "You'll stop getting Newman's notifications here.", "Sign out",
             onYes = { confirmSignOut = false; app.signOut() }, onNo = { confirmSignOut = false })
     }
+    if (changingPassword) ChangePassword { changingPassword = false }
     if (editCf) {
         var id by remember { mutableStateOf(conn.cfClientId.orEmpty()) }
         var secret by remember { mutableStateOf(conn.cfClientSecret.orEmpty()) }
@@ -186,6 +193,42 @@ fun MeScreen(onBack: () -> Unit, onServer: () -> Unit = {}) {
             },
         )
     }
+}
+
+/** Change password (POST /api/auth/password): the current one, the new one twice. */
+@Composable
+private fun ChangePassword(onDone: () -> Unit) {
+    val app = LocalApp.current
+    val scope = rememberCoroutineScope()
+    var current by remember { mutableStateOf("") }
+    var new by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    val mismatch = again.isNotEmpty() && again != new
+    AlertDialog(
+        onDismissRequest = onDone,
+        containerColor = Color(0xFF151B36),
+        title = { Text("Change password", style = T.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                NTextField(current, { current = it }, "Current password", password = true)
+                NTextField(new, { new = it }, "New password", password = true)
+                NTextField(again, { again = it }, "New password again", password = true)
+                if (mismatch) Text("The new passwords don't match.", style = T.small.copy(color = N.CoralText))
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && current.isNotEmpty() && new.isNotEmpty() && again == new, onClick = {
+                busy = true
+                scope.launch {
+                    val ok = app.changePassword(current, new)
+                    busy = false
+                    if (ok) onDone()
+                }
+            }) { Text("Change", style = T.label) }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text("Cancel", style = T.label) } },
+    )
 }
 
 /** "Home · 10.1.1.2:8093" - the hub's name and the address in use. */

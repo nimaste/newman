@@ -16,7 +16,13 @@ import ca.nimaste.newman.core.hub.HubState
 import ca.nimaste.newman.core.live.LiveMessage
 import ca.nimaste.newman.core.live.LiveStatus
 import ca.nimaste.newman.core.model.CameraAlert
+import ca.nimaste.newman.core.model.ClimateRoomsBody
 import ca.nimaste.newman.core.model.Command
+import ca.nimaste.newman.core.model.HomeData
+import ca.nimaste.newman.core.model.HomePrefs
+import ca.nimaste.newman.core.model.PasswordChange
+import ca.nimaste.newman.core.model.asStringOrNull
+import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.HubModel
 import ca.nimaste.newman.core.model.MuteRequest
@@ -100,8 +106,32 @@ class AppViewModel @Inject constructor(
     private val _alertsSeen = MutableStateFlow(store.alertsSeenAt)
     val alertsSeen: StateFlow<Double> = _alertsSeen.asStateFlow()
 
+    /** GET /api/home: the Home screen's cards, favourites and status (null until loaded). */
+    private val _home = MutableStateFlow<HomeData?>(null)
+    val home: StateFlow<HomeData?> = _home.asStateFlow()
+    private var homeJob: kotlinx.coroutines.Job? = null
+
+    /** Reload the Home data; a newer call replaces one still waiting for its answer. */
+    fun reloadHome() {
+        homeJob?.cancel()
+        homeJob = viewModelScope.launch {
+            runCatching { hubCall { api.home() } }.onSuccess { _home.value = it }
+        }
+    }
+
+    /** May this account create and change automations: the hub's word (Home data, else the account). */
+    val canAutomate: Boolean
+        get() = _home.value?.canAutomate ?: (state.value.auth?.user?.let { it.canAutomate ?: (it.role == "admin") } ?: false)
+
     init {
         if (account.signedIn) hub.start()
+        if (account.signedIn) reloadHome()
+        viewModelScope.launch {
+            // The hub says the Home data or the house settings changed, or the connection came back.
+            hub.liveMessages.collect { m ->
+                if ((m is LiveMessage.Unknown && (m.type == "home" || m.type == "settings-house")) || m is LiveMessage.Reconnected) reloadHome()
+            }
+        }
         viewModelScope.launch {
             hub.signedOut.collect {
                 account.forgetSession()
@@ -127,6 +157,7 @@ class AppViewModel @Inject constructor(
 
     fun onSignedIn() {
         _signedIn.value = true
+        reloadHome()
         live.sync()
         viewModelScope.launch {
             sharing.refresh()
@@ -228,12 +259,112 @@ class AppViewModel @Inject constructor(
         null
     }
 
+    /** The automation as the hub keeps it (the editor's starting point); null after showing why not. */
+    suspend fun automationJson(id: String): JsonObject? = try {
+        hubCall { api.automationJson(id) }
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        null
+    }
+
+    /** Save (a new one when [id] is null): the saved automation, or null after showing the hub's answer. */
+    suspend fun saveAutomation(id: String?, body: JsonObject): JsonObject? = try {
+        (if (id == null) api.createAutomation(body) else api.putAutomation(id, body)).orThrow().also { toast("Saved") }
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        null
+    }
+
+    suspend fun deleteAutomation(id: String): Boolean = try {
+        api.deleteAutomation(id).orThrow()
+        toast("Deleted")
+        true
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        false
+    }
+
+    /** The hub's plain-English summary of an automation being edited ("" when it can't say). */
+    suspend fun describeAutomation(body: JsonObject): String = try {
+        hubCall { api.describeAutomation(body) }["summary"].asStringOrNull ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+
+    // -- Home: Edit Home, Climate's rooms, the password ---------------------------------------------
+
+    suspend fun saveHomePrefs(prefs: HomePrefs): Boolean = try {
+        api.putHome(prefs).orThrow()
+        reloadHome()
+        true
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        false
+    }
+
+    suspend fun saveClimateRooms(body: ClimateRoomsBody): Boolean = try {
+        api.putClimateRooms(body).orThrow()
+        reloadHome()
+        true
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        false
+    }
+
+    /** Admin: what the Cameras tab's big picture shows (latest activity, or a featured camera). */
+    suspend fun setCamerasTop(mode: String, featured: String?): Boolean = try {
+        api.patchHouseSettings(JsonObject(mapOf("cameras" to JsonObject(mapOf("mode" to JsonPrimitive(mode),
+            "featured" to (featured?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)))))).orThrow()
+        reloadHome()
+        true
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        false
+    }
+
+    /** Admin: a to-do from Today's "+ Add" - an upkeep item first due today, repeating every [every] [unit]. */
+    suspend fun addTodo(name: String, every: Int, unit: String): Boolean = try {
+        val today = java.time.LocalDate.now()
+        val last = when (unit) { "weeks" -> today.minusWeeks(every.toLong()); "months" -> today.minusMonths(every.toLong()); else -> today.minusDays(every.toLong()) }
+        api.addUpkeep(JsonObject(mapOf("name" to JsonPrimitive(name), "every" to JsonPrimitive(every), "unit" to JsonPrimitive(unit),
+            "lastDone" to JsonPrimitive(last.toString())))).orThrow()
+        this.today.refresh()
+        toast("Added")
+        true
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        false
+    }
+
+    /** A tapped notification's alert to show: More › Alerts scrolled to it and highlighted. */
+    val openAlert = MutableStateFlow<ca.nimaste.newman.core.model.ActivityEntry?>(null)
+    /** ...or a camera alert's clip, played on its camera's screen. */
+    val openClip = MutableStateFlow<CameraAlert?>(null)
+
+    /** The activity entry of one automation run (a notification's alertId). */
+    suspend fun runEntry(runId: String): ca.nimaste.newman.core.model.ActivityEntry? = try {
+        hubCall { api.events(limit = 5, runId = runId) }.firstOrNull()
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Change this account's password: true when done (the hub signs out every other device). */
+    suspend fun changePassword(current: String, new: String): Boolean = try {
+        api.changePassword(PasswordChange(current, new)).orThrow()
+        toast("Password changed")
+        true
+    } catch (e: Exception) {
+        toast(ApiErrors.message(e), ok = false)
+        false
+    }
+
     // -- muting a device's problems -------------------------------------------------------------
 
     /** Mute one of [e]'s problems ([mode]: day, week, fixed, always); false after showing why not. */
     suspend fun mute(e: Entity, issue: String, mode: String): Boolean = try {
         api.mute(e.id, MuteRequest(issue, mode)).orThrow()?.health?.let { hub.setHealth(e.id, it) }
         today.refresh()
+        reloadHome() // its warning leaves Home
         true
     } catch (ex: Exception) {
         toast(ApiErrors.message(ex), ok = false)
@@ -243,6 +374,7 @@ class AppViewModel @Inject constructor(
     suspend fun unmute(e: Entity, issue: String): Boolean = try {
         api.unmute(e.id, issue).orThrow()?.health?.let { hub.setHealth(e.id, it) }
         today.refresh()
+        reloadHome()
         true
     } catch (ex: Exception) {
         toast(ApiErrors.message(ex), ok = false)
@@ -251,8 +383,43 @@ class AppViewModel @Inject constructor(
 
     // -- camera alerts (the Alerts tab's Cameras filter and the camera screen) --------------------
 
-    suspend fun cameraAlerts(entity: Entity?, limit: Int = 50): List<CameraAlert> = try {
-        if (entity?.alerts != null) hubCall { api.entityAlerts(entity.alerts!!, limit) }
+    /**
+     * The camera alert a tapped notification is about. Its alertId is the automation run's id: the run's
+     * activity (GET /api/events?runId=) names the clip, found then among the alerts, paging back
+     * (a notification of any age); without one, the push's own clip or review id among recent alerts.
+     */
+    suspend fun findAlert(alertId: String?, clip: String?, review: String?): CameraAlert? {
+        var c = clip
+        var rv = review
+        if (alertId != null) {
+            val entries = try { hubCall { api.events(limit = 20, runId = alertId) } } catch (e: Exception) { emptyList() }
+            entries.firstNotNullOfOrNull { it.data }?.let { d ->
+                c = c ?: d.string("clip")
+                rv = rv ?: d.string("reviewId") ?: d.string("frigate_event_id") ?: d.string("alertId")
+            }
+        }
+        if (c == null && rv == null) return null
+        var before: Double? = null
+        repeat(if (alertId != null) 10 else 1) {
+            val list = try { hubCall { api.alerts(100, before) } } catch (e: Exception) { return null }
+            ca.nimaste.newman.core.model.CameraClip.matchAlert(list, c, rv)?.let { return it }
+            if (list.size < 100) return null
+            before = list.mapNotNull { it.time }.minOrNull() ?: return null
+        }
+        return null
+    }
+
+    /** Today's security events (GET /api/alerts?category=security&since=), newest first; null when they couldn't be loaded. */
+    suspend fun securityEvents(since: Double): List<CameraAlert>? = try {
+        hubCall { api.alerts(100, category = "security", since = since) }.sortedByDescending { it.time ?: 0.0 }
+    } catch (e: Exception) {
+        null
+    }
+
+    suspend fun cameraAlerts(entity: Entity?, limit: Int = 50, since: Double? = null): List<CameraAlert> = try {
+        // One camera: GET /api/alerts?entity=&since= (older hubs: the camera's own alerts link).
+        if (entity != null) runCatching { hubCall { api.alerts(limit, entity = entity.id, since = since) } }.getOrNull()
+            ?: entity.alerts?.let { l -> hubCall { api.entityAlerts(l, limit) }.filter { since == null || (it.time ?: 0.0) >= since } } ?: emptyList()
         else hubCall { api.alerts(limit) }
     } catch (e: Exception) {
         emptyList()

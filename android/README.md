@@ -22,7 +22,7 @@ android/
     live/       LiveSocket (OkHttp WebSocket, backoff 1-30 s), LiveMessage,
                 LiveVideo.kt: LiveVideoSession (app-owned camera socket <-> player page), LiveStreamPool (4 tiles)
     model/      Models, HubModel (port of web/src/model.js), Controls, TileFlow, PhoneTabs (which pages are tabs),
-                PhoneGrid (GET /api/phone-layout: tabs, cell rectangles, devices-tile fit, 404 fallback),
+                PhoneGrid (old phone layouts, unused by the phone now), Home (GET /api/home, HomeLogic), AutomationEdit,
                 TileFit (rows that fit a tile's rectangle, the rest as "+N more")
     people/     Person, LocationSettings, PeopleText (row wording), PersonLook (colour/photo), PersonRefresh, PeopleTile (who a People tile shows, fitted),
                 SharingSwitch, ReportSchedule
@@ -49,8 +49,8 @@ android/
                 ButtonPress (PressWorker, PressReports: notification buttons + press reports),
                 LiveStatusNotifier + LiveActionReceiver (live statuses as ongoing notifications)
     security/   BiometricGate
-    ui/         onboarding, home (tabs + 4-column grid), today (Today card), people (list + osmdroid map),
-                tiles, device sheet, camera, alerts, more (More tab: Devices, Automations), me (incl. "Share my location")
+    ui/         onboarding, home (tabs, Home, Climate, Lights, Security, Today, Edit Home), cameras, today, people (list + map),
+                tiles, device sheet, camera, alerts, more (More tab, Devices, Automations + editor), me (incl. "Share my location")
                 common/LiveVideo.kt: LiveCamera = still + live video (shared player page in a WebView)
     widgets/    WidgetSync (states + Home status cache, taps, live / FCM / 15-min refresh), DeviceGridWidget
                 (Glance: Devices – tiles / rows), HomeStatusWidget, WidgetFaces (colours, tile / row faces),
@@ -294,62 +294,52 @@ The Android counterparts of the iPhone's Control Center controls and Siri shortc
   grid and the tab bar at 1.3x, half-width device cards at 1.2x; the People tile, fitted line by line, and
   compact tiles such as the small thermostat dial at 1x), so nothing is cut off.
 
-## Tabs and pages (phone)
+## Tabs and screens (phone)
 
-- **Phone layouts** (`GET /api/phone-layout`, `PhoneGrid`): the hub sends the signed-in person's
-  layout (their own, or the house default). Pages marked `tab` are the bottom tabs, in order, at
-  most three, then **People** and **More**; other pages are links at the bottom of the first tab
-  and open from their thermostat tile. Each page is a vertically scrolling grid of 4 columns of
-  square cells; tiles sit exactly at their `x`/`y`/`w`/`h` (no reflow, empty cells stay empty) and
-  are drawn by the same tile views as before, sized to their rectangle (a card fills its cell; a
-  tile with more than fits scrolls inside it). A **devices** tile shows its devices inside its own
-  rectangle: two columns of device buttons when it is wide enough (240 dp), a list when narrow;
-  tap = the main action, hold = the device sheet. What doesn't fit becomes "+N more", which opens
-  the full list. A **People** tile shows the People tab's rows (initial, name, "Home" / a place /
-  "3.2 km away", "updated 4 min ago"; "Not sharing location" dimmed and not tappable), only the
-  tile's `people` when it names some; as many rows as fit, the rest as "+N more" (opens the People
-  tab), one line ("Chris (home) · Marlina") when too short for rows. Tap someone for their map, in
-  the tile's `mapLook` (light, the default, or dark). It uses the People tab's data and live
-  `{"type":"person"}` messages - no polling of its own. A **Greeting** tile says "Good morning /
-  afternoon / evening" over today's line from `GET /api/today` ("3 things to do · 2 events today ·
-  rain from 3 PM": open To do, events, the worst weather alert and rain, from the heads-up `short`
-  words), sized to its rectangle, both on one line when it's too short for two. The Today card is
-  on the first tab only when the layout's `today` is on. A live `{"type":"dashboard"}` reloads the
-  layout.
-- **Card look**: every card is the same glass card (22 dp corners); card headings are small capitals
-  (`CardHeader`: "CAMERAS", "QUICK CONTROLS", "SECURITY · 15") with an optional action on the right.
-  The first page's chips wrap onto more lines, with no weather chip when the page has a weather tile.
-  Devices with a problem from the Today briefing get their own coral card above it (the device's
-  name, all its health issues, **Open**). A **weather** tile across the phone is one row (icon,
-  temperature, sky and high/low; on the right today's rain or snow, `Weather.wetToday` as on the
-  iPhone, or a weather alert's button that opens the alerts), with the week below when it is 200 dp or taller;
-  a **thermostat** across the phone but under 4 rows is side by side (`HorizontalDial`: the ring, tap
-  for the full dial; − / + and the device's own modes); a **camera** tile has its heading with
-  "All N" (every camera, `HubModel.cameras`: not zones; opens the camera screen, which steps through
-  the same cameras) and the camera pills above the picture, LIVE and the time on it; a devices grid of two or more devices
-  across the phone is headed "Quick controls" unless it has a title.
-  Each problem that shows is its own row with **Mute** (a sheet: for 1 day, for 1 week, until it's fixed,
-  always; `PUT api/entities/{id}/mute`); a device's sheet lists its problems with Mute and its muted ones
-  ("Muted until …") with Unmute (`DELETE api/entities/{id}/mute/{issue}`). Muted problems leave To do,
-  the chips and Needs attention (the hub leaves them out of `health.issues`; `health.items` has them all).
-- **More** (the last tab; its badge is the unseen alerts): **Alerts** (the old Alerts tab, with a
-  way back), **Devices** and **Automations**; the system Back button walks back up.
-  - **Devices**: every device the hub has (`DeviceList`), by the hub's categories in `/api/meta`'s
-    order, devices needing attention (offline or `health.ok` false) first in each; five per section
-    until "Show all"; a search box (by name) and filters *All*, *Needs attention*, *On now* (the
-    `onCount` rule). A row is the device's state (or its issues, in coral), its switch (an on/off
-    pair) or next action (Lock, Open…), and opens the device sheet.
-  - **Automations**: `GET /api/automations`, most recently run first (`Automations`): name, the hub's
-    `summary`, "Ran today 2:54 PM" / "Sent …" / "Checked … · nothing to do" / "Hasn't run yet", and a
-    switch (`PATCH /api/automations/{id}` `{"enabled"}`; a refusal - 403 for family accounts - shows
-    the hub's words and the switch goes back). Tap one: its summary, the switch, **Run now**
-    (`POST /api/automations/{id}/run`) and its recent runs (`GET /api/runs?automationId=`). Making and
-    editing automations stays on the web dashboard.
-- **Older hubs** (404): the default dashboard flows onto the phone as before (`PhoneTabs`,
-  `TileFlow`): the first three non-Today pages are tabs, a Today page becomes the Today card, tiles
-  flow onto 4 columns and a big-tiles devices tile becomes one card per device.
-- Neither the layout nor the dashboard is cached on the phone: both load with the rest of the house
-  at start.
+Four tabs: **Home · Cameras · Devices · More** (More's badge is the unseen alerts). The look is the approved
+phone mockups' (solid cards, `H` colours and `HT` type in `ui/theme` and `ui/home/Kit.kt`). The phone no longer
+reads `GET /api/phone-layout` or flows the dashboard; Home comes from `GET /api/home` (`HomeData`), reloaded on a
+live `{"type":"home"}` or `{"type":"settings-house"}` and after reconnecting.
+
+- **Home**: the hub's status - level ok: "All good at home" (green) with the hub's summary; warn: "Needs a look"
+  (amber dot) with the summary; danger: one red banner per danger with its fix ("Close") - then each device warning
+  in amber with **Mute** (the mute sheet); the person's
+  cards in their order (titles, values and details worded by the hub, its tone colours them); up to four
+  **favourites** (tap = the device's tap action, hold = its sheet). The pencil opens **Edit Home**: cards on/off,
+  dragged into order (TalkBack: Move up / Move down), favourites removed or added from a device picker; Done saves
+  `PUT /api/home/me`. Pull down to reload.
+- **Climate** (the Climate card): the thermostat's dial (drag, or − / +), its modes, humidity and an auto range when
+  it reports one; **Rooms** with each temperature on a bar over the house's range, coloured by its band
+  (`HomeLogic.bandFor` / `barFraction`). **Edit**: every temperature sensor (`HomeLogic.climateSensors`) - tick,
+  drag to order, tap to rename; Done saves `PUT /api/home/climate`.
+- **Lights**: lighting-category devices that switch (kinds metadata) by `room` ("Other" last); a group
+  (`group.<slug>`, `attrs.members`) is one row ("Group · 3 lights") with its lights behind "Show the 3 lights";
+  a room's switch turns every row in it on or off; **All off**; a dimmable light that's on has its slider.
+- **Security**: alarm panels' modes, locks and doors you control (next action, battery), sensors by kind
+  (Doors, Water…), and today's events (`GET /api/alerts?category=security&since=`; older hubs: these devices'
+  activity) with "All alerts".
+- **Today** (`GET /api/today`): CALENDAR (today's events, or "Nothing on the Family calendar today"); TO DO (tap to
+  tick done, Undo while just done; **+ Add** for admins - `POST /api/upkeep`, first due today); COMING UP (the
+  calendars' next days, `attrs.upcoming`, and upkeep coming due with its status). **People**: everyone on one map (osmdroid) and the list (tap for their map).
+- **Cameras**: the big picture - "Latest activity" or "Featured camera" (the hub's `cameras.mode`, set on the web)
+  - then every other camera with its latest detection today; admins get **Change** (Latest activity / Featured
+  camera + which one: `PATCH /api/settings/house {"cameras"}`). One camera: live (full screen a tap away), its
+  detections (`GET /api/alerts?entity=&since=`; older hubs: the camera's `alerts` link) filtered by label, tap to
+  play the clip in place; each "Earlier days" reaches back another 24 hours.
+- **Devices**: every device by category, searchable, filters *All*, *Needs attention*, *On now*; a row opens its sheet.
+- **More**: **Alerts**, **People**, **Automations**; **Edit Home**; the account (Me: look, location sharing,
+  **Change password** - `POST /api/auth/password` - server, certificate, sign out).
+  - **Automations**: most recently run first, each with its switch; **+ New** and tap-to-edit for accounts that
+    may (`canAutomate`), read-only otherwise. The editor (`AutoEdit` works on the hub's own JSON, so whatever it
+    doesn't know - notifications, wall, a newer trigger type - goes back unchanged and shows "Edit on the web"):
+    name, on/off, the hub's summary (`POST /api/automations/describe`), **When** (a time with its days - shown
+    S M T W T F S, saved 0 = Monday - a device changing, a device event, a reading above/below), **What happens**
+    (device + command + value; brightness "then put it back after N min" as `for {amount, unit}`), **Only if**
+    (device states; other limits kept), **Don't repeat for** (`cooldownMinutes`: Default = null, No wait = 0,
+    1-60 min), **Run now** (not while there are unsaved changes), **Delete**. Back with unsaved changes asks first.
+- **Notifications**: a tap opens the alert in the app at any age - the push's `alertId` (the run's id) finds the
+  run's activity (`GET /api/events?runId=`): a camera clip plays on that camera's screen (Cameras tab); anything
+  else opens More › Alerts scrolled to that entry, outlined. Pushes without one: matched by clip / review id. `"quiet": "1"` posts on the silent **Quiet hours** channel.
 
 ## People and location sharing (phone)
 

@@ -69,11 +69,13 @@ class MainActivity : FragmentActivity() {
         }
         val clip = intent.getStringExtra(Notifications.EXTRA_CLIP)
         val review = intent.getStringExtra(Notifications.EXTRA_REVIEW)
-        if (!clip.isNullOrEmpty() || !review.isNullOrEmpty()) {
-            // A camera alert: its video on the camera screen (over the Alerts tab).
-            openRequest.value = OpenAlert.request(clip, review)
+        val alertId = intent.getStringExtra(Notifications.EXTRA_ALERT)
+        if (!clip.isNullOrEmpty() || !review.isNullOrEmpty() || !alertId.isNullOrEmpty()) {
+            // An alert: a camera alert's video on the camera screen (over More › Alerts), else Alerts.
+            openRequest.value = OpenAlert.request(clip, review, alertId)
             intent.removeExtra(Notifications.EXTRA_CLIP) // not again on rotation
             intent.removeExtra(Notifications.EXTRA_REVIEW)
+            intent.removeExtra(Notifications.EXTRA_ALERT)
         } else {
             intent.getStringExtra(Notifications.EXTRA_OPEN)?.let { openRequest.value = it }
         }

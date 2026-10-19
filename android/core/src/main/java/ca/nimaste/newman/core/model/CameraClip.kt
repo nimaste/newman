@@ -8,6 +8,9 @@ object CameraClip {
     /** "frigate:r:1791546301.32669-9penfv" -> "api/clips/frigate/r%3A1791546301.32669-9penfv"; null when it isn't a clip id. */
     fun clipPath(clip: String?): String? {
         if (clip.isNullOrBlank()) return null
+        // GET /api/alerts?entity= already sends the signed-in path.
+        if (clip.startsWith("api/clips/")) return clip
+        if (clip.startsWith("/api/clips/")) return clip.removePrefix("/")
         val i = clip.indexOf(':')
         if (i <= 0 || i == clip.length - 1) return null
         return "api/clips/${encodeComponent(clip.substring(0, i))}/${encodeComponent(clip.substring(i + 1))}"

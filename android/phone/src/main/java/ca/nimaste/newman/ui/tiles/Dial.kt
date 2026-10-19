@@ -83,7 +83,7 @@ import kotlin.math.sin
  * Range, step and unit come from the command in /api/meta; the value from attrs[command.attr];
  * modes from a "state" command. Colours by mode id, as the web dial does.
  */
-private val MODE_COLOR = mapOf("heat" to Color(0xFFFF8A5B), "cool" to Color(0xFF5AA9FF), "auto" to Color(0xFF3CCFB4),
+internal val MODE_COLOR = mapOf("heat" to Color(0xFFFF8A5B), "cool" to Color(0xFF5AA9FF), "auto" to Color(0xFF3CCFB4),
     "heat_cool" to Color(0xFF3CCFB4), "off" to Color(0xFF6B7599), "eco" to Color(0xFF3CCFB4), "fan_only" to Color(0xFFA9B4D6))
 private val MODE_WORD = mapOf("heat" to "Heat to", "cool" to "Cool to", "auto" to "Keep at", "heat_cool" to "Keep at")
 
@@ -102,6 +102,10 @@ class DialModel(val e: Entity, val k: Kind?, val cmd: Command, val modeCmd: Comm
     val nowProp = props.firstOrNull { it.type == "number" && it.unit == unit && it.attr != cmd.attr }
     val pctProp = props.firstOrNull { it.type == "number" && it.unit == "%" && it.attr != cmd.attr }
     private val activity = props.firstOrNull { it.type == "text" && it.options.isNotEmpty() && it.attr.isNotEmpty() }
+    /** What it's doing now ("idle", "heating"), when it says. */
+    val activityText: String? = activity?.value?.asStringOrNull?.takeIf { it.isNotEmpty() }?.let { HubModel.formatProp(activity, activity.value).lowercase() }
+    /** The other readings in the dial's unit (an auto range's two ends), lowest first. */
+    val otherSetpoints: List<Double> = props.filter { it.type == "number" && it.unit == unit && it.attr != cmd.attr && it !== nowProp }.mapNotNull { it.value.asNumberOrNull }.sorted()
     val status: String = listOfNotNull(mode?.let { HubModel.stateLabel(e, k) },
         activity?.value?.asStringOrNull?.takeIf { it.isNotEmpty() }?.let { HubModel.formatProp(activity, activity.value).lowercase() })
         .joinToString(" · ")
@@ -188,7 +192,7 @@ fun DialRing(m: DialModel, shown: Double?, size: Dp, stroke: Dp, onDrag: ((Doubl
 
 /** State of a dial being changed: shows the target at once, sends one command ~600 ms after the last change. */
 @Composable
-private fun rememberDialTarget(m: DialModel): Triple<Double?, (Double, Boolean) -> Unit, (Double) -> Unit> {
+internal fun rememberDialTarget(m: DialModel): Triple<Double?, (Double, Boolean) -> Unit, (Double) -> Unit> {
     val run = rememberRunner()
     val scope = rememberCoroutineScope()
     var target by remember(m.e.id) { mutableStateOf(m.current) }

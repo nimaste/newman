@@ -32,6 +32,8 @@ object Notifications {
     const val CHANNEL_ALERTS = "alerts"
     const val CHANNEL_URGENT = "urgent"
     const val CHANNEL_DOORBELL = "doorbell"
+    /** During the person's quiet hours (the hub sends "quiet": "1"): shown, without a sound. */
+    const val CHANNEL_QUIET = "quiet"
 
     const val EXTRA_BUTTON_ID = "newman.button.id"
     const val EXTRA_BUTTON_LABEL = "newman.button.label"
@@ -47,6 +49,8 @@ object Notifications {
     /** A camera alert's clip id and review id: tapping the notification opens that alert's video. */
     const val EXTRA_CLIP = "newman.clip"
     const val EXTRA_REVIEW = "newman.review"
+    /** The alert a notification is about (any age): tapping it opens that alert in the app. */
+    const val EXTRA_ALERT = "newman.alert"
     const val ACTION_PRESS = "ca.nimaste.newman.PRESS"
     const val ACTION_OPEN = "ca.nimaste.newman.OPEN"
 
@@ -65,6 +69,11 @@ object Notifications {
             setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
                 AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
         })
+        nm.createNotificationChannel(NotificationChannel(CHANNEL_QUIET, "Quiet hours", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "Notifications during your quiet hours: no sound or vibration"
+            setSound(null, null)
+            enableVibration(false)
+        })
     }
 
     fun canPost(context: Context): Boolean =
@@ -76,6 +85,7 @@ object Notifications {
         if (!canPost(context)) return
         val picture = p.snapshotUrl?.let { fetchBitmap(http, it) }
         val channel = when {
+            p.quiet -> CHANNEL_QUIET
             p.isDoorbell -> CHANNEL_DOORBELL
             p.timeSensitive -> CHANNEL_URGENT
             else -> CHANNEL_ALERTS
@@ -89,6 +99,7 @@ object Notifications {
             .setCategory(if (p.isDoorbell) NotificationCompat.CATEGORY_CALL else NotificationCompat.CATEGORY_EVENT)
             .setPriority(if (p.timeSensitive || p.isDoorbell) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(openIntent(context, p))
+        if (p.quiet) b.setSilent(true).setPriority(NotificationCompat.PRIORITY_LOW)
         p.thread?.let { b.setGroup(it) }
         if (picture != null) {
             b.setLargeIcon(picture)
@@ -135,6 +146,7 @@ object Notifications {
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(EXTRA_OPEN, "alerts")
         if (p.clip != null || p.reviewId != null) i.putExtra(EXTRA_CLIP, p.clip).putExtra(EXTRA_REVIEW, p.reviewId)
+        if (p.alertId != null) i.putExtra(EXTRA_ALERT, p.alertId)
         return PendingIntent.getActivity(context, p.notificationId, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 

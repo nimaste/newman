@@ -6,7 +6,11 @@ import ca.nimaste.newman.core.model.AuthState
 import ca.nimaste.newman.core.model.Automation
 import ca.nimaste.newman.core.model.AutomationRun
 import ca.nimaste.newman.core.model.CameraAlert
+import ca.nimaste.newman.core.model.ClimateRoomsBody
 import ca.nimaste.newman.core.model.CommandRequest
+import ca.nimaste.newman.core.model.HomeData
+import ca.nimaste.newman.core.model.HomePrefs
+import ca.nimaste.newman.core.model.PasswordChange
 import ca.nimaste.newman.core.model.Dashboard
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.LoginRequest
@@ -89,10 +93,12 @@ interface NewmanApi {
     suspend fun unmute(@Path("id") entityId: String, @Path("issue") issue: String): Response<MuteReply>
 
     @GET("api/events")
-    suspend fun events(@Query("limit") limit: Int = 100, @Query("before") before: Double? = null): List<ActivityEntry>
+    suspend fun events(@Query("limit") limit: Int = 100, @Query("before") before: Double? = null, @Query("runId") runId: String? = null,
+                       @Query("since") since: Double? = null): List<ActivityEntry>
 
     @GET("api/alerts")
-    suspend fun alerts(@Query("limit") limit: Int = 50, @Query("before") before: Double? = null): List<CameraAlert>
+    suspend fun alerts(@Query("limit") limit: Int = 50, @Query("before") before: Double? = null, @Query("entity") entity: String? = null,
+                       @Query("category") category: String? = null, @Query("since") since: Double? = null): List<CameraAlert>
 
     /** A device's own alerts: [path] is the entity's `alerts` link ("api/entities/x/alerts"). */
     @GET
@@ -164,6 +170,47 @@ interface NewmanApi {
 
     @POST("api/automations/{id}/run")
     suspend fun runAutomation(@Path("id") id: String, @Body body: JsonObject = JsonObject(emptyMap())): Response<AutomationRun>
+
+    /** One automation as the hub keeps it (the editor changes only what it knows and sends the rest back). */
+    @GET("api/automations/{id}")
+    suspend fun automationJson(@Path("id") id: String): JsonObject
+
+    @PUT("api/automations/{id}")
+    suspend fun putAutomation(@Path("id") id: String, @Body body: JsonObject): Response<JsonObject>
+
+    @POST("api/automations")
+    suspend fun createAutomation(@Body body: JsonObject): Response<JsonObject>
+
+    @DELETE("api/automations/{id}")
+    suspend fun deleteAutomation(@Path("id") id: String): Response<ResponseBody>
+
+    /** {"summary", "preview", "errors"} for any automation body, saved or not. */
+    @POST("api/automations/describe")
+    suspend fun describeAutomation(@Body body: JsonObject): JsonObject
+
+    // -- the phone's Home (server: GET /api/home) ----------------------------------------------------
+
+    @GET("api/home")
+    suspend fun home(): HomeData
+
+    /** The signed-in person's Edit Home: cards in order with on/off, and favourites. */
+    @PUT("api/home/me")
+    suspend fun putHome(@Body body: HomePrefs): Response<ResponseBody>
+
+    /** Climate's rooms (the house's): sensors, their names, in order. */
+    @PUT("api/home/climate")
+    suspend fun putClimateRooms(@Body body: ClimateRoomsBody): Response<ResponseBody>
+
+    /** Part of the house settings (admin): the Cameras tab's Change sends {"cameras": {"mode", "featured"}}. */
+    @PATCH("api/settings/house")
+    suspend fun patchHouseSettings(@Body body: JsonObject): Response<ResponseBody>
+
+    /** A new upkeep item / to-do (admin): {"name", "every", "unit", "lastDone"?}. */
+    @POST("api/upkeep")
+    suspend fun addUpkeep(@Body body: JsonObject): Response<ResponseBody>
+
+    @POST("api/auth/password")
+    suspend fun changePassword(@Body body: PasswordChange): Response<ResponseBody>
 
     // -- people & location ----------------------------------------------------------------------
 

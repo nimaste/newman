@@ -42,6 +42,12 @@ object Automations {
     }
 
     /** "13 automations · all on" (the More row), plus " · 4 ran today" on the screen itself. */
+    /** More's Automations row (both apps): "9 · all on", "9 · 2 off". */
+    fun moreLine(list: List<Automation>): String {
+        val off = list.count { !it.enabled }
+        return "${list.size} · " + if (off == 0) "all on" else "$off off"
+    }
+
     fun summary(list: List<Automation>, now: Instant? = null, zone: ZoneId = ZoneId.systemDefault()): String {
         val n = list.size
         val parts = mutableListOf(if (n == 1) "1 automation" else "$n automations")

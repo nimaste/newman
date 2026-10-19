@@ -123,6 +123,8 @@ data class Kind(
     val isMode: Boolean = false,
     val urgent: Boolean = false,
     val properties: List<PropertyDef> = emptyList(),
+    /** What only an automation can make it do ("Brighten while held"). */
+    val automationCommands: List<Command> = emptyList(),
 ) {
     fun command(id: String?): Command? = commands.firstOrNull { it.id == id }
 }
@@ -168,6 +170,10 @@ data class Entity(
     val updatedAt: Double = 0.0,
     /** A remote's controls (RemoteControls); null when it has none. */
     val controls: RemoteControls? = null,
+    /** The room set in Newman, else the integration's area (null: no room). */
+    val room: String? = null,
+    /** The light/switch group this device belongs to (a group entity's id), or null. */
+    val group: String? = null,
 )
 
 // -- dashboards ----------------------------------------------------------------------------------
@@ -226,6 +232,8 @@ data class User(
     val twoFactor: Boolean = false,
     val hasPin: Boolean = false,
     val disabled: Boolean = false,
+    /** May create and change automations (admins always; tablets never). Null on older hubs. */
+    val canAutomate: Boolean? = null,
 )
 
 @Serializable
@@ -313,7 +321,28 @@ data class CameraAlert(
     val thumbUrl: String? = null,
     val snapshotUrl: String? = null,
     val integration: String? = null,
-)
+    /** The flat shape of GET /api/alerts?entity= (when, what, where, its picture), on hubs that send it. */
+    val at: Double? = null,
+    val label: String? = null,
+    val zone: String? = null,
+    val snapshot: String? = null,
+    /** GET /api/alerts?category=: the event's words and its device. */
+    val body: String = "",
+    val entity: String? = null,
+    val kind: String? = null,
+) {
+    /** When it started (unix seconds). */
+    val time: Double? get() = start ?: at
+
+    /** What was seen: "Person", "Car" (else the alert's title). */
+    val what: String
+        get() = label?.ifBlank { null } ?: objects.firstOrNull()?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: title
+
+    /** Where in the picture ("Driveway"), when the camera has zones. */
+    val where: String? get() = zone?.ifBlank { null } ?: zones.firstOrNull()?.replace('_', ' ')?.replaceFirstChar { it.uppercase() }
+
+    val picture: String? get() = snapshotUrl ?: thumbUrl ?: snapshot
+}
 
 @Serializable
 data class PushButton(val id: String, val label: String = id, val icon: String = "", val sensitive: Boolean = false)

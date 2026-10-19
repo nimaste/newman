@@ -33,7 +33,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import ca.nimaste.newman.core.model.CameraClip
+import ca.nimaste.newman.core.model.string
 import ca.nimaste.newman.ui.camera.CameraScreen
 import ca.nimaste.newman.ui.home.HomeScreen
 import ca.nimaste.newman.ui.me.MeScreen
@@ -61,15 +61,16 @@ object Routes {
         "camera/${URLEncoder.encode(id, "UTF-8")}" + (alertId?.let { "?alert=${URLEncoder.encode(it, "UTF-8")}" } ?: "")
 }
 
-/** The openRequest for a tapped camera-alert notification: "alert:<clip id>\n<review id>". */
+/** The openRequest for a tapped alert notification: "alert:<clip id>\n<review id>\n<alert id>". */
 object OpenAlert {
     private const val PREFIX = "alert:"
-    fun request(clip: String?, reviewId: String?): String = PREFIX + clip.orEmpty() + "\n" + reviewId.orEmpty()
-    /** (clip, review id), or null when [request] isn't one. */
-    fun parse(request: String?): Pair<String?, String?>? {
+    fun request(clip: String?, reviewId: String?, alertId: String? = null): String =
+        PREFIX + clip.orEmpty() + "\n" + reviewId.orEmpty() + "\n" + alertId.orEmpty()
+    /** (clip, review id, alert id), or null when [request] isn't one. */
+    fun parse(request: String?): Triple<String?, String?, String?>? {
         if (request == null || !request.startsWith(PREFIX)) return null
-        val parts = request.removePrefix(PREFIX).split("\n", limit = 2)
-        return parts[0].ifEmpty { null } to parts.getOrNull(1)?.ifEmpty { null }
+        val parts = request.removePrefix(PREFIX).split("\n", limit = 3)
+        return Triple(parts[0].ifEmpty { null }, parts.getOrNull(1)?.ifEmpty { null }, parts.getOrNull(2)?.ifEmpty { null })
     }
 }
 
@@ -86,13 +87,30 @@ fun NewmanRoot(app: AppViewModel, openRequest: MutableStateFlow<String?>, connec
             nav.navigate(Routes.server(l))
         }
     }
-    // A tapped camera-alert notification: that alert's video on its camera, with the Alerts tab
-    // underneath (just the Alerts tab when the hub doesn't list the alert).
+    // A tapped alert notification (any age): a camera alert's video on its camera, with More › Alerts
+    // underneath (just Alerts for any other alert, or when the hub doesn't list it).
     val open by openRequest.collectAsState()
     LaunchedEffect(open, signedIn) {
-        val (clip, review) = OpenAlert.parse(open) ?: return@LaunchedEffect
+        val (clip, review, alertId) = OpenAlert.parse(open) ?: return@LaunchedEffect
         if (!signedIn) return@LaunchedEffect
-        val a = CameraClip.matchAlert(app.cameraAlerts(null, 60), clip, review)
+        if (alertId != null) {
+            // The run's activity entry: a camera clip plays on that camera's screen; anything else is
+            // More › Alerts, scrolled to it and highlighted.
+            val entry = app.runEntry(alertId)
+            val clipId = entry?.data?.string("clip")
+            val eid = entry?.entityId
+            nav.popBackStack(Routes.HOME, inclusive = false)
+            if (entry != null && clipId != null && eid != null) {
+                app.openClip.value = ca.nimaste.newman.core.model.CameraAlert("run:$alertId", entityId = eid, clip = clipId, title = entry.title,
+                    start = entry.ts, snapshotUrl = entry.data?.string("snapshotUrl"))
+                openRequest.value = "camera-clip"
+            } else {
+                app.openAlert.value = entry
+                openRequest.value = "alerts"
+            }
+            return@LaunchedEffect
+        }
+        val a = app.findAlert(null, clip, review)
         val eid = a?.entityId
         if (a != null && eid != null) {
             nav.popBackStack(Routes.HOME, inclusive = false)

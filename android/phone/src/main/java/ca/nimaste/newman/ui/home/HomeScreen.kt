@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,25 +12,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,440 +37,449 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import ca.nimaste.newman.core.hub.HubState
-import ca.nimaste.newman.core.live.LiveStatus
-import ca.nimaste.newman.core.model.Entity
-import ca.nimaste.newman.core.model.HubModel
-import ca.nimaste.newman.core.model.Page
-import ca.nimaste.newman.core.model.PhoneTabs
-import ca.nimaste.newman.core.model.Tile
-import ca.nimaste.newman.core.model.TileFlow
-import ca.nimaste.newman.core.model.number
-import ca.nimaste.newman.core.model.string
-import ca.nimaste.newman.core.model.strings
-import ca.nimaste.newman.ui.LocalApp
-import ca.nimaste.newman.ui.more.MoreTab
-import ca.nimaste.newman.ui.more.MoreView
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import ca.nimaste.newman.ui.common.BackPill
-import ca.nimaste.newman.ui.common.CappedFontScale
-import ca.nimaste.newman.core.model.TextScale
-import ca.nimaste.newman.ui.common.heading
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
-import ca.nimaste.newman.ui.common.Chip
-import ca.nimaste.newman.ui.common.GlassCard
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import ca.nimaste.newman.core.hub.HubState
+import ca.nimaste.newman.core.model.Entity
+import ca.nimaste.newman.core.model.HealthItem
+import ca.nimaste.newman.core.model.HomeCard
+import ca.nimaste.newman.core.model.HomeData
+import ca.nimaste.newman.core.model.HomeLogic
+import ca.nimaste.newman.core.model.HubModel
+import ca.nimaste.newman.ui.LocalApp
+import ca.nimaste.newman.ui.cameras.CamerasTab
+import ca.nimaste.newman.ui.common.CameraStill
+import ca.nimaste.newman.ui.common.CappedFontScale
+import ca.nimaste.newman.ui.common.MuteSheet
+import ca.nimaste.newman.ui.common.heading
+import ca.nimaste.newman.ui.common.spoken
+import ca.nimaste.newman.ui.common.tapAndHold
 import ca.nimaste.newman.ui.device.DeviceSheet
 import ca.nimaste.newman.ui.icons.NIcon
+import ca.nimaste.newman.ui.more.DevicesScreen
+import ca.nimaste.newman.ui.more.MoreTab
+import ca.nimaste.newman.ui.more.MoreView
 import ca.nimaste.newman.ui.people.PeopleScreen
-import ca.nimaste.newman.ui.today.TodayCard
-import ca.nimaste.newman.ui.today.todaySummary
-import ca.nimaste.newman.ui.theme.N
-import ca.nimaste.newman.ui.theme.NightBackground
-import ca.nimaste.newman.ui.theme.T
-import ca.nimaste.newman.ui.tiles.AlertsTile
-import ca.nimaste.newman.ui.tiles.AttentionTile
-import ca.nimaste.newman.ui.tiles.CalendarTile
-import ca.nimaste.newman.ui.tiles.CameraTile
-import ca.nimaste.newman.ui.tiles.CompactDial
-import ca.nimaste.newman.ui.tiles.DeviceCard
-import ca.nimaste.newman.ui.tiles.DeviceListTile
-import ca.nimaste.newman.ui.tiles.DialModel
-import ca.nimaste.newman.ui.tiles.FullDial
-import ca.nimaste.newman.ui.tiles.GreetingTileView
-import ca.nimaste.newman.ui.tiles.HorizontalDial
-import ca.nimaste.newman.ui.tiles.LocalTileNav
-import ca.nimaste.newman.ui.tiles.ModeTile
-import ca.nimaste.newman.ui.tiles.PeopleTileView
-import ca.nimaste.newman.ui.tiles.SoonTile
-import ca.nimaste.newman.ui.tiles.TileNav
-import ca.nimaste.newman.ui.tiles.ValuesTile
-import ca.nimaste.newman.ui.tiles.WeatherTile
-import ca.nimaste.newman.ui.tiles.WideDeviceCard
-import ca.nimaste.newman.ui.tiles.WideDialTile
-import ca.nimaste.newman.ui.tiles.weatherChip
+import ca.nimaste.newman.ui.rememberRunner
+import ca.nimaste.newman.ui.theme.H
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
-private const val MORE_TAB = "__more"
-private const val PEOPLE_TAB = "__people"
-
-/** openRequest "device:<id>": open that device's sheet (Device Controls). */
+/** openRequest "device:<id>": open that device's sheet (Device Controls, widgets, live statuses). */
 const val OPEN_DEVICE = "device:"
 
+/** The four tabs. */
+object Tabs {
+    const val HOME = "home"
+    const val CAMERAS = "cameras"
+    const val DEVICES = "devices"
+    const val MORE = "more"
+}
+
+/** What the Home tab shows: Home itself, or one of the screens its cards open. */
+object HomeView {
+    const val CLIMATE = "climate"
+    const val CLIMATE_ROOMS = "climate-rooms"
+    const val LIGHTS = "lights"
+    const val SECURITY = "security"
+    const val TODAY = "today"
+    const val PEOPLE = "people"
+    const val EDIT = "edit"
+
+    /** Where Back goes: Climate's rooms back to Climate, the rest back to Home. */
+    fun parent(view: String?): String? = if (view == CLIMATE_ROOMS) CLIMATE else null
+}
+
 /**
- * Up to five tabs. With a phone layout from the hub (PhoneGrid): its pages marked as tabs (at most
- * three), placed tile by tile on a 4-column grid, then People and More. On older hubs, the
- * dashboard flows instead (PhoneTabs, TileFlow): its first three pages (Overview, Security,
- * Lights), People and More; a Today page becomes the Today card at the top of the first tab.
- * Other pages (Climate) open from their thermostat tile or a link at the bottom of the first tab.
- * More holds Alerts (its count is on the More tab), every device, and the automations.
+ * The phone: Home · Cameras · Devices · More. Home's cards open Climate, Lights, Security, Today and
+ * People (and Cameras its tab); a device anywhere opens its sheet. More holds Alerts (its count is on
+ * the More tab), People, Automations, Edit Home and the account.
  */
 @Composable
 fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String?) -> Unit, onMe: () -> Unit,
                onPerson: (id: String, light: Boolean) -> Unit) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
+    val home by app.home.collectAsState()
     val seen by app.alertsSeen.collectAsState()
     val open by openRequest.collectAsState()
-    val plan = state.plan
-    val pages = plan.tabs + plan.more
-    var tab by rememberSaveable { mutableStateOf<String?>(null) }
-    var openPage by rememberSaveable { mutableStateOf<String?>(null) }
+    var tab by rememberSaveable { mutableStateOf(Tabs.HOME) }
+    var homeView by rememberSaveable { mutableStateOf<String?>(null) }
+    var cameraView by rememberSaveable { mutableStateOf<String?>(null) }
     var moreView by rememberSaveable { mutableStateOf<String?>(null) }
     var sheetFor by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(open) {
-        if (open == "alerts" || open == "people") {
-            tab = if (open == "alerts") MORE_TAB else PEOPLE_TAB
-            if (open == "alerts") moreView = MoreView.ALERTS
-            openPage = null
-            openRequest.value = null
-        } else if (open?.startsWith(OPEN_DEVICE) == true) {
-            // From Device Controls (long-press a control): that device's sheet.
-            sheetFor = open!!.removePrefix(OPEN_DEVICE).ifEmpty { null }
-            openRequest.value = null
+        val o = open ?: return@LaunchedEffect
+        when {
+            o == "alerts" -> { tab = Tabs.MORE; moreView = MoreView.ALERTS; openRequest.value = null }
+            o == "people" -> { tab = Tabs.HOME; homeView = HomeView.PEOPLE; openRequest.value = null }
+            o == "camera-clip" -> { tab = Tabs.CAMERAS; cameraView = app.openClip.value?.entityId; openRequest.value = null }
+            o.startsWith(OPEN_DEVICE) -> { sheetFor = o.removePrefix(OPEN_DEVICE).ifEmpty { null }; openRequest.value = null }
         }
     }
-    val current = tab?.takeIf { t -> t == MORE_TAB || t == PEOPLE_TAB || plan.tabs.any { it.id == t } } ?: plan.tabs.firstOrNull()?.id ?: MORE_TAB
-    val overlay = openPage?.let { id -> pages.firstOrNull { it.id == id } }
     val unseen = state.activity.count { it.ts > seen }
-    BackHandler(enabled = overlay != null) { openPage = null }
-    BackHandler(enabled = overlay == null && current == MORE_TAB && moreView != null) { moreView = MoreView.parent(moreView) }
-    // A People tile opens someone's map (in its own map look) or, from "+N more", the People tab.
-    val tileNav = TileNav(person = onPerson, peopleTab = {
-        tab = PEOPLE_TAB
-        openPage = null
-    })
+    BackHandler(enabled = tab == Tabs.HOME && homeView != null) { homeView = HomeView.parent(homeView) }
+    BackHandler(enabled = tab == Tabs.CAMERAS && cameraView != null) { cameraView = null }
+    BackHandler(enabled = tab == Tabs.MORE && moreView != null) { moreView = MoreView.parent(moreView) }
+    BackHandler(enabled = tab != Tabs.HOME && (tab != Tabs.CAMERAS || cameraView == null) && (tab != Tabs.MORE || moreView == null)) { tab = Tabs.HOME }
+    val onSheet: (String) -> Unit = { sheetFor = it }
 
-    CompositionLocalProvider(LocalTileNav provides tileNav) {
-    NightBackground(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(H.Page)) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) {
-                when {
-                    overlay != null && state.loaded ->
-                        PageView(overlay, first = false, state, plan, onCamera, onMe, onSheet = { sheetFor = it }, onOpenPage = { openPage = it },
-                            onBack = { openPage = null })
-                    current == MORE_TAB -> MoreTab(moreView, onView = { moreView = it }, unseen = unseen, onCamera = onCamera,
-                        onSheet = { sheetFor = it })
-                    current == PEOPLE_TAB -> PeopleScreen(onPerson = { onPerson(it, false) }, onMe = onMe)
-                    !state.loaded -> Loading(state)
-                    else -> {
-                        val page = plan.tabs.first { it.id == current }
-                        PageView(page, first = page.id == plan.tabs.firstOrNull()?.id, state, plan, onCamera, onMe, onSheet = { sheetFor = it },
-                            onOpenPage = { openPage = it })
+                when (tab) {
+                    Tabs.CAMERAS -> CamerasTab(home, cameraView, onOpen = { cameraView = it }, onFullScreen = onCamera)
+                    Tabs.DEVICES -> DevicesScreen(onBack = null, onSheet = onSheet)
+                    Tabs.MORE -> MoreTab(moreView, onView = { moreView = it }, unseen = unseen, onCamera = onCamera, onSheet = onSheet,
+                        onPerson = { onPerson(it, false) }, onMe = onMe, onEditHome = { tab = Tabs.HOME; homeView = HomeView.EDIT })
+                    else -> when (homeView) {
+                        HomeView.CLIMATE -> ClimateScreen(home, onBack = { homeView = null }, onEditRooms = { homeView = HomeView.CLIMATE_ROOMS }, onSheet = onSheet)
+                        HomeView.CLIMATE_ROOMS -> ClimateRoomsScreen(home, onDone = { homeView = HomeView.CLIMATE })
+                        HomeView.LIGHTS -> LightsScreen(onBack = { homeView = null }, onSheet = onSheet)
+                        HomeView.SECURITY -> SecurityScreen(home, onBack = { homeView = null }, onSheet = onSheet,
+                            onAlerts = { tab = Tabs.MORE; moreView = MoreView.ALERTS })
+                        HomeView.TODAY -> TodayScreen(onBack = { homeView = null }, onSheet = onSheet)
+                        HomeView.PEOPLE -> PeopleScreen(onPerson = { onPerson(it, false) }, onMe = onMe, onBack = { homeView = null }, back = "Home")
+                        HomeView.EDIT -> EditHomeScreen(home, onDone = { homeView = null })
+                        else -> HomeMain(home, state, onView = { homeView = it }, onTab = { tab = it; cameraView = null }, onMe = onMe, onSheet = onSheet)
                     }
                 }
             }
-            TabBar(plan.tabs, current, unseen) {
-                // More again (or More from elsewhere): its list, not the screen last open in it.
-                if (it == MORE_TAB) moreView = null
+            TabBar(tab, unseen) {
+                // A tab again (or from elsewhere): its first screen, not the one last open in it.
+                when (it) {
+                    Tabs.HOME -> homeView = null
+                    Tabs.CAMERAS -> cameraView = null
+                    Tabs.MORE -> moreView = null
+                }
                 tab = it
-                openPage = null
             }
         }
-    }
     }
     sheetFor?.let { id -> DeviceSheet(id, onDismiss = { sheetFor = null }, onCamera = { sheetFor = null; onCamera(it, null) }) }
 }
 
+/** The floating tab bar: Home · Cameras · Devices · More (More with a badge for unseen alerts). */
 @Composable
-private fun Loading(state: HubState) {
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        if (state.error == null) CircularProgressIndicator(color = N.Text)
-        else {
-            Text("Can't load the house", style = T.title)
-            Text(state.error!!, style = T.body.copy(color = N.Muted))
-            Text("Retrying when the connection comes back…", style = T.tiny, modifier = Modifier.padding(top = 8.dp))
-        }
-    }
-}
-
-@Composable
-private fun PageView(page: Page, first: Boolean, state: HubState, plan: PhoneTabs.Plan, onCamera: (String, String?) -> Unit, onMe: () -> Unit,
-                     onSheet: (String) -> Unit, onOpenPage: (String) -> Unit, onBack: (() -> Unit)? = null) {
-    if (plan.explicit) GridPageView(page, first, state, plan, onCamera, onMe, onSheet, onOpenPage, onBack)
-    else FlowPageView(page, first, state, plan, onCamera, onMe, onSheet, onOpenPage, onBack)
-}
-
-/** A dashboard page flowed onto the phone (hubs without phone layouts). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FlowPageView(page: Page, first: Boolean, state: HubState, plan: PhoneTabs.Plan, onCamera: (String, String?) -> Unit, onMe: () -> Unit,
-                         onSheet: (String) -> Unit, onOpenPage: (String) -> Unit, onBack: (() -> Unit)? = null) {
-    val app = LocalApp.current
-    val scope = rememberCoroutineScope()
-    var refreshing by remember { mutableStateOf(false) }
-    val entities = state.named
-    val cells = remember(page) { TileFlow.cells(page) }
-    var dialSheet by remember { mutableStateOf<Tile?>(null) }
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = { scope.launch { refreshing = true; app.hub.refresh(); refreshing = false } },
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(TileFlow.COLUMNS),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxSize().statusBarsPadding(),
-        ) {
-            item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
-                if (first) OverviewHeader(state, onMe, page) else PageHeader(page, state, onBack)
-            }
-            if (first && PhoneTabs.showsTodayCard(plan, page)) {
-                item(key = "today", span = { GridItemSpan(maxLineSpan) }) {
-                    TodayCard(showWhenEmpty = PhoneTabs.todayWhenEmpty(plan), onOpenDevice = onSheet)
-                }
-            }
-            if (cells.isEmpty()) {
-                item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
-                    Text("Nothing on this page yet - add tiles in the Newman dashboard.", style = T.body.copy(color = N.Muted), modifier = Modifier.padding(8.dp))
-                }
-            }
-            items(cells, key = { it.key }, span = { GridItemSpan(it.span) }) { cell ->
-                Cell(cell, state, entities, onCamera, onSheet, onDial = { t ->
-                    // A thermostat tile opens its own page (Climate) when that page has no tab.
-                    val target = PhoneTabs.pageForDial(plan, t.config.string("entity"))
-                    if (target != null && target.id != page.id) onOpenPage(target.id) else dialSheet = t
-                })
-            }
-            if (first) {
-                items(plan.more, key = { "more:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { p ->
-                    MoreLink(p) { onOpenPage(p.id) }
-                }
-            }
-        }
-    }
-    dialSheet?.let { t -> DialSheet(t, state, onSheet) { dialSheet = null } }
-}
-
-/** A page without a tab, at the bottom of the first tab. */
-@Composable
-internal fun MoreLink(p: Page, onClick: () -> Unit) {
-    GlassCard(Modifier.fillMaxWidth(), radius = 18.dp, padding = PaddingValues(horizontal = 14.dp, vertical = 12.dp), onClick = onClick) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            NIcon(p.icon, size = 22.dp)
-            Text(p.name, style = T.label, modifier = Modifier.weight(1f))
-            NIcon("chevronRight", size = 20.dp, color = N.TabOff)
-        }
-    }
-}
-
-/** A thermostat's full dial in a sheet (a compact dial tile whose page has a tab, or none). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun DialSheet(t: Tile, state: HubState, onSheet: (String) -> Unit, onDismiss: () -> Unit) {
-    val e = state.named[t.config.string("entity")]
-    val m = DialModel.of(t, e, state.kind(e))
-    if (m == null) {
-        LaunchedEffect(t.id) { onDismiss() }
-        return
-    }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFF141A33), contentColor = N.Text) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).navigationBarsPadding()) {
-            FullDial(m)
-            Box(Modifier.padding(top = 14.dp)) {
-                ca.nimaste.newman.ui.common.GlassButton("More about ${m.e.name}", Modifier.fillMaxWidth(), height = 46.dp) {
-                    onDismiss()
-                    onSheet(m.e.id)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Cell(cell: TileFlow.Cell, state: HubState, entities: Map<String, Entity>, onCamera: (String, String?) -> Unit,
-                 onSheet: (String) -> Unit, onDial: (Tile) -> Unit) {
-    when (val c = cell.content) {
-        is TileFlow.Content.Header -> Text(c.title, style = T.label.copy(fontSize = 15.sp), modifier = Modifier.padding(top = 6.dp, start = 4.dp).heading())
-        is TileFlow.Content.DeviceCard -> {
-            val e = entities[c.entityId]
-            if (e == null) GlassCard(Modifier.fillMaxWidth().height(92.dp)) { Text("Missing device", style = T.tiny) }
-            else if (c.wide) WideDeviceCard(e, state.kind(e), onSheet = { onSheet(e.id) }, textScale = c.tile.textScale)
-            else CappedFontScale(TextScale.CARD_MAX) { DeviceCard(e, state.kind(e), onSheet = { onSheet(e.id) }, textScale = c.tile.textScale) } // a fixed 92dp card
-        }
-        is TileFlow.Content.WholeTile ->
-            if (c.compact) CappedFontScale(TextScale.FITTED_MAX) { TileBody(c.tile, c.compact, state, entities, onCamera, onSheet, onDial) } // half-width, fixed height
-            else TileBody(c.tile, c.compact, state, entities, onCamera, onSheet, onDial)
-    }
-}
-
-/**
- * One whole tile by its type (both the flowed and the placed grid). [fullWidth]: a placed tile
- * across all 4 columns (a short one still gets its wide look: the thermostat side by side).
- */
-@Composable
-internal fun TileBody(t: Tile, compact: Boolean, state: HubState, entities: Map<String, Entity>, onCamera: (String, String?) -> Unit,
-                      onSheet: (String) -> Unit, onDial: (Tile) -> Unit, fullWidth: Boolean = false) {
-    val ts = t.textScale
-    when (t.type) {
-        "camera" -> CameraTile(t, entities, { state.kind(it) }) { onCamera(it, null) }
-        "alerts" -> AlertsTile(t, entities, onCamera)
-        "dial" -> {
-            val e = entities[t.config.string("entity")]
-            val m = DialModel.of(t, e, state.kind(e))
-            when {
-                m == null -> GlassCard(Modifier.fillMaxWidth()) { Text("This dial's device is missing.", style = T.tiny) }
-                // Full width but short (the Overview's thermostat): dial left, controls right.
-                compact && fullWidth -> HorizontalDial(m, onOpen = { onDial(t) }, textScale = ts)
-                compact -> CompactDial(m, onOpen = { onDial(t) }, textScale = ts)
-                else -> WideDialTile(m)
-            }
-        }
-        "devices" -> DeviceListTile(t, entities, { state.kind(it) }, { onSheet(it.id) }, ts)
-        "mode" -> {
-            val e = entities[t.config.string("entity")]
-            ModeTile(e, state.kind(e), onSheet = { e?.let { onSheet(it.id) } })
-        }
-        "values" -> ValuesTile(t, entities, ts)
-        "attention" -> AttentionTile(entities, state.meta)
-        "weather" -> WeatherTile(t, entities, state.meta, compact, ts)
-        "calendar" -> CalendarTile(t, entities, ts)
-        "today", "todo" -> TodayCard(showWhenEmpty = true, onOpenDevice = onSheet)
-        "people" -> PeopleTileView(t)
-        "greeting" -> GreetingTileView()
-        else -> SoonTile(t)
-    }
-}
-
-/**
- * First page: the date, a greeting, the account button and the house's chips (wrapping onto more
- * lines rather than running off the screen; no weather chip when [page] shows the weather itself).
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun OverviewHeader(state: HubState, onMe: () -> Unit, page: Page? = null) {
-    val app = LocalApp.current
-    val live by app.liveStatus.collectAsState()
-    val name = state.auth?.user?.name ?: app.store.userName ?: ""
-    val hour = LocalTime.now().hour
-    val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
-    Column(Modifier.padding(top = 14.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d", Locale.getDefault())), style = T.small.copy(color = N.Muted))
-                Text(if (name.isNotBlank()) "$greeting, ${name.substringBefore(' ')}" else greeting, style = T.title.copy(fontSize = 26.sp),
-                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.heading())
-                todaySummary()?.let { Text(it, style = T.small.copy(color = N.Soft), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            }
-            Avatar(name, onMe)
-        }
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (live != LiveStatus.OPEN && state.loaded) Chip("Reconnecting…", dot = N.Amber)
-            HubModel.securitySummary(state.named.values, state.meta)?.let { (ok, text) ->
-                Chip(text, icon = if (ok) "shield" else "alert", tone = if (ok) N.Teal else N.Coral)
-            }
-            state.named.values.firstOrNull { HubModel.isMode(state.kind(it)) }?.let { m ->
-                Chip("${m.name}: ${(HubModel.stateLabel(m, state.kind(m)) ?: "").lowercase()}")
-            }
-            if (page?.tiles?.none { it.type == "weather" } != false) weatherChip(state.entities.values, state.meta)?.let { Chip(it) }
-            val shownPages = if (state.plan.explicit) state.plan.tabs + state.plan.more else state.dashboard?.pages
-            val dashIds = shownPages?.flatMap { p -> p.tiles.flatMap { it.config.strings("entities") } }?.toSet() ?: emptySet()
-            val on = HubModel.onCount(state.entities.values.filter { it.id in dashIds }, state.meta)
-            if (on > 0) Chip(if (on == 1) "1 on" else "$on on")
-            WhereChip(state)
-            val sick = state.entities.values.count { !it.health.ok }
-            if (sick > 0) Chip(if (sick == 1) "1 device needs attention" else "$sick devices need attention", icon = "alert", tone = N.Coral)
-        }
-    }
-}
-
-@Composable
-private fun WhereChip(state: HubState) {
-    val a = state.auth ?: return
-    if (a.where == "home") Chip("At home", dot = N.Teal)
-    else Chip(if (a.certificate) "Away · secure link" else "Away", dot = N.Blue)
-}
-
-/** Other pages: the page's name and a summary of its devices. */
-@Composable
-internal fun PageHeader(page: Page, state: HubState, onBack: (() -> Unit)? = null) {
-    val ids = page.tiles.flatMap { it.config.strings("entities") + listOfNotNull(it.config.string("entity")) }.toSet()
-    val list = state.named.values.filter { it.id in ids }
-    val security = HubModel.securitySummary(list, state.meta)
-    val on = HubModel.onCount(list, state.meta)
-    Column {
-        if (onBack != null) Box(Modifier.padding(top = 10.dp)) { BackPill(onClick = onBack) }
-        Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(page.name, style = T.display, modifier = Modifier.weight(1f).heading(), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            when {
-                security != null -> Chip(security.second, tone = if (security.first) N.Teal else N.Coral)
-                on > 0 -> Chip(if (on == 1) "1 on" else "$on on")
-                list.isNotEmpty() && list.any { state.kind(it)?.activeState != null && state.kind(it)?.secureState == null } -> Chip("All off")
-            }
-        }
-    }
-}
-
-@Composable
-fun Avatar(name: String, onClick: () -> Unit) {
-    Box(
-        Modifier.minimumInteractiveComponentSize().size(44.dp).background(Color(0x1AFFFFFF), CircleShape).border(1.dp, N.BorderHi, CircleShape)
-            .clickable(role = Role.Button, onClick = onClick).clearAndSetSemantics { contentDescription = "Your account and settings"; role = Role.Button },
-        contentAlignment = Alignment.Center,
-    ) {
-        if (name.isNotBlank()) Text(name.take(1).uppercase(), style = T.label.copy(fontWeight = FontWeight.ExtraBold))
-        else NIcon("user", size = 22.dp)
-    }
-}
-
-/** The tab bar: each page's icon and name, then People, then More with a badge for unseen activity (Alerts is in More). */
-@Composable
-private fun TabBar(pages: List<Page>, current: String, unseen: Int, onPick: (String) -> Unit) {
-    val tabs = pages.map { Triple(it.id, it.icon, it.name) } + Triple(PEOPLE_TAB, "people", "People") + Triple(MORE_TAB, "more", "More")
-    val scroll = tabs.size > 5
-    CappedFontScale { // a fixed 64dp bar
-    Box(Modifier.fillMaxWidth().background(N.Bar).navigationBarsPadding()) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
+private fun TabBar(current: String, unseen: Int, onPick: (String) -> Unit) {
+    val tabs = listOf(Triple(Tabs.HOME, "home", "Home"), Triple(Tabs.CAMERAS, "camera", "Cameras"),
+        Triple(Tabs.DEVICES, "grid", "Devices"), Triple(Tabs.MORE, "more", "More"))
+    CappedFontScale {
         Row(
-            Modifier.fillMaxWidth().height(64.dp).then(if (scroll) Modifier.horizontalScroll(rememberScrollState()) else Modifier).padding(horizontal = 8.dp),
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 14.dp)
+                .clip(RoundedCornerShape(30.dp)).background(H.Raised).border(1.dp, H.RaisedLine, RoundedCornerShape(30.dp)).padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             tabs.forEach { (id, icon, name) ->
                 val on = id == current
                 Box(
-                    (if (scroll) Modifier.widthIn(min = 76.dp) else Modifier.weight(1f)).height(56.dp)
+                    Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(24.dp)).background(if (on) H.Selected else Color.Transparent)
                         .selectable(selected = on, role = Role.Tab) { onPick(id) }
                         .clearAndSetSemantics {
-                            contentDescription = if (id == MORE_TAB && unseen > 0) "$name, $unseen new alerts" else name
+                            contentDescription = if (id == Tabs.MORE && unseen > 0) "$name, $unseen new alerts" else name
                             selected = on
                             role = Role.Tab
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        NIcon(icon, size = 24.dp, color = if (on) N.Text else N.TabOff, stroke = if (on) 2.2f else 2f)
-                        Text(name, style = T.tiny.copy(fontSize = 11.sp, color = if (on) N.Text else N.TabOff,
-                            fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.padding(vertical = 6.dp)) {
+                        NIcon(icon, size = 22.dp, color = if (on) H.Text else H.Sub)
+                        Text(name, style = HT.small.copy(fontSize = 11.sp, color = if (on) H.Text else H.Sub,
+                            fontWeight = if (on) FontWeight.ExtraBold else FontWeight.Bold), maxLines = 1)
                     }
-                    if (id == MORE_TAB && unseen > 0) { // the Alerts screen marks them seen
+                    if (id == Tabs.MORE && unseen > 0) {
                         Box(
-                            Modifier.align(Alignment.TopCenter).padding(start = 30.dp, top = 2.dp).height(18.dp).widthIn(min = 18.dp)
-                                .background(N.Red, CircleShape).padding(horizontal = 5.dp),
+                            Modifier.align(Alignment.TopCenter).padding(start = 34.dp, top = 2.dp).height(18.dp).widthIn(min = 18.dp)
+                                .background(H.Badge, CircleShape).padding(horizontal = 5.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text(if (unseen > 99) "99+" else unseen.toString(), style = T.tiny.copy(fontSize = 11.sp, color = N.Text)) }
+                        ) { Text(if (unseen > 99) "99+" else unseen.toString(), style = HT.small.copy(fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)) }
                     }
                 }
             }
         }
     }
+}
+
+// -- Home ------------------------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeMain(home: HomeData?, state: HubState, onView: (String) -> Unit, onTab: (String) -> Unit, onMe: () -> Unit, onSheet: (String) -> Unit) {
+    val app = LocalApp.current
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    var muting by remember { mutableStateOf<Pair<Entity, HealthItem>?>(null) }
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = { scope.launch { refreshing = true; app.reloadHome(); app.hub.refresh(); refreshing = false } },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        HScreen("Home", trailing = {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                RoundIcon("pencil", "Edit Home") { onView(HomeView.EDIT) }
+                val name = state.auth?.user?.name ?: app.store.userName ?: ""
+                Box(
+                    Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).background(H.Raised).border(1.dp, H.RaisedLine, CircleShape)
+                        .clickable(role = Role.Button, onClick = onMe).clearAndSetSemantics { contentDescription = "Your account"; role = Role.Button },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (name.isNotBlank()) Text(name.take(1).uppercase(), style = HT.name)
+                    else NIcon("user", size = 20.dp, color = H.Text)
+                }
+            }
+        }) {
+            if (home == null) {
+                item(key = "loading") { Loading(state) }
+                return@HScreen
+            }
+            item(key = "status") { StatusArea(home, state, onSheet, onMute = { e, item -> muting = e to item }) }
+            val cards = home.cards.filter { it.on }
+            items(cards.chunked(2).size, key = { "cards$it" }) { r ->
+                val pair = cards.chunked(2)[r]
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    pair.forEach { c ->
+                        Box(Modifier.weight(1f)) {
+                            HomeCardView(c, state) {
+                                when (c.id) {
+                                    "cameras" -> onTab(Tabs.CAMERAS)
+                                    "climate" -> onView(HomeView.CLIMATE)
+                                    "lights" -> onView(HomeView.LIGHTS)
+                                    "security" -> onView(HomeView.SECURITY)
+                                    "today" -> onView(HomeView.TODAY)
+                                    "people" -> onView(HomeView.PEOPLE)
+                                    else -> onTab(Tabs.DEVICES)
+                                }
+                            }
+                        }
+                    }
+                    if (pair.size == 1) Box(Modifier.weight(1f))
+                }
+            }
+            val favs = home.favourites.mapNotNull { state.named[it] }.take(HomeLogic.MAX_FAVOURITES)
+            if (favs.isNotEmpty()) item(key = "favs") { Favourites(favs, state, onSheet) }
+        }
+    }
+    muting?.let { (e, item) -> MuteSheet(e, item) { muting = null } }
+}
+
+@Composable
+private fun RoundIcon(icon: String, label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).background(H.Raised).border(1.dp, H.RaisedLine, CircleShape)
+            .clickable(role = Role.Button, onClick = onClick).clearAndSetSemantics { contentDescription = label; role = Role.Button },
+        contentAlignment = Alignment.Center,
+    ) { NIcon(icon, size = 18.dp, color = H.Soft, stroke = 2.2f) }
+}
+
+@Composable
+private fun Loading(state: HubState) {
+    Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.error == null) CircularProgressIndicator(color = H.Text)
+        else {
+            Text("Can't load the house", style = HT.name.copy(fontSize = 20.sp))
+            Text(state.error!!, style = HT.line)
+            Text("Retrying when the connection comes back…", style = HT.small)
+        }
+    }
+}
+
+/**
+ * The top of Home: each danger (red, with its fix: "Close") or "All good at home" with the hub's
+ * summary; then the devices' warnings (amber, each with Mute).
+ */
+@Composable
+private fun StatusArea(home: HomeData, state: HubState, onSheet: (String) -> Unit, onMute: (Entity, HealthItem) -> Unit) {
+    val run = rememberRunner()
+    val app = LocalApp.current
+    val busy by app.busy.collectAsState()
+    val s = home.status
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // ok: the green "All good at home"; warn (no danger): a neutral "Needs a look"; danger: only its banners.
+        if (s.danger.isEmpty()) {
+            val ok = s.level == "ok"
+            val title = if (ok) "All good at home" else "Needs a look"
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (ok) H.GoodBg else H.Card)
+                    .border(1.dp, if (ok) H.GoodLine else H.CardLine, RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp)
+                    .spoken(listOf(title, s.summary).filter { it.isNotBlank() }.joinToString(", ")),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(Modifier.size(10.dp).background(if (ok) H.Good else H.Light, CircleShape))
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = HT.name.copy(color = if (ok) H.GoodHead else H.Text))
+                    if (s.summary.isNotBlank()) Text(s.summary, style = HT.small.copy(color = if (ok) H.GoodSub else H.Sub, fontWeight = FontWeight.SemiBold))
+                }
+            }
+        }
+        s.danger.forEach { d ->
+            val e = d.entity?.let { state.named[it] }
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(H.DangerBg).border(1.dp, H.DangerLine, RoundedCornerShape(18.dp))
+                    .then(if (e != null) Modifier.clickable(role = Role.Button, onClickLabel = "show its controls") { onSheet(e.id) } else Modifier)
+                    .padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(Modifier.size(34.dp).background(H.DangerBubble, CircleShape), contentAlignment = Alignment.Center) {
+                    NIcon(e?.let { HubModel.kindIcon(state.kind(it)) } ?: "alert", size = 18.dp, color = H.DangerIcon, stroke = 2.2f)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(d.title, style = HT.name.copy(color = H.DangerHead))
+                    if (d.detail.isNotBlank()) Text(d.detail, style = HT.small.copy(color = H.DangerSub, fontWeight = FontWeight.SemiBold))
+                }
+                val a = d.action
+                val cmd = if (e != null && a != null) state.kind(e)?.command(a.command) else null
+                if (e != null && a != null && cmd != null) {
+                    RaisedButton(a.label, background = H.DangerButton, border = H.DangerButton, color = H.DangerButtonText,
+                        enabled = e.id !in busy, onClickLabel = "${a.label} ${e.name}") { run.run(e, cmd) }
+                }
+            }
+        }
+        s.warnings.forEach { w ->
+            val e = state.named[w.entity]
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(H.WarnBg).border(1.dp, H.WarnLine, RoundedCornerShape(14.dp))
+                    .then(if (e != null) Modifier.clickable(role = Role.Button, onClickLabel = "show its controls") { onSheet(e.id) } else Modifier)
+                    .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                NIcon("alert", size = 16.dp, color = H.WarnText, stroke = 2.2f)
+                Text(w.text, style = HT.line.copy(color = H.WarnText), modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+                if (e != null) {
+                    Text("Mute", style = HT.small.copy(color = H.WarnSub),
+                        modifier = Modifier.minimumInteractiveComponentSize().clickable(role = Role.Button, onClickLabel = "mute ${w.text}") {
+                            onMute(e, e.health.items.firstOrNull { it.id == w.issue } ?: HealthItem(w.issue, w.text))
+                        }.padding(horizontal = 8.dp))
+                }
+            }
+        }
+    }
+}
+
+/** One Home card: its name and icon, the hub's value and detail (the cameras card: its little picture). */
+@Composable
+private fun HomeCardView(c: HomeCard, state: HubState, onClick: () -> Unit) {
+    val danger = c.tone == "danger"
+    val detailColor = when (c.tone) {
+        "danger" -> H.HotText
+        "good" -> H.GoodText
+        "warm" -> if (c.id == "lights") H.LightText else H.WarmText
+        else -> H.Sub
+    }
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        Modifier.fillMaxWidth().height(118.dp).clip(shape).background(if (danger) H.Hot else H.Card).border(1.dp, if (danger) H.HotLine else H.CardLine, shape)
+            .clickable(role = Role.Button, onClick = onClick).spoken(listOf(c.title, c.value, c.detail).filter { it.isNotBlank() }.joinToString(", "))
+            .padding(if (c.id == "cameras") 10.dp else 14.dp),
+        verticalArrangement = if (c.id == "cameras") Arrangement.spacedBy(8.dp) else Arrangement.SpaceBetween,
+    ) {
+        if (c.id == "cameras") {
+            val cam = c.camera?.let { state.named[it] }
+            Box(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(12.dp)).background(H.Picture)) {
+                if (cam != null) CameraStill(cam, Modifier.fillMaxSize(), heightPx = 240)
+                Row(Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color(0x990A1024), RoundedCornerShape(6.dp)).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.size(6.dp).background(H.LiveDot, CircleShape))
+                    Text("LIVE", style = HT.small.copy(fontSize = 10.sp, color = H.Text, fontWeight = FontWeight.ExtraBold))
+                }
+                if (cam != null) Text(cam.name, style = HT.small.copy(fontSize = 11.sp, color = H.Soft, fontWeight = FontWeight.ExtraBold),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 4.dp))
+            }
+            Column(Modifier.padding(horizontal = 2.dp)) {
+                Text(c.title, style = HT.name.copy(fontSize = 14.sp), maxLines = 1)
+                Text(listOf(c.value, c.detail).filter { it.isNotBlank() }.joinToString(" · "), style = HT.small.copy(color = detailColor),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            return@Column
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(c.title, style = HT.name.copy(fontSize = 14.sp), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val (icon, tint) = cardIcon(c.id)
+            NIcon(icon, size = 20.dp, color = if (danger) H.HotText else tint, stroke = 2.2f)
+        }
+        if (c.id == "people") {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.size(34.dp).clip(CircleShape).background(H.PeopleBg).border(2.dp, if (c.tone == "good") H.Good else H.RaisedLine, CircleShape),
+                    contentAlignment = Alignment.Center) { Text(c.value.take(1).uppercase(), style = HT.name.copy(fontSize = 14.sp)) }
+                Column {
+                    Text(c.value, style = HT.name.copy(fontSize = 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(c.detail, style = HT.small.copy(color = detailColor), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        } else {
+            Column {
+                val size = HomeLogic.valueSize(c.value).sp
+                Text(c.value, style = HT.name.copy(fontSize = size, letterSpacing = (-0.5).sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(c.detail, style = HT.small.copy(color = detailColor), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** Each card's icon and colour - the one table (the cards are the hub's fixed list; the cameras card shows its picture). */
+internal fun cardIcon(id: String): Pair<String, Color> = when (id) {
+    "cameras" -> "camera" to H.Info
+    "climate" -> "thermometer" to H.Warm
+    "lights" -> "bulb" to H.Light
+    "security" -> "shield" to H.Good
+    "today" -> "calendar" to H.Info
+    "people" -> "user" to H.People
+    "cleaning" -> "vacuum" to H.Info
+    "appliances" -> "power" to H.Info
+    else -> "dot" to H.Sub
+}
+
+/** Up to four favourites: tap does what a tap does (on/off, lock…), hold shows everything. */
+@Composable
+private fun Favourites(favs: List<Entity>, state: HubState, onSheet: (String) -> Unit) {
+    val run = rememberRunner()
+    val app = LocalApp.current
+    val busy by app.busy.collectAsState()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("FAVOURITES", style = HT.caps, modifier = Modifier.padding(horizontal = 4.dp).heading())
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            favs.forEach { e ->
+                val k = state.kind(e)
+                val lit = HubModel.isActive(e, k) && k?.secureState == null
+                val open = HubModel.notSecure(e, k)
+                val (bg, line, fg) = when {
+                    lit -> Triple(H.LightBg, H.LightLine, H.LightText)
+                    open -> Triple(H.Hot, H.HotLine, H.HotText)
+                    k?.secureState != null -> Triple(H.Raised, H.TileLine, H.GoodText)
+                    else -> Triple(H.Raised, H.TileLine, H.Sub)
+                }
+                val tap = HubModel.tapAction(e, k)
+                val shape = RoundedCornerShape(18.dp)
+                Column(
+                    Modifier.weight(1f).height(86.dp).clip(shape).background(bg, shape).border(1.dp, line, shape)
+                        .tapAndHold(onTap = { if (tap != null && e.id !in busy) run.run(e, tap) else onSheet(e.id) }, onHold = { onSheet(e.id) },
+                            tapLabel = tap?.label?.lowercase() ?: "show its controls", holdLabel = "show all controls")
+                        .spoken(listOf(e.name, HubModel.entityStateText(e, k)).joinToString(", "))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    NIcon(HubModel.kindIcon(k), size = 18.dp, color = if (lit) H.Light else fg, stroke = 2.2f)
+                    Column {
+                        Text(e.name, style = HT.small.copy(fontSize = 11.sp, color = H.Text, fontWeight = FontWeight.ExtraBold), maxLines = 2,
+                            overflow = TextOverflow.Ellipsis, lineHeight = 13.sp)
+                        Text(HubModel.entityStateText(e, k), style = HT.small.copy(fontSize = 11.sp, color = fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            repeat(HomeLogic.MAX_FAVOURITES - favs.size) { Box(Modifier.weight(1f)) }
+        }
     }
 }

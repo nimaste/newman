@@ -71,7 +71,11 @@ private const val HOME = "__home"
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = null) {
+/**
+ * [highlight]: a tapped notification's entry - the list starts on Everything, scrolled to it and
+ * outlined (added when it's older than the activity loaded); [onLeave] when the screen goes.
+ */
+fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = null, highlight: ActivityEntry? = null, onLeave: () -> Unit = {}) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -79,6 +83,9 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = nu
     var cameraAlerts by remember { mutableStateOf<List<CameraAlert>?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var reloadCams by remember { mutableStateOf(0) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose(onLeave) }
+    LaunchedEffect(highlight?.id) { if (highlight != null) filter = ALL }
 
     LaunchedEffect(state.activity.firstOrNull()?.ts) { state.activity.firstOrNull()?.let { app.markAlertsSeen(it.ts) } }
     LaunchedEffect(reloadCams) { cameraAlerts = app.cameraAlerts(null, 50) }
@@ -89,11 +96,28 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = nu
     val catOf = { a: ActivityEntry -> a.entityId?.let { state.entities[it]?.category } ?: HOME }
     val cats = state.activity.map(catOf).distinct()
     val filters = buildList {
-        add(ALL to "Everything")
+        add(ALL to "All")
         if (!cameraAlerts.isNullOrEmpty()) add(CAMERAS to "Cameras")
         state.meta?.categories?.filter { it.id in cats && it.id != "cameras" }?.forEach { add(it.id to it.name) }
         if (HOME in cats) add(HOME to "Home")
     }
+
+    // The activity shown (with a tapped notification's entry when it's older than what's loaded), and where that entry is.
+    val shownActivity = (if (highlight != null && state.activity.none { it.id == highlight.id }) (state.activity + highlight).sortedByDescending { it.ts }
+        else state.activity).filter { filter == ALL || catOf(it) == filter }
+    val target = if (filter == CAMERAS || highlight == null) -1 else {
+        var index = 0
+        var last: String? = null
+        var found = -1
+        for (a in shownActivity) {
+            val day = dayHeading(a.ts)
+            if (day != last) { last = day; index++ }
+            if (a.id == highlight.id) { found = index; break }
+            index++
+        }
+        found
+    }
+    LaunchedEffect(highlight?.id, target >= 0) { if (target >= 0) listState.scrollToItem(target) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         // Opened from More: a way back.
@@ -108,7 +132,7 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = nu
             onRefresh = { scope.launch { refreshing = true; app.hub.reloadActivity(); reloadCams++; refreshing = false } },
             modifier = Modifier.weight(1f),
         ) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (filter == CAMERAS) {
                     val list = cameraAlerts ?: emptyList()
@@ -123,7 +147,7 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = nu
                         item(key = "c:${a.id}") { AlertRow(a, showCamera = true) { a.entityId?.let { onCamera(it, a.id) } } }
                     }
                 } else {
-                    val list = state.activity.filter { filter == ALL || catOf(it) == filter }
+                    val list = shownActivity
                     if (list.isEmpty()) item { Empty(if (state.loaded) "Nothing here yet." else "Loading…") }
                     var last: String? = null
                     list.forEach { a ->
@@ -132,7 +156,7 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = nu
                             last = day
                             item(key = "h:$day") { Heading(day) }
                         }
-                        item(key = "a:${a.id}:${a.ts}") { ActivityCard(a, onCamera) }
+                        item(key = "a:${a.id}:${a.ts}") { ActivityCard(a, onCamera, highlighted = a.id == highlight?.id) }
                     }
                 }
             }
@@ -152,7 +176,7 @@ private fun Empty(text: String) {
 
 /** An icon for an activity entry by what it is about: its device's kind, else the entry's own kind. */
 @Composable
-private fun ActivityCard(a: ActivityEntry, onCamera: (String, String?) -> Unit) {
+private fun ActivityCard(a: ActivityEntry, onCamera: (String, String?) -> Unit, highlighted: Boolean = false) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
     val e = a.entityId?.let { state.entities[it] }
@@ -174,7 +198,8 @@ private fun ActivityCard(a: ActivityEntry, onCamera: (String, String?) -> Unit) 
     }
     val shape = RoundedCornerShape(18.dp)
     Row(
-        Modifier.fillMaxWidth().clip(shape).background(N.Glass, shape).border(1.dp, N.Border, shape)
+        Modifier.fillMaxWidth().clip(shape).background(if (highlighted) N.GlassHi else N.Glass, shape)
+            .border(if (highlighted) 2.dp else 1.dp, if (highlighted) ca.nimaste.newman.ui.theme.H.Accent else N.Border, shape)
             .then(if (thumb != null && a.entityId != null) Modifier.clickable(onClickLabel = "play") { onCamera(a.entityId!!, a.data?.string("reviewId")) }
                 else Modifier.semantics(mergeDescendants = true) {})
             .padding(12.dp),

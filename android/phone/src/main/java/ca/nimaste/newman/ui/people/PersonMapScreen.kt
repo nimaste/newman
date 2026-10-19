@@ -253,31 +253,98 @@ private class MapLayers(private val map: MapView, private val light: Boolean) {
         last = at
         map.invalidate()
     }
+}
 
-    private fun dot(ctx: Context, initial: String, colour: Color, photo: Bitmap?): Bitmap {
-        val d = ctx.resources.displayMetrics.density
-        val size = (44 * d).toInt()
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val cv = Canvas(bmp)
-        val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        p.color = 0xFFFFFFFF.toInt()
-        cv.drawCircle(size / 2f, size / 2f, size / 2f, p)
-        p.color = colour.toArgb()
-        cv.drawCircle(size / 2f, size / 2f, size / 2f - 3 * d, p)
-        p.color = N.Night.toArgb()
-        p.textSize = 18 * d
-        p.typeface = Typeface.DEFAULT_BOLD
-        p.textAlign = Paint.Align.CENTER
-        cv.drawText(initial, size / 2f, size / 2f - (p.descent() + p.ascent()) / 2, p)
-        if (photo != null) {
-            // The photo (square from the hub) clipped to the inner circle.
-            val inner = size / 2f - 3 * d
-            val path = Path().apply { addCircle(size / 2f, size / 2f, inner, Path.Direction.CW) }
-            cv.save()
-            cv.clipPath(path)
-            cv.drawBitmap(photo, null, RectF(size / 2f - inner, size / 2f - inner, size / 2f + inner, size / 2f + inner), Paint(Paint.FILTER_BITMAP_FLAG))
-            cv.restore()
+/** A person's map pin: their initial on their colour in a white ring, their photo over it when they have one. */
+internal fun dot(ctx: Context, initial: String, colour: Color, photo: Bitmap?): Bitmap {
+    val d = ctx.resources.displayMetrics.density
+    val size = (44 * d).toInt()
+    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val cv = Canvas(bmp)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    p.color = 0xFFFFFFFF.toInt()
+    cv.drawCircle(size / 2f, size / 2f, size / 2f, p)
+    p.color = colour.toArgb()
+    cv.drawCircle(size / 2f, size / 2f, size / 2f - 3 * d, p)
+    p.color = N.Night.toArgb()
+    p.textSize = 18 * d
+    p.typeface = Typeface.DEFAULT_BOLD
+    p.textAlign = Paint.Align.CENTER
+    cv.drawText(initial, size / 2f, size / 2f - (p.descent() + p.ascent()) / 2, p)
+    if (photo != null) {
+        // The photo (square from the hub) clipped to the inner circle.
+        val inner = size / 2f - 3 * d
+        val path = Path().apply { addCircle(size / 2f, size / 2f, inner, Path.Direction.CW) }
+        cv.save()
+        cv.clipPath(path)
+        cv.drawBitmap(photo, null, RectF(size / 2f - inner, size / 2f - inner, size / 2f + inner, size / 2f + inner), Paint(Paint.FILTER_BITMAP_FLAG))
+        cv.restore()
+    }
+    return bmp
+}
+
+/**
+ * Everyone who shares their location on one small map (the People screen's): each person's pin, the
+ * map fitted around them. Taps go to the list below it.
+ */
+@Composable
+fun PeopleMap(people: List<Person>, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    val map = remember {
+        configureOsm(ctx)
+        MapView(ctx).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+            overlayManager.tilesOverlay.setColorFilter(TilesOverlay.INVERT_COLORS)
+            isTilesScaledToDpi = true
+            controller.setZoom(14.0)
         }
-        return bmp
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_RESUME -> map.onResume()
+                Lifecycle.Event.ON_PAUSE -> map.onPause()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(obs)
+        map.onResume()
+        onDispose {
+            lifecycle.removeObserver(obs)
+            map.onPause()
+            map.onDetach()
+        }
+    }
+    val located = people.withIndex().filter { it.value.lat != null && it.value.lon != null }
+    val key = located.map { Triple(it.value.id, it.value.lat, it.value.lon) }
+    var shown by remember { mutableStateOf<List<Triple<String, Double?, Double?>>?>(null) }
+    Box(modifier) {
+        AndroidView({ map }, Modifier.fillMaxSize()) { m ->
+            if (shown == key) return@AndroidView
+            m.overlays.clear()
+            located.forEach { (i, p) ->
+                m.overlays.add(Marker(m).apply {
+                    position = GeoPoint(p.lat!!, p.lon!!)
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    setInfoWindow(null)
+                    icon = BitmapDrawable(m.resources, dot(m.context, PeopleText.initial(p.name), personColour(p, i), null))
+                    title = p.name
+                })
+            }
+            val points = located.map { GeoPoint(it.value.lat!!, it.value.lon!!) }
+            when {
+                points.size == 1 -> m.controller.setCenter(points[0])
+                points.size > 1 -> m.post {
+                    m.zoomToBoundingBox(org.osmdroid.util.BoundingBox.fromGeoPointsSafe(points).increaseByScale(1.6f), false)
+                }
+            }
+            m.invalidate()
+            shown = key
+        }
+        Text("© OpenStreetMap contributors", style = T.tiny.copy(fontSize = 10.sp, color = N.Muted),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).background(Color(0xB30B1026), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }

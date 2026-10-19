@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
@@ -21,7 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -41,19 +41,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ca.nimaste.newman.core.model.Automation
-import ca.nimaste.newman.core.model.AutomationRun
 import ca.nimaste.newman.core.model.Automations
 import ca.nimaste.newman.core.model.DeviceList
 import ca.nimaste.newman.core.model.Entity
 import ca.nimaste.newman.core.model.HubModel
 import ca.nimaste.newman.core.model.Kind
+import ca.nimaste.newman.core.people.PeopleText
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.alerts.AlertsScreen
 import ca.nimaste.newman.ui.common.BackPill
@@ -66,8 +64,16 @@ import ca.nimaste.newman.ui.common.NTextField
 import ca.nimaste.newman.ui.common.Pill
 import ca.nimaste.newman.ui.common.heading
 import ca.nimaste.newman.ui.common.spoken
+import ca.nimaste.newman.ui.home.AccentButton
+import ca.nimaste.newman.ui.home.HCard
+import ca.nimaste.newman.ui.home.HDivider
+import ca.nimaste.newman.ui.home.HScreen
+import ca.nimaste.newman.ui.home.HSwitch
+import ca.nimaste.newman.ui.home.HT
 import ca.nimaste.newman.ui.icons.NIcon
+import ca.nimaste.newman.ui.people.PeopleScreen
 import ca.nimaste.newman.ui.rememberRunner
+import ca.nimaste.newman.ui.theme.H
 import ca.nimaste.newman.ui.theme.N
 import ca.nimaste.newman.ui.theme.T
 import ca.nimaste.newman.ui.tiles.rememberNow
@@ -78,28 +84,30 @@ import java.time.ZoneId
 /** What the More tab shows: its list, or one of the screens it opens. */
 object MoreView {
     const val ALERTS = "alerts"
-    const val DEVICES = "devices"
+    const val PEOPLE = "people"
     const val AUTOMATIONS = "automations"
+    const val NEW_AUTOMATION = "auto-new"
     private const val AUTO = "auto:"
     fun automation(id: String) = AUTO + id
     fun automationId(view: String?): String? = view?.takeIf { it.startsWith(AUTO) }?.removePrefix(AUTO)
-    /** Where Back goes from [view]: an automation back to the list, the rest back to More. */
-    fun parent(view: String?): String? = if (automationId(view) != null) AUTOMATIONS else null
+    /** Where Back goes from [view]: an automation (or a new one) back to the list, the rest back to More. */
+    fun parent(view: String?): String? = if (automationId(view) != null || view == NEW_AUTOMATION) AUTOMATIONS else null
 }
 
 /** Rows per section of the Devices screen before "Show all". */
 private const val SECTION_ROWS = 5
 
 /**
- * The More tab: Alerts (with its count), Devices and Automations, each its own screen. [view] is
- * kept by HomeScreen so the system Back button and a tapped notification can move it.
+ * The More tab: Alerts (with its count), People and Automations, then Edit Home and the account.
+ * [view] is kept by HomeScreen so the system Back button and a tapped notification can move it.
  */
 @Composable
-fun MoreTab(view: String?, onView: (String?) -> Unit, unseen: Int, onCamera: (String, String?) -> Unit, onSheet: (String) -> Unit) {
+fun MoreTab(view: String?, onView: (String?) -> Unit, unseen: Int, onCamera: (String, String?) -> Unit, onSheet: (String) -> Unit,
+            onPerson: (String) -> Unit, onMe: () -> Unit, onEditHome: () -> Unit) {
     val app = LocalApp.current
     var autos by remember { mutableStateOf<List<Automation>?>(null) }
     var loads by remember { mutableStateOf(0) }
-    // Loaded for the More row's count; again whenever the Automations screen opens.
+    // Loaded for the More row's line; again whenever the Automations screen opens.
     LaunchedEffect(loads, view == MoreView.AUTOMATIONS) {
         app.automations(quiet = view == null)?.let { autos = it }
     }
@@ -107,65 +115,71 @@ fun MoreTab(view: String?, onView: (String?) -> Unit, unseen: Int, onCamera: (St
     val back = { onView(MoreView.parent(view)) }
     val autoId = MoreView.automationId(view)
     when {
-        view == MoreView.ALERTS -> AlertsScreen(onCamera = onCamera, onBack = back)
-        view == MoreView.DEVICES -> DevicesScreen(onBack = back, onSheet = onSheet)
+        view == MoreView.ALERTS -> {
+            val highlight by app.openAlert.collectAsState()
+            AlertsScreen(onCamera = onCamera, onBack = back, highlight = highlight, onLeave = { app.openAlert.value = null })
+        }
+        view == MoreView.PEOPLE -> PeopleScreen(onPerson = onPerson, onMe = onMe, onBack = back, back = "More")
         view == MoreView.AUTOMATIONS -> AutomationsScreen(autos, onReload = { loads++ }, onBack = back,
-            onOpen = { onView(MoreView.automation(it)) }, onChanged = replace)
-        autoId != null -> AutomationScreen(autos?.firstOrNull { it.id == autoId }, onBack = back, onChanged = replace,
-            onRan = { loads++ })
-        else -> MoreHome(unseen, autos, onView)
+            onOpen = { onView(MoreView.automation(it)) }, onNew = { onView(MoreView.NEW_AUTOMATION) }, onChanged = replace)
+        autoId != null || view == MoreView.NEW_AUTOMATION -> AutomationEditor(autoId, onBack = back, onSaved = { loads++ })
+        else -> MoreHome(unseen, autos, onView, onMe, onEditHome)
     }
 }
 
 @Composable
-private fun MoreHome(unseen: Int, autos: List<Automation>?, onView: (String?) -> Unit) {
+private fun MoreHome(unseen: Int, autos: List<Automation>?, onView: (String?) -> Unit, onMe: () -> Unit, onEditHome: () -> Unit) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
-    val devices = state.named.values
-    val sick = devices.count(DeviceList::needsAttention)
-    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-        Text("More", style = T.display, modifier = Modifier.padding(start = 2.dp, top = 14.dp, bottom = 14.dp).heading())
-        GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-            MoreRow("bell", N.Coral, "Alerts", "Recent alerts and what happened at home", badge = unseen) { onView(MoreView.ALERTS) }
-            Divider()
-            val all = DeviceList.summary(devices)
-            val head = all.substringBefore(" · ")
-            MoreRow("grid", N.Blue, "Devices", buildAnnotatedString {
-                append(head)
-                if (sick > 0) {
-                    append(" · ")
-                    withStyle(SpanStyle(color = N.CoralText)) { append(all.substringAfter(" · ")) }
+    val people by app.people.state.collectAsState()
+    LaunchedEffect(Unit) { app.people.refresh() }
+    val name = state.auth?.user?.name ?: app.store.userName ?: ""
+    HScreen("More") {
+        item(key = "main") {
+            HCard(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+                MoreRow("bell", H.DangerIcon, H.RemoveBg, "Alerts", "Cameras, doorbell, locks, leaks", badge = unseen) { onView(MoreView.ALERTS) }
+                HDivider()
+                MoreRow("user", H.People, H.PeopleBg, "People", PeopleText.summary(people.people),
+                    lineColor = if (people.people.isNotEmpty() && people.people.any { it.home }) H.GoodText else H.Sub) { onView(MoreView.PEOPLE) }
+                HDivider()
+                MoreRow("bolt", H.Info, Color(0xFF1C2A5A), "Automations", autos?.let { Automations.moreLine(it) } ?: "What runs by itself") {
+                    onView(MoreView.AUTOMATIONS)
                 }
-            }) { onView(MoreView.DEVICES) }
-            Divider()
-            MoreRow("bolt", N.Teal, "Automations", autos?.let { Automations.summary(it) } ?: "What runs by itself") { onView(MoreView.AUTOMATIONS) }
+            }
+        }
+        item(key = "me") {
+            HCard(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+                MoreRow("pencil", H.Soft, H.Raised, "Edit Home", "Cards and favourites", onClick = onEditHome)
+                HDivider()
+                MoreRow(null, H.Text, H.PeopleBg, name.ifBlank { "Your account" }, "Look, location sharing, password, sign out",
+                    initial = name.take(1).uppercase().ifBlank { null }, onClick = onMe)
+            }
         }
     }
 }
 
 @Composable
-private fun MoreRow(icon: String, tint: Color, title: String, subtitle: String, badge: Int = 0, onClick: () -> Unit) =
-    MoreRow(icon, tint, title, androidx.compose.ui.text.AnnotatedString(subtitle), badge, onClick)
-
-@Composable
-private fun MoreRow(icon: String, tint: Color, title: String, subtitle: androidx.compose.ui.text.AnnotatedString, badge: Int = 0, onClick: () -> Unit) {
+private fun MoreRow(icon: String?, tint: Color, bubble: Color, title: String, subtitle: String, badge: Int = 0, lineColor: Color = H.Sub,
+                    initial: String? = null, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().defaultMinSize(minHeight = 72.dp).clickable(role = Role.Button, onClick = onClick)
-            .spoken(listOfNotNull(title, subtitle.text, if (badge > 0) "$badge new" else null).joinToString(", ")).padding(vertical = 12.dp),
+        Modifier.fillMaxWidth().defaultMinSize(minHeight = 68.dp).clickable(role = Role.Button, onClick = onClick)
+            .spoken(listOfNotNull(title, subtitle, if (badge > 0) "$badge new" else null).joinToString(", ")).padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        IconBubble(icon, tint.copy(alpha = 0.16f), tint, size = 44.dp, iconSize = 22.dp, shape = RoundedCornerShape(14.dp))
+        Box(Modifier.size(40.dp).background(bubble, if (initial != null) CircleShape else RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
+            if (initial != null) Text(initial, style = HT.name.copy(fontSize = 16.sp))
+            else if (icon != null) NIcon(icon, size = 20.dp, color = tint, stroke = 2.2f)
+        }
         Column(Modifier.weight(1f)) {
-            Text(title, style = T.label.copy(fontSize = 16.sp))
-            Text(subtitle, style = T.small.copy(color = N.Muted), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, style = HT.name.copy(fontSize = 16.sp))
+            Text(subtitle, style = HT.small.copy(color = lineColor), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (badge > 0) {
-            Box(Modifier.height(24.dp).widthIn(min = 24.dp).background(N.Live, CircleShape).padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
-                Text(if (badge > 99) "99+" else badge.toString(), style = T.tiny.copy(color = Color.White, fontSize = 12.sp))
+            Box(Modifier.height(24.dp).widthIn(min = 24.dp).background(H.Badge, CircleShape).padding(horizontal = 7.dp), contentAlignment = Alignment.Center) {
+                Text(if (badge > 99) "99+" else badge.toString(), style = HT.small.copy(color = Color.White, fontWeight = FontWeight.ExtraBold))
             }
         }
-        NIcon("chevronRight", size = 18.dp, color = N.TabOff, stroke = 2.4f)
     }
 }
 
@@ -173,21 +187,22 @@ private fun MoreRow(icon: String, tint: Color, title: String, subtitle: androidx
 private fun Divider() = Box(Modifier.fillMaxWidth().height(1.dp).background(N.Divider))
 
 @Composable
-private fun ScreenTitle(title: String, back: String, onBack: () -> Unit, line: String? = null) {
+private fun ScreenTitle(title: String, back: String?, onBack: (() -> Unit)?, line: String? = null) {
     Column(Modifier.padding(top = 10.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        BackPill(back, onClick = onBack)
-        Column {
+        if (back != null && onBack != null) BackPill(back, onClick = onBack)
+        Column(Modifier.padding(top = if (onBack == null) 8.dp else 0.dp)) {
             Text(title, style = T.display, modifier = Modifier.heading())
             if (line != null) Text(line, style = T.small.copy(color = N.Muted))
         }
     }
 }
 
+
 // -- Devices ---------------------------------------------------------------------------------------
 
 /** Every device the hub has, by category, searchable; tap one for its controls. */
 @Composable
-fun DevicesScreen(onBack: () -> Unit, onSheet: (String) -> Unit) {
+fun DevicesScreen(onBack: (() -> Unit)?, onSheet: (String) -> Unit) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
@@ -286,28 +301,32 @@ private fun DeviceListRow(e: Entity, k: Kind?, last: Boolean, onSheet: () -> Uni
 
 // -- Automations -----------------------------------------------------------------------------------
 
-/** The hub's automations, most recent first: what each does, when it last ran, and an on/off switch. */
+/** The hub's automations, most recent first: what each does, when it last ran, and an on/off switch; "+ New" for accounts that may. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutomationsScreen(autos: List<Automation>?, onReload: () -> Unit, onBack: () -> Unit, onOpen: (String) -> Unit, onChanged: (Automation) -> Unit) {
+fun AutomationsScreen(autos: List<Automation>?, onReload: () -> Unit, onBack: () -> Unit, onOpen: (String) -> Unit, onNew: () -> Unit,
+                      onChanged: (Automation) -> Unit) {
+    val app = LocalApp.current
+    val home by app.home.collectAsState()
+    val state by app.state.collectAsState()
+    val can = home?.canAutomate ?: state.auth?.user?.canAutomate ?: false
     val nowMs = rememberNow()
     val now = Instant.ofEpochMilli(nowMs)
     val zone = ZoneId.systemDefault()
     var refreshing by remember { mutableStateOf(false) }
     LaunchedEffect(autos) { refreshing = false }
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refreshing = true; onReload() }, modifier = Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item(key = "title") { ScreenTitle("Automations", "More", onBack, autos?.let { Automations.summary(it, now, zone) }) }
+        HScreen("Automations", back = "More", onBack = onBack, line = autos?.let { Automations.summary(it, now, zone) },
+            trailing = if (can) { { AccentButton("+ New", onClick = onNew) } } else null) {
             when {
-                autos == null -> item(key = "loading") { Text("Loading…", style = T.body.copy(color = N.Muted), modifier = Modifier.padding(8.dp)) }
-                autos.isEmpty() -> item(key = "none") { Text("No automations yet.", style = T.body.copy(color = N.Muted), modifier = Modifier.padding(8.dp)) }
+                autos == null -> item(key = "loading") { Text("Loading…", style = HT.line, modifier = Modifier.padding(8.dp)) }
+                autos.isEmpty() -> item(key = "none") { Text("No automations yet.", style = HT.line, modifier = Modifier.padding(8.dp)) }
                 else -> item(key = "list") {
                     val list = Automations.sorted(autos)
-                    GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                    HCard(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
                         list.forEachIndexed { i, a ->
-                            AutomationRow(a, Automations.lastRunText(a.lastRun, now, zone), onOpen = { onOpen(a.id) }, onChanged = onChanged)
-                            if (i < list.lastIndex) Divider()
+                            AutomationRow(a, Automations.lastRunText(a.lastRun, now, zone), can, onOpen = { onOpen(a.id) }, onChanged = onChanged)
+                            if (i < list.lastIndex) HDivider()
                         }
                     }
                 }
@@ -318,11 +337,11 @@ fun AutomationsScreen(autos: List<Automation>?, onReload: () -> Unit, onBack: ()
 
 /** The switch: shows the change at once; the hub's refusal (an account that can't change automations) puts it back. */
 @Composable
-private fun AutomationSwitch(a: Automation, onChanged: (Automation) -> Unit) {
+private fun AutomationSwitch(a: Automation, enabled: Boolean, onChanged: (Automation) -> Unit) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     var pending by remember(a.id) { mutableStateOf<Boolean?>(null) }
-    NSwitch(pending ?: a.enabled, enabled = pending == null, label = a.name) { want ->
+    HSwitch(pending ?: a.enabled, label = a.name, enabled = enabled && pending == null, small = true) { want ->
         pending = want
         scope.launch {
             app.setAutomationEnabled(a.id, want)?.let(onChanged)
@@ -332,67 +351,16 @@ private fun AutomationSwitch(a: Automation, onChanged: (Automation) -> Unit) {
 }
 
 @Composable
-private fun AutomationRow(a: Automation, lastRun: String, onOpen: () -> Unit, onChanged: (Automation) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun AutomationRow(a: Automation, lastRun: String, can: Boolean, onOpen: () -> Unit, onChanged: (Automation) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(
-            Modifier.weight(1f).clickable(onClickLabel = "show details", role = Role.Button, onClick = onOpen),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            Modifier.weight(1f).clickable(onClickLabel = if (can) "edit" else "show details", role = Role.Button, onClick = onOpen),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(a.name.ifBlank { "Automation" }, style = T.label)
-            if (a.summary.isNotBlank()) Text(a.summary, style = T.small.copy(color = N.Muted, fontSize = 13.sp), maxLines = 3, overflow = TextOverflow.Ellipsis)
-            Text(lastRun, style = T.tiny.copy(color = if (a.lastRun?.startedAt != null) N.Teal else N.TabOff))
+            Text(a.name.ifBlank { "Automation" }, style = HT.name)
+            if (a.summary.isNotBlank()) Text(a.summary, style = HT.small.copy(fontWeight = FontWeight.SemiBold), maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(lastRun, style = HT.small.copy(color = if (a.lastRun?.startedAt != null) H.GoodText else H.Label))
         }
-        AutomationSwitch(a, onChanged)
-    }
-}
-
-/** One automation: what it does, on or off, its recent runs and Run now. */
-@Composable
-fun AutomationScreen(a: Automation?, onBack: () -> Unit, onChanged: (Automation) -> Unit, onRan: () -> Unit) {
-    val app = LocalApp.current
-    val scope = rememberCoroutineScope()
-    val nowMs = rememberNow()
-    val now = Instant.ofEpochMilli(nowMs)
-    val zone = ZoneId.systemDefault()
-    var runs by remember(a?.id) { mutableStateOf<List<AutomationRun>?>(null) }
-    var reload by remember { mutableStateOf(0) }
-    var running by remember { mutableStateOf(false) }
-    LaunchedEffect(a?.id, reload) { if (a != null) runs = app.automationRuns(a.id) }
-    Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ScreenTitle(a?.name?.ifBlank { null } ?: "Automation", "Automations", onBack)
-        if (a == null) {
-            Text("Loading…", style = T.body.copy(color = N.Muted))
-            return@Column
-        }
-        GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(16.dp)) {
-            if (a.summary.isNotBlank()) Text(a.summary, style = T.body.copy(fontSize = 15.sp))
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (a.enabled) "On" else "Off", style = T.label, modifier = Modifier.weight(1f))
-                AutomationSwitch(a, onChanged)
-            }
-            GlassButton("Run now", Modifier.fillMaxWidth().padding(top = 8.dp), icon = "play", busy = running, height = 46.dp) {
-                running = true
-                scope.launch {
-                    if (app.runAutomation(a) != null) {
-                        reload++
-                        onRan()
-                    }
-                    running = false
-                }
-            }
-        }
-        GlassCard(Modifier.fillMaxWidth(), padding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 8.dp)) {
-            CardHeader("Recent runs")
-            val list = runs
-            when {
-                list == null -> Text("Loading…", style = T.small.copy(color = N.Muted), modifier = Modifier.padding(vertical = 10.dp))
-                list.isEmpty() -> Text("Hasn't run yet.", style = T.small.copy(color = N.Muted), modifier = Modifier.padding(vertical = 10.dp))
-                else -> list.forEachIndexed { i, r ->
-                    Text(Automations.lastRunText(r, now, zone), style = T.body, modifier = Modifier.padding(vertical = 10.dp))
-                    if (i < list.lastIndex) Divider()
-                }
-            }
-        }
+        AutomationSwitch(a, can, onChanged)
     }
 }

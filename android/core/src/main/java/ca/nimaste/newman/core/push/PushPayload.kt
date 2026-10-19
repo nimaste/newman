@@ -38,6 +38,10 @@ data class PushPayload(
     val clip: String? = null,
     /** The alert's review id (frigate_event_id), to find it when the clip id doesn't match. */
     val reviewId: String? = null,
+    /** The alert this notification is about: tapping it (at any age) opens it in the app. */
+    val alertId: String? = null,
+    /** Sent during the person's quiet hours: shown without a sound. */
+    val quiet: Boolean = false,
 ) {
     /** Buttons the hub will accept from this phone (it needs the signed action token). */
     val canAct: Boolean get() = !actionUrl.isNullOrEmpty() && !actionSubject.isNullOrEmpty() && !actionExp.isNullOrEmpty() && !actionToken.isNullOrEmpty()
@@ -80,6 +84,8 @@ data class PushPayload(
                 camera = data["camera"]?.ifEmpty { null },
                 clip = data["clip"]?.ifEmpty { null },
                 reviewId = data["frigate_event_id"]?.ifEmpty { null },
+                alertId = (data["alertId"] ?: data["alert_id"])?.ifEmpty { null },
+                quiet = (data["quiet"] ?: "").let { it == "1" || it.equals("true", ignoreCase = true) },
             )
         }
 

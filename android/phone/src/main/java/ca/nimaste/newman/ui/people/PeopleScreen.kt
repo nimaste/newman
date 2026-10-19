@@ -48,6 +48,7 @@ import ca.nimaste.newman.data.PeopleRepository
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.common.GlassButton
 import ca.nimaste.newman.ui.common.GlassCard
+import ca.nimaste.newman.ui.common.heading
 import ca.nimaste.newman.ui.icons.NIcon
 import ca.nimaste.newman.ui.theme.N
 import ca.nimaste.newman.ui.theme.T
@@ -94,7 +95,7 @@ fun RefreshNote(state: PersonRefresh.State, now: Double) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PeopleScreen(onPerson: (String) -> Unit, onMe: () -> Unit) {
+fun PeopleScreen(onPerson: (String) -> Unit, onMe: () -> Unit, onBack: (() -> Unit)? = null, back: String = "Back") {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val st by app.people.state.collectAsState()
@@ -123,7 +124,19 @@ fun PeopleScreen(onPerson: (String) -> Unit, onMe: () -> Unit) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item("head") { Text("People", style = T.display, modifier = Modifier.padding(top = 14.dp, bottom = 4.dp)) }
+            item("head") {
+                Column(Modifier.padding(top = if (onBack == null) 14.dp else 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (onBack != null) ca.nimaste.newman.ui.home.BackLink(back, onBack)
+                    Column(Modifier.padding(horizontal = 4.dp)) {
+                        Text("People", style = ca.nimaste.newman.ui.home.HT.subTitle, modifier = Modifier.heading())
+                        if (st.people.isNotEmpty()) Text(PeopleText.summary(st.people), style = ca.nimaste.newman.ui.home.HT.line.copy(
+                            color = if (st.people.any { it.home }) ca.nimaste.newman.ui.theme.H.GoodText else ca.nimaste.newman.ui.theme.H.Sub))
+                    }
+                }
+            }
+            if (st.people.any { it.lat != null && it.lon != null }) item("map") {
+                PeopleMap(st.people, Modifier.fillMaxWidth().height(300.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)))
+            }
             if (needsPermission) item("perm") {
                 GlassCard(Modifier.fillMaxWidth(), background = N.CoralCard, border = N.CoralBorder, onClick = onMe) {
                     Text(if (settings?.mode == "required") "Your household requires location sharing" else "Location sharing is on",
