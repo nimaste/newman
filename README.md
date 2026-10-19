@@ -194,6 +194,7 @@ tried on real hardware.
 | β **Rain Bird** | sprinkler controllers and zones: what's watering, rain sensor, rain delay; water a zone for N minutes, stop, rain delay | Locally to the LNK / LNK2 Wi-Fi module (pyrainbird), every minute (20 s while watering) | Controller address and its password — Rain Bird has no tokens, so the password is kept (masked) |
 | β **Rachio** | sprinkler controllers and zones: what's watering, time left, last / next run; water a zone for N minutes, stop, rain delay, standby | Rachio's public API, polled within its 1,700-a-day limit; optional instant webhooks | The account's API key — see [Sprinklers](#sprinklers) |
 | β **Network checks** | one device per check: a ping, a TCP port or a web address (status code / a word on the page) — online / offline, response time, uptime over 24 h; "goes offline" / "comes back" | From the hub, every 60 s per check (your choice); ping without special rights, TCP as fallback | Nothing — see [Network checks](#network-checks) |
+| β **Amazon Alexa** (experimental) | no devices: the timers running on your Echos, shown on the wall tablets with Newman's own (name, countdown, which Echo; "Done · Ringing on …" at zero) | Amazon's unofficial connection, the one the Alexa app uses — it can stop working whenever Amazon changes things; timers checked every 30 s | Amazon sign-in once on Amazon's own page (only Amazon's token is kept) — see [Amazon Alexa](#amazon-alexa-experimental) |
 | β **Sun** | the Sun: up / down, next sunrise / sunset / dawn / dusk, height and direction in the sky; sunrise, sunset, dawn, dusk events | Worked out on the hub (NOAA's equations), nothing online | Your home's location (the Home place, or the Weather connection's) — see [Sun](#sun) |
 | 🧪 **Roku TV** | Roku TVs and players (TCL, Hisense, onn… Roku TVs): on / off, volume up / down, inputs, apps, keys, what's open | Roku's local control (ECP, port 8060), found automatically | Nothing — see [TVs](#tvs) |
 | β **Samsung TV** | Tizen TVs (2016+): on / off, volume, inputs, apps, keys | The TV's remote websocket (8002) + REST (8001) + UPnP volume, found automatically | Allow Newman on the TV once (only the TV's key is kept) |
@@ -361,6 +362,37 @@ own and change live; each lock / alarm / siren change carries who did it.
   can go.
 - Ring won't arm while a door or window is open; tick *Bypass open doors and windows when arming*
   to have Newman bypass them, as the Ring app offers.
+
+### Amazon Alexa (experimental)
+
+Shows the timers set on your Echos on the wall tablets, next to Newman's own timers: the timer's name,
+the countdown and which Echo it's on. At zero the card turns blue and says "Done · Ringing on <Echo>"
+until Alexa is stopped (the Echo rings; the tablet stays quiet, and Alexa's timers have no ✕ — stop or
+cancel them with Alexa). A done timer Amazon still lists is dropped after 15 minutes anyway.
+
+*Connections → Add → Amazon Alexa*, then under *Settings*:
+
+1. **Open Amazon sign-in** — Amazon's own sign-in page opens in a new tab. Sign in there (your password,
+   and any code Amazon asks for, go to Amazon only).
+2. When Amazon finishes, copy the address of the page it ends on (it starts
+   `https://www.amazon.com/ap/maplanding?…`) from the browser's address bar, paste it into the box and
+   press **Connect**.
+
+Newman registers itself with your Amazon account as a device (it shows in Amazon's device list as
+"<your name>'s Newman") and keeps only the refresh token Amazon gives it, in the connection's data
+folder — no password, no authenticator key, no cookies. Each start, the cookies are made again from that
+token. If Amazon cancels it (a password change, or the device removed from your Amazon account), the
+connection says so and waits for you to sign in again — it doesn't keep trying. *Sign out of Amazon*
+forgets the token and takes Newman off the Amazon account.
+
+- **Show timers from** — untick an Echo to leave its timers off the wall tablets.
+- **Your Amazon site** — where your Alexa account is (amazon.ca by default). When you sign in, Amazon
+  says which site the account is on, and Newman uses that.
+- **Check for timers every (seconds)** under *More settings* — 30 by default, 15 at the least.
+
+This uses the unofficial connection the Alexa app itself uses (as Home Assistant's Alexa Media Player,
+alexapy and ioBroker's alexa-cookie do): Amazon doesn't offer an official one for timers, and it can break
+when Amazon changes things.
 
 ### DNS filters (AdGuard Home, Pi-hole, Technitium)
 

@@ -13,6 +13,9 @@
 // (a camera full screen, a page, a timer…). Timers live on the hub per tablet: GET api/voice/timers
 // and {type: "timers"} pushes; one that ends rings (beeps + "Your pasta timer is done") until a tap
 // or "Hey Newman, stop". While the card or a ringing timer shows, the wall counts as in use.
+// The timers running on the household's Echos (an Amazon Alexa connection: GET api/alexa/timers and
+// {type: "alexaTimers"} pushes) show with them: which Echo, no ✕ (they're Alexa's), and at zero "Done ·
+// Ringing on <Echo>" until Amazon drops it - silent here, the Echo rings.
 // {type: "voice-teach"} pushes (from the dashboard) open "Teach Hey Newman" (TeachVoice.jsx); the
 // app's clip events ({type: "clip" | "clip-level" | "clip-none" | "clip-error"}) go to it, and the
 // wake word isn't listened for until it closes.
@@ -112,6 +115,7 @@ function VoiceCard({ s, onClose }) {
 /* ---------------- timers ---------------- */
 
 function TimerCard({ t, now, onStop }) {
+  if (t.source === 'alexa') return <AlexaTimerCard t={t} now={now} />;
   const ringing = t.state === 'ringing';
   const left = Math.max(0, t.endsAt - now);
   const share = t.seconds > 0 ? Math.max(0, Math.min(1, left / t.seconds)) : 0;
@@ -130,6 +134,55 @@ function TimerCard({ t, now, onStop }) {
       <span className="vo-timer-bar" style={{ transform: `scaleX(${share.toFixed(4)})` }} />
     </div>
   );
+}
+
+/** One of the Echos' timers: counts down, then "Done" (it rings on the Echo, not here; no tap to stop). */
+function AlexaTimerCard({ t, now }) {
+  const left = Math.max(0, t.endsAt - now);
+  const done = left <= 0;
+  const share = t.seconds > 0 ? Math.max(0, Math.min(1, left / t.seconds)) : 0;
+  return (
+    <div className={'vo-timer vo-timer--alexa' + (done ? ' is-done' : '')} role="status" aria-label={t.name}>
+      <div className="vo-timer-main">
+        <span className="vo-timer-name">{t.name}</span>
+        <span className="vo-timer-time">{done ? 'Done' : countdown(left)}</span>
+        <span className="vo-timer-where">{done ? 'Ringing on ' + t.where : t.where}</span>
+      </div>
+      <span className="vo-timer-bar" style={{ transform: `scaleX(${share.toFixed(4)})` }} />
+    </div>
+  );
+}
+
+/** The Echos' timers (Amazon Alexa connections), with the hub's clock. */
+function useAlexaTimers() {
+  const [list, setList] = useState([]);
+  const skew = useRef(0);
+  const load = useCallback(async () => {
+    try {
+      const r = await api.get('api/alexa/timers', { quiet: true });
+      skew.current = r.now - Date.now() / 1000;
+      setList(r.timers || []);
+    } catch {
+      /* an older hub, or offline: none */
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  useLive((m) => {
+    if (m.type === 'alexaTimers') {
+      skew.current = m.now - Date.now() / 1000;
+      setList(m.timers || []);
+    }
+    if (m.type === 'reconnected') load();
+  });
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!list.length) return undefined;
+    const t = setInterval(() => tick((x) => x + 1), 250);
+    return () => clearInterval(t);
+  }, [list.length]);
+  return { list, now: Date.now() / 1000 + skew.current };
 }
 
 /** The hub's timers for this tablet, with its clock (so a tablet whose clock is off counts right). */
@@ -232,6 +285,7 @@ export default function VoiceLayer({ homePage }) {
   const [person, setPerson] = useState(null);
   const people = useApi(person ? 'api/people' : null);
   const timers = useTimers();
+  const echoTimers = useAlexaTimers();
   const speech = useRef(null);
   const alarmSpeech = useRef(() => {});
   const hideTimer = useRef(null);
@@ -403,10 +457,13 @@ export default function VoiceLayer({ homePage }) {
   const shownPerson = person && (people.data || []).find((p) => p.id === person);
   return (
     <>
-      {timers.list.length ? (
+      {timers.list.length || echoTimers.list.length ? (
         <div className="vo-timers">
           {timers.list.map((t) => (
             <TimerCard key={t.id} t={t} now={timers.now} onStop={() => stopTimer(t)} />
+          ))}
+          {echoTimers.list.map((t) => (
+            <TimerCard key={t.id} t={t} now={echoTimers.now} />
           ))}
         </div>
       ) : null}

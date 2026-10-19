@@ -1,4 +1,5 @@
 from .base import Integration
+from .alexa import AlexaIntegration
 from .netcheck import NetCheckIntegration
 from .sun import SunIntegration
 from .adguard import AdGuardIntegration
@@ -50,7 +51,7 @@ REGISTRY: dict[str, type[Integration]] = {cls.type: cls for cls in [
     CalendarIntegration, RoborockIntegration, HomeConnectIntegration, ThinQIntegration, DockerIntegration, UnraidIntegration, LinuxHostIntegration, ProxmoxIntegration, PrinterIntegration, UpkeepIntegration, MatterIntegration, SonosIntegration, NavidromeIntegration, ForkastIntegration, WebhooksIntegration, TabletsIntegration,
     AdGuardIntegration, PiholeIntegration, TechnitiumIntegration,
     HydrawiseIntegration, RainBirdIntegration, RachioIntegration,
-    NetCheckIntegration, SunIntegration,
+    NetCheckIntegration, SunIntegration, AlexaIntegration,
     SamsungTvIntegration, WebOsTvIntegration, AndroidTvIntegration, AppleTvIntegration, RokuIntegration,
     VidaaTvIntegration,
     VirtualIntegration,

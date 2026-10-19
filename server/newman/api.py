@@ -45,6 +45,7 @@ from .charging import SmartCharging, clean_settings as charging_settings
 from .automations.engine import ActionError
 from .automations.templates import templates
 from .config import config
+from .integrations.alexa import alexa_timers_message
 from .integrations.base import CommandError
 from .integrations.frigate import FrigateIntegration
 from .integrations.tablets import clean_report as tablet_report
@@ -2486,6 +2487,42 @@ def build_app(h: "Newman") -> web.Application:
         inst.add_seen()
         return web.json_response({"ok": True})
 
+    @r.post("/api/integrations/{iid}/sign-in")
+    async def integration_sign_in(req: web.Request) -> web.Response:
+        """Admins: {"answer"} - finish signing a connection in to its service with what that service's own
+        sign-in page gave (Amazon Alexa: the address it finished on). Only what the service hands back is kept."""
+        require_admin(req)
+        inst = h.integrations.instances.get(req.match_info["iid"])
+        if not inst:
+            return _err(404, "not found")
+        try:
+            await inst.sign_in(str((await body(req)).get("answer") or ""))
+        except ValueError as e:
+            return _err(400, str(e))
+        h.store.log_event("system", f"Signed {inst.display_name} in", f"By {req['user']['name']}")
+        return web.json_response({"ok": True})
+
+    @r.post("/api/integrations/{iid}/sign-out")
+    async def integration_sign_out(req: web.Request) -> web.Response:
+        """Admins: forget a connection's sign-in to its service."""
+        require_admin(req)
+        inst = h.integrations.instances.get(req.match_info["iid"])
+        if not inst:
+            return _err(404, "not found")
+        try:
+            await inst.sign_out()
+        except ValueError as e:
+            return _err(400, str(e))
+        h.store.log_event("system", f"Signed {inst.display_name} out", f"By {req['user']['name']}")
+        return web.json_response({"ok": True})
+
+    @r.get("/api/alexa/timers")
+    async def alexa_timers(req: web.Request) -> web.Response:
+        """The timers running on the household's Echos (Amazon Alexa connections), for the wall tablets:
+        {"now", "timers": [{"id", "name", "where", "endsAt", "seconds", "source": "alexa"}]}."""
+        msg = alexa_timers_message(h.integrations.instances)
+        return web.json_response({"now": msg["now"], "timers": msg["timers"]})
+
     @r.delete("/api/integrations/{iid}/devices/{did}")
     async def remove_integration_device(req: web.Request) -> web.Response:
         """Admins: take one of a connection's paired devices (adminDetails.pairedDevices[].id) off it for good."""
@@ -2987,6 +3024,8 @@ def build_app(h: "Newman") -> web.Application:
 
     # Integrations reach one account's sockets too (the music connection tells a wall tablet what to play).
     h.integrations._ctx.push_to_user = send_to_user
+    # …and every open socket (the wall tablets' Alexa timers).
+    h.integrations._ctx.broadcast = broadcast
 
     async def replace_for_integration(pairs: list[dict[str, Any]]) -> dict[str, Any]:
         """A connection moving what used some of its old devices to new ones (Matter merging readings)."""

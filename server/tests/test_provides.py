@@ -13,6 +13,9 @@ class ProvidesTests(unittest.TestCase):
         for type_, cls in REGISTRY.items():
             if not cls.available:
                 continue
+            if cls.no_devices:
+                self.assertEqual(cls.provides, (), f"{type_} says it brings in no devices")
+                continue
             self.assertTrue(cls.provides, f"{type_} doesn't say what it provides")
             unknown = [k for k in cls.provides if k not in KINDS]
             self.assertEqual(unknown, [], f"{type_} lists kinds that don't exist")

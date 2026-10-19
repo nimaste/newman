@@ -3471,6 +3471,67 @@ button.cat-card:hover:not(:disabled) {
   color: var(--muted);
   line-height: 1.4;
 }
+.exp-badge {
+  margin-left: 10px;
+  vertical-align: middle;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--amber);
+  background: var(--amber-soft);
+  border: 1px solid var(--amber-line);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.conn-about {
+  margin-top: 6px;
+  max-width: 640px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.amazon-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 640px;
+  margin-bottom: 22px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.amazon-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.amazon-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.amazon-head {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.amazon-ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+  background: var(--good-soft);
+  color: var(--good);
+  font-size: 14px;
+  font-weight: 800;
+}
+.btn-danger-text {
+  color: var(--danger);
+}
 .found-badge {
   font-size: 11px;
   font-weight: 800;

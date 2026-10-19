@@ -98,6 +98,9 @@ class Context:
     # A message for one account's open sockets (e.g. telling a wall tablet what music to play):
     # async (account id, message dict). Set by the API once it's running.
     push_to_user: Any = None
+    # A message for every open socket (e.g. the wall tablets' Alexa timers): async (message dict). Set by
+    # the API once it's running.
+    broadcast: Any = None
     # Swapping device ids everywhere they're used (replace.py), for a connection whose devices change shape
     # (two old devices that are one now): async ([{"from", "to", "properties"?}]) -> counts. Set by the API.
     replace_entities: Any = None
@@ -123,6 +126,11 @@ class Integration:
     # Settings an older Newman used that are still accepted (and kept until converted) though no longer
     # shown in the form - see translate_config / migrate_config.
     extra_config_keys: ClassVar[tuple[str, ...]] = ()
+    # Works through a service's unofficial connection, so it may stop working when that service changes
+    # things: the dashboard marks it "Experimental".
+    experimental: ClassVar[bool] = False
+    # Brings in no devices at all (Amazon Alexa: its timers go straight to the wall tablets).
+    no_devices: ClassVar[bool] = False
 
     def __init__(self, instance_id: str, name: str, config: dict[str, Any], ctx: Context) -> None:
         self.id = instance_id
@@ -140,7 +148,8 @@ class Integration:
     def catalog_json(cls) -> dict[str, Any]:
         return {"type": cls.type, "name": cls.name, "category": cls.category, "description": cls.description,
                 "available": cls.available, "providesAlerts": cls.provides_alerts, "provides": list(cls.provides),
-                "fields": [f.to_json() for f in cls.fields], "addByCode": cls.add_by_code}
+                "fields": [f.to_json() for f in cls.fields], "addByCode": cls.add_by_code,
+                "experimental": cls.experimental, "noDevices": cls.no_devices}
 
     # Connections that add devices one at a time by a setup code (Matter): what to ask for,
     # {"label", "placeholder", "help"}; None = devices come by themselves. The code is used once, never kept.
@@ -158,6 +167,15 @@ class Integration:
 
     def add_seen(self) -> None:
         """The person has seen how the last "add a device" ended (its "seen" becomes true)."""
+
+    async def sign_in(self, answer: str) -> None:
+        """Finish signing in to the service with what its own sign-in page gave the admin (admin_details()
+        says what to open). Only what the service hands back is kept. ValueError: refused, in words."""
+        raise ValueError(f"{self.name} doesn't sign in this way")
+
+    async def sign_out(self) -> None:
+        """Forget the service's sign-in (the admin signs in again to use it)."""
+        raise ValueError(f"{self.name} doesn't sign in this way")
 
     async def remove_device(self, device_id: str) -> None:
         """Take one of admin_details()["pairedDevices"] off this connection for good (KeyError: unknown)."""

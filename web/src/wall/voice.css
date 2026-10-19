@@ -196,6 +196,30 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
+.vo-timer-where {
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wt-dim, #a9b4d6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vo-timer--alexa .vo-timer-main {
+  padding-right: 18px;
+}
+.vo-timer--alexa .vo-timer-bar {
+  background: var(--wt-blue, #7fb8ff);
+}
+.vo-timer.is-done {
+  background: var(--wt-blue, #7fb8ff);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #0b1026;
+}
+.vo-timer.is-done .vo-timer-name,
+.vo-timer.is-done .vo-timer-where {
+  color: rgba(11, 16, 38, 0.8);
+}
 .vo-timer-hint {
   font-size: 14px;
   font-weight: 700;

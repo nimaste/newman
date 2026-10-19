@@ -1,13 +1,13 @@
 // Extras on a connection's page, driven by what it reports / which fields it has (never its type):
 // webhook addresses (from the admin-only dminDetails.addresses: each one is a key) and
-// "Add a device" by pairing code.
+// "Add a device" by pairing code, and signing in to Amazon (adminDetails.amazon) on Amazon's own page.
 
 import { useEffect, useState } from 'react';
 import { api, enc, toast } from '../api.js';
-import { Empty, Modal } from './Controls.jsx';
+import { Check, Empty, Modal } from './Controls.jsx';
 import { useConfirm } from './Feedback.jsx';
 import { Icon } from '../icons.jsx';
-import { cleanDetail } from '../format.js';
+import { cleanDetail, fmtAgo } from '../format.js';
 
 async function copyText(text) {
   try {
@@ -285,5 +285,114 @@ export function PairedDevices({ installed, devices, onChanged }) {
         </li>
       ))}
     </ul>
+  );
+}
+/**
+ * Signing a connection in to Amazon (its adminDetails.amazon): Amazon's own sign-in page opens in a new tab
+ * (the password goes to Amazon only), then the address Amazon finished on is pasted back - the hub keeps
+ * only the token Amazon swaps it for. Once signed in: when the timers were last read, whose Echos' timers
+ * show, and signing out.
+ */
+export function AmazonSignIn({ installed, details, onChanged }) {
+  const [answer, setAnswer] = useState('');
+  const [busy, setBusy] = useState(false);
+  const base = 'api/integrations/' + enc(installed.id);
+  const echos = details.echos || [];
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      await api.post(base + '/sign-in', { answer: answer.trim() });
+      toast('Signed in to Amazon', 'success');
+      setAnswer('');
+      onChanged();
+    } catch {
+      /* toast shown */
+    } finally {
+      setBusy(false);
+    }
+  };
+  const signOut = async () => {
+    setBusy(true);
+    try {
+      await api.post(base + '/sign-out');
+      toast('Signed out of Amazon', 'success');
+      onChanged();
+    } catch {
+      /* toast shown */
+    } finally {
+      setBusy(false);
+    }
+  };
+  const show = async (serial, on) => {
+    const hidden = echos.filter((e) => (e.serial === serial ? !on : !e.shown)).map((e) => e.serial);
+    setBusy(true);
+    try {
+      await api.patch(base, { config: { hidden_echos: hidden } });
+      onChanged();
+    } catch {
+      /* toast shown */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!details.signedIn) {
+    return (
+      <div className="amazon-signin">
+        <div className="amazon-step">
+          <div className="field-label">1. Sign in on Amazon's page</div>
+          <div className="amazon-row">
+            <a className="btn btn-primary" href={details.signInUrl} target="_blank" rel="noopener noreferrer">
+              Open Amazon sign-in
+            </a>
+            <span className="help">Opens in a new tab. Your password goes to Amazon only.</span>
+          </div>
+        </div>
+        <div className="amazon-step">
+          <label className="field-label" htmlFor="amazon-landing">
+            2. Paste the address of the page Amazon finishes on
+          </label>
+          <input
+            id="amazon-landing"
+            className="input"
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            placeholder="https://www.amazon.com/ap/maplanding?…"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+        </div>
+        <div>
+          <button type="button" className="btn btn-primary" disabled={busy || !answer.trim()} onClick={connect}>
+            {busy ? 'Connecting…' : 'Connect'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="amazon-signin">
+      <div className="amazon-ok" role="status">
+        <Icon name="check" size={16} strokeWidth={2.6} />
+        <span>Signed in · {details.checkedAt ? 'timers checked ' + fmtAgo(details.checkedAt) : 'checking the timers…'}</span>
+      </div>
+      {echos.length ? (
+        <div className="amazon-step">
+          <div className="amazon-head">Show timers from</div>
+          {echos.map((e) => (
+            <Check key={e.serial} checked={e.shown} disabled={busy} onChange={(v) => show(e.serial, v)}>
+              {e.name}
+            </Check>
+          ))}
+        </div>
+      ) : null}
+      <div>
+        <button type="button" className="btn btn-danger-text" disabled={busy} onClick={signOut}>
+          Sign out of Amazon
+        </button>
+      </div>
+    </div>
   );
 }

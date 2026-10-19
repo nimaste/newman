@@ -13,7 +13,7 @@ import { useDeviceActions } from '../components/DeviceControls.jsx';
 import { AlertList } from '../components/AlertCard.jsx';
 import { ActivityItem } from '../components/Camera.jsx';
 import { Icon } from '../icons.jsx';
-import { AddByCodeDialog, PairedDevices, WebhookAddresses } from '../components/ConnectionExtras.jsx';
+import { AddByCodeDialog, AmazonSignIn, PairedDevices, WebhookAddresses } from '../components/ConnectionExtras.jsx';
 import { cleanDetail, plural } from '../format.js';
 import { roomOf } from '../model.js';
 
@@ -466,7 +466,7 @@ function PairingPanel({ integration, action, onAction }) {
 
 /* ---------------- Selected connection ---------------- */
 
-function SettingsTab({ installed, entry, onSaved, focusKey, scanKey }) {
+function SettingsTab({ installed, entry, onSaved, onChanged, focusKey, scanKey }) {
   const fields = (entry && entry.fields) || inferFields(installed.config);
   const start = useMemo(() => initialValues(fields, installed.config), [installed.config]); // eslint-disable-line react-hooks/exhaustive-deps
   const [values, setValues] = useState(start);
@@ -501,6 +501,9 @@ function SettingsTab({ installed, entry, onSaved, focusKey, scanKey }) {
   return (
     <>
       <div className="pane-body">
+        {installed.adminDetails && installed.adminDetails.amazon ? (
+          <AmazonSignIn installed={installed} details={installed.adminDetails.amazon} onChanged={onChanged} />
+        ) : null}
         <FieldColumns
           fields={fields}
           values={values}
@@ -604,7 +607,10 @@ function ConnectionDetail({ installed, entry, onChanged }) {
   const { isAdmin } = useAuth();
   const confirm = useConfirm();
   const pending = openSettingsFor.id === installed.id ? openSettingsFor.action : null;
-  const [tab, setTab] = useState(() => (pending && isAdmin ? 'settings' : 'devices'));
+  // A connection that brings in no devices (Amazon Alexa) has no Devices tab: it opens on its settings.
+  const noDevices = !!(entry && entry.noDevices);
+  const firstTab = noDevices ? (isAdmin ? 'settings' : 'activity') : 'devices';
+  const [tab, setTab] = useState(() => (pending && isAdmin ? 'settings' : firstTab));
   const [focusKey, setFocusKey] = useState(() => (pending && pending.focus ? pending.focus + ':0' : null));
   const [scanKey, setScanKey] = useState(() => (pending && pending.scan ? 'scan:0' : null));
   const [busy, setBusy] = useState(false);
@@ -632,8 +638,8 @@ function ConnectionDetail({ installed, entry, onChanged }) {
 
   useEffect(() => {
     if (openSettingsFor.id === installed.id) openSettingsFor.id = null;
-    else setTab('devices');
-  }, [installed.id]);
+    else setTab(firstTab);
+  }, [installed.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setEnabled = async (v) => {
     setBusy(true);
@@ -685,12 +691,14 @@ function ConnectionDetail({ installed, entry, onChanged }) {
         <div className="conn-head-text">
           <h2 id="conn-title" className="conn-title">
             {installed.name}
+            {entry && entry.experimental ? <span className="exp-badge">Experimental</span> : null}
           </h2>
           <div className="conn-status">
             <span className={'dot ' + (DOT[status] || '')} aria-hidden="true" />
             <strong className={'int-status--' + status}>{STATUS_LABEL[status] || status}</strong>
-            <span className="muted"> · {withCount(installed)}</span>
+            {noDevices ? (installed.detail ? <span className="muted"> · {cleanDetail(installed.detail)}</span> : null) : <span className="muted"> · {withCount(installed)}</span>}
           </div>
+          {entry && entry.experimental && entry.description ? <div className="conn-about">{entry.description}</div> : null}
         </div>
         {isAdmin ? (
           <>
@@ -739,7 +747,7 @@ function ConnectionDetail({ installed, entry, onChanged }) {
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'devices', label: `Devices (${devices.length})` },
+            ...(noDevices ? [] : [{ id: 'devices', label: `Devices (${devices.length})` }]),
             ...(paired ? [{ id: 'paired', label: `Paired (${paired.length})` }] : []),
             ...(isAdmin ? [{ id: 'settings', label: 'Settings' }] : []),
             { id: 'activity', label: installed.hasAlerts ? 'Alerts' : 'Activity' },
@@ -760,6 +768,7 @@ function ConnectionDetail({ installed, entry, onChanged }) {
           focusKey={focusKey}
           scanKey={scanKey}
           onSaved={() => (setFocusKey(null), setScanKey(null), onChanged(installed.id))}
+          onChanged={reload}
         />
       ) : null}
       {tab === 'activity' ? <ActivityTab installed={installed} devices={devices} /> : null}

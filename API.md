@@ -1216,6 +1216,12 @@ Timer: `{"id", "label" ("pasta" or ""), "name" ("pasta timer" / "10 minute timer
 ringing one nobody stops is cleared after an hour. Changes are pushed to that account's sockets as
 `{"type": "timers", "now", "timers"}`.
 
+**Alexa timers** (any signed-in session; the wall tablets): `GET /api/alexa/timers` → `{"now": hub time,
+"timers": [{"id": "alexa:…", "name": "Pasta", "where": "Kitchen Echo", "endsAt", "seconds" (its full length),
+"source": "alexa"}]}` — every Amazon Alexa connection's running timers, soonest first. Past `endsAt` it's done
+(ringing on the Echo) until Amazon drops it, 15 minutes at most. Changes are pushed to every socket as
+`{"type": "alexaTimers", "now", "timers"}`.
+
 **Settings** (admin; per wall tablet account): `GET /api/voice/settings/{userId}` ·
 `PATCH /api/voice/settings/{userId}` with any of
 `{"enabled": true, "sensitivity": "low" | "normal" | "high", "volume": 0-100, "voice": "" | name,
@@ -1337,6 +1343,16 @@ its options list Reolink cameras found at the addresses Frigate uses (group "Fou
 * `POST /api/integrations` `{"type", "name"?, "config"}` → Integration (starts it)
 * `PATCH /api/integrations/{id}` `{"name"?, "config"?, "enabled"?}` — a masked secret sent back unchanged is kept
 * `DELETE /api/integrations/{id}`
+* A catalog entry's `noDevices: true` = it brings in no devices at all (Amazon Alexa); `experimental: true` = it uses a service's unofficial connection and may stop working when
+  that service changes things (the dashboard marks it "Experimental").
+* `POST /api/integrations/{id}/sign-in` `{"answer"}` (admin) — finish signing a connection in to its service with
+  what that service's own sign-in page gave. Amazon Alexa: the address Amazon finished on
+  (`https://www.amazon.com/ap/maplanding?…openid.oa2.authorization_code=…`); Newman keeps only Amazon's refresh
+  token. 400 `{"error"}` in plain words when it isn't that address or Amazon refuses it (open the sign-in page
+  again: each link works once). `POST /api/integrations/{id}/sign-out` (admin) forgets it.
+  For admins, `adminDetails.amazon` = `{"signedIn", "signInUrl" (Amazon's sign-in page, while not signed in),
+  "checkedAt" (when the timers were last read, or null), "echos": [{"serial", "name", "shown"}]}`. Its settings:
+  `site` (`amazon.ca`…), `check_seconds` (≥ 15) and `hidden_echos` (serials whose timers aren't shown).
 * `POST /api/integrations/{id}/reconnect` (admin) — starts it again with its saved settings; answers with the
   integration (as in `GET /api/integrations`: `status` `connected` / `error` + `detail`, or still `connecting`
   after ~10 s). Its devices stay meanwhile; any it no longer provides once connected stay too, `available: false`.
