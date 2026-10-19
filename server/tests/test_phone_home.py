@@ -311,8 +311,8 @@ class HomeTests(Base):
     async def test_cards_status_favourites_and_climate(self):
         home = await (await self.client.get("/api/home")).json()
         cards = {c["id"]: c for c in home["cards"]}
-        self.assertEqual(list(cards)[:4], ["cameras", "climate", "lights", "security"])
-        self.assertEqual((cards["lights"]["value"], cards["security"]["value"], cards["today"]["value"]),
+        self.assertEqual(list(cards)[:4], ["cameras", "climate", "lighting", "security"])
+        self.assertEqual((cards["lighting"]["value"], cards["security"]["value"], cards["today"]["value"]),
                          ("All off", "All secure", "Nothing today"))
         self.assertTrue(home["canAutomate"])
         self.assertEqual(home["status"]["level"], "warn")  # the lock's No AC power
@@ -336,7 +336,7 @@ class HomeTests(Base):
         r = await self.client.put("/api/home/me", json={"cards": [{"id": "lights", "on": True}, {"id": "cameras", "on": False}],
                                                         "favourites": ["fake.garage", "fake.side"]})
         home = await r.json()
-        self.assertEqual([c["id"] for c in home["cards"]][:2], ["lights", "cameras"])
+        self.assertEqual([c["id"] for c in home["cards"]][:2], ["lighting", "cameras"])
         self.assertFalse(home["cards"][1]["on"])
         self.assertEqual(home["favourites"], ["fake.garage", "fake.side"])
         self.assertEqual((await self.client.put("/api/home/me", json={"favourites": ["a", "b", "c", "d", "e"]})).status, 400)
@@ -348,7 +348,7 @@ class HomeTests(Base):
         # Lights counts a group once.
         await self.client.post("/api/groups", json={"name": "Under Cabinet", "members": ["fake.a", "fake.b"]})
         home = await (await self.client.get("/api/home")).json()
-        lights = next(c for c in home["cards"] if c["id"] == "lights")
+        lights = next(c for c in home["cards"] if c["id"] == "lighting")
         self.assertEqual(lights["detail"], "2 lights")  # the group and Kitchen
 
     async def test_frigate_keeps_its_custom_labels(self):

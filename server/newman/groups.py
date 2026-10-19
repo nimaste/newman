@@ -20,6 +20,7 @@ import re
 from typing import Any
 
 from .integrations.base import CommandError, Integration
+from .categories import screen_of
 from .kinds import KINDS
 from .state import Entity
 
@@ -33,11 +34,11 @@ def slug(text: str) -> str:
 
 
 def groupable(e: Entity | None) -> bool:
-    """A light or switch: something in the lighting category that turns on and off (kinds metadata)."""
+    """A light or switch: something in a category whose screen is the lights screen (after any move) that
+    turns on and off (kinds metadata)."""
     if e is None or e.integration == INTEGRATION_ID:
         return False
-    k = KINDS[e.kind]
-    return k.category == "lighting" and {"turn_on", "turn_off"} <= {c.id for c in k.commands}
+    return screen_of(e.category) == "lights" and {"turn_on", "turn_off"} <= {c.id for c in KINDS[e.kind].commands}
 
 
 def dims(e: Entity) -> bool:
@@ -169,7 +170,7 @@ class Groups:
 
     def _kind(self, members: list[str]) -> str:
         ents = [self.hub.get(m) for m in members]
-        return "light" if ents and all(e and e.kind == "light" and dims(e) for e in ents) else "switch"
+        return "light" if ents and all(e and dims(e) for e in ents) else "switch"
 
     async def start(self) -> None:
         for gid in list(self._g):

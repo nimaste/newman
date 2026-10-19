@@ -24,6 +24,7 @@ from aiohttp import ClientSession, ClientTimeout, WSMsgType, web
 from yarl import URL
 
 from . import auth as A
+from . import categories as CT
 from . import backup as B
 from . import connect as CN
 from . import controls as C
@@ -141,6 +142,8 @@ def build_app(h: "Newman") -> web.Application:
     live = h.live = getattr(h, "live", None) or LiveStatuses(h.hub, h.store, h.notifier)
     h.engine.live = live
     h.engine.listeners.append(lambda: live.automations_changed(h.engine.autos))
+    # Categories and the category / icon a device was given (categories.py) - before anything reads one.
+    cats = h.categories = getattr(h, "categories", None) or CT.Categories(h.store, h.hub)
     # Problems someone muted ("No AC power" on a keypad that isn't meant to stay plugged in): muting.py.
     muting = h.muting = getattr(h, "muting", None) or M.Muting(h.store, h.hub)
     # House settings (the web's Settings page): battery level, dimming, cameras, how long history is kept.
@@ -162,7 +165,7 @@ def build_app(h: "Newman") -> web.Application:
         # origins: video.origins(), when building many devices at once (else worked out per device).
         inst = h.integrations.instances.get(e.integration)
         eid = quote(e.id, safe="")
-        return {"id": e.id, "name": e.name, "kind": e.kind, "category": e.category,
+        return {"id": e.id, "name": e.name, "kind": e.kind, "category": e.category, "icon": cats.icon_of(e.id),
                 "integration": e.integration, "integrationName": inst.display_name if inst else e.integration,
                 "state": e.state, "stateLabel": KINDS[e.kind].label_for(e.state, e.attrs), "available": e.available,
                 "attrs": e.attrs, "health": muting.health(e),
@@ -1292,6 +1295,7 @@ def build_app(h: "Newman") -> web.Application:
             muting.forget(i)
             muting.warnings.forget(i)
             groups.forget(i)
+            cats.forget(i)
         h.hub.set_name_overrides(h.store.entity_names())
         for lid in video.forget(ids):
             if ent := h.hub.get(lid):
@@ -1470,7 +1474,7 @@ def build_app(h: "Newman") -> web.Application:
             out.append({"name": p["name"], "home": bool(pj.get("home"))})
         return out
 
-    home = h.home = HM.Home(h.hub, h.store, groups, house, muting, today=lambda _u: {}, people=lambda: [])
+    home = h.home = HM.Home(h.hub, h.store, groups, house, muting, today=lambda _u: {}, people=lambda: [], cats=cats)
 
     @r.get("/api/home")
     async def get_home(req: web.Request) -> web.Response:
@@ -1478,7 +1482,7 @@ def build_app(h: "Newman") -> web.Application:
         if s["kind"] == "tablet":
             return _err(403, "The phone's Home is for phones")
         home.people = lambda: people_brief(u, s)
-        return web.json_response(home.json(u["id"], can_automate(u), today_for(u)))
+        return web.json_response(home.json(u, can_automate(u), today_for(u)))
 
     @r.put("/api/home/me")
     async def put_home_mine(req: web.Request) -> web.Response:
@@ -1486,13 +1490,15 @@ def build_app(h: "Newman") -> web.Application:
         u, s = req["user"], req["session"]
         if s["kind"] == "tablet":
             return _err(403, "The phone's Home is for phones")
+        if not home.can_edit(u):
+            return _err(403, "Your Home is set by the household - ask an admin")
         try:
             home.set_mine(u["id"], await body(req))
         except ValueError as e:
             return _err(400, str(e))
         await send_to_user(u["id"], {"type": "home"})
         home.people = lambda: people_brief(u, s)
-        return web.json_response(home.json(u["id"], can_automate(u), today_for(u)))
+        return web.json_response(home.json(u, can_automate(u), today_for(u)))
 
     @r.put("/api/home/climate")
     async def put_home_climate(req: web.Request) -> web.Response:
@@ -1506,7 +1512,107 @@ def build_app(h: "Newman") -> web.Application:
         home_changed()
         u, s = req["user"], req["session"]
         home.people = lambda: people_brief(u, s)
-        return web.json_response(home.json(u["id"], can_automate(u), today_for(u)))
+        return web.json_response(home.json(u, can_automate(u), today_for(u)))
+
+    # -- the household's Home and who may change their own (Dashboards > Phone Home; admins) -------------
+
+    @r.get("/api/home/layouts")
+    async def home_layouts(req: web.Request) -> web.Response:
+        require_admin(req)
+        return web.json_response(home.layouts(h.store.users(), today_for(req["user"])))
+
+    @r.put("/api/home/household")
+    async def put_home_household(req: web.Request) -> web.Response:
+        """{"cards": [{"id", "on"}…in order], "favourites": [ids, ≤4]} - every Home that isn't its own."""
+        require_admin(req)
+        try:
+            home.set_household(await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        await broadcast({"type": "home"})
+        return web.json_response(home.layouts(h.store.users(), today_for(req["user"])))
+
+    def home_person(uid: str) -> dict[str, Any]:
+        u = h.store.user(uid)
+        if not u or u.get("role") == "tablet":
+            raise web.HTTPNotFound(text='{"error": "No such person"}', content_type="application/json")
+        return u
+
+    @r.post("/api/home/people/{uid}/reset")
+    async def reset_home_person(req: web.Request) -> web.Response:
+        """Drops their own layout: their Home is the household's again."""
+        require_admin(req)
+        u = home_person(req.match_info["uid"])
+        home.reset(u["id"])
+        await send_to_user(u["id"], {"type": "home"})
+        return web.json_response(home.layouts(h.store.users(), today_for(req["user"])))
+
+    @r.patch("/api/home/people/{uid}")
+    async def patch_home_person(req: web.Request) -> web.Response:
+        """{"canEditHome": bool} - whether they may change their own Home (admins always may)."""
+        require_admin(req)
+        u = home_person(req.match_info["uid"])
+        data = await body(req)
+        if not isinstance(data.get("canEditHome"), bool):
+            return _err(400, 'Send {"canEditHome": true} or false')
+        if u["role"] == "admin" and not data["canEditHome"]:
+            return _err(400, "An admin can always change their own Home")
+        home.set_can_edit(u["id"], data["canEditHome"])
+        await send_to_user(u["id"], {"type": "home"})
+        return web.json_response(home.layouts(h.store.users(), today_for(req["user"])))
+
+    # -- categories and a device's category / icon (categories.py) ------------------------------------
+
+    @r.get("/api/categories")
+    async def categories_list(_: web.Request) -> web.Response:
+        return web.json_response(cats.list())
+
+    @r.put("/api/categories/{cid}")
+    async def category_rename(req: web.Request) -> web.Response:
+        """{"name"} - renames a category made in Newman."""
+        require_admin(req)
+        try:
+            info = cats.rename(req.match_info["cid"], (await body(req)).get("name"))
+        except ValueError as e:
+            return _err(400, str(e))
+        await broadcast({"type": "categories"})
+        home_changed()
+        return web.json_response(info)
+
+    async def category_moved(ent: Entity) -> None:
+        await broadcast({"type": "entity", "entity": entity_json(ent)})
+        await broadcast({"type": "categories"})
+        home_changed()
+
+    @r.put("/api/entities/{eid}/category")
+    async def entity_category(req: web.Request) -> web.Response:
+        """{"category": id | null, "newName"?: str} - moves a device into a category (null: back to its
+        type's); newName: into a new category of that name. Answers the device."""
+        require_admin(req)
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        data = await body(req)
+        try:
+            cats.set_category(ent, data.get("category"), data.get("newName"))
+        except ValueError as e:
+            return _err(400, str(e))
+        await category_moved(ent)
+        return web.json_response(entity_json(ent))
+
+    @r.put("/api/entities/{eid}/icon")
+    async def entity_icon(req: web.Request) -> web.Response:
+        """{"icon": name | null} - the icon it's shown with (null: its type's). Answers the device."""
+        require_admin(req)
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        try:
+            cats.set_icon(ent.id, (await body(req)).get("icon"))
+        except ValueError as e:
+            return _err(400, str(e))
+        await category_moved(ent)
+        return web.json_response(entity_json(ent))
 
     home_pending: dict[str, Any] = {"task": None, "last": 0.0}
 
@@ -1525,10 +1631,9 @@ def build_app(h: "Newman") -> web.Application:
             pass
 
     async def home_on_change(old: Entity | None, new: Entity) -> None:
-        cat = KINDS[new.kind].category
-        if cat in ("servers",):
-            return  # nothing on Home comes from these
-        if old is None or old.state != new.state or old.available != new.available or cat in ("climate", "lighting"):
+        # Any card may show a change of state; readings and brightness only show on the purpose-built screens.
+        if old is None or old.state != new.state or old.available != new.available or \
+                (CT.screen_of(new.category) is not None and old.attrs != new.attrs):
             home_changed()
 
     @r.post("/api/entities/{eid}/command")
@@ -2676,11 +2781,11 @@ def build_app(h: "Newman") -> web.Application:
         "snapshot", "clip", "kind"}. ?limit (default 10, at most 100)."""
         limit, before = _page(req)
         since = float(req.query["since"]) if "since" in req.query else None
-        if cats := [c for c in req.query.get("category", "").split(",") if c]:
+        if wanted := [c for c in req.query.get("category", "").split(",") if c]:
             out = []
             for ev in h.store.events(500, before, since=since):
                 e = h.hub.get(ev.get("entityId") or "")
-                if e and KINDS[e.kind].category in cats:
+                if e and e.category in wanted:
                     out.append(activity_brief(ev))
                     if len(out) >= limit:
                         break

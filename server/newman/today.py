@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
+from .kinds import KINDS
 from .muting import switched_off, unmuted_issues
 
 DEFAULTS = {"todayRainThreshold": 50, "todayEveningFrom": "17:00"}
@@ -40,7 +41,7 @@ def build(hub: Any, settings: dict[str, Any], *, person_id: str | None = None,
 
     for e in ents:
         a = e.attrs or {}
-        if e.kind == "upkeep":
+        if KINDS[e.kind].today == "todo":
             if not e.available:
                 continue
             if person_id and a.get("ownerId") and a["ownerId"] != person_id:
@@ -86,7 +87,7 @@ def build(hub: Any, settings: dict[str, Any], *, person_id: str | None = None,
 
     # Today's events, from every calendar.
     events = []
-    for c in (x for x in ents if x.kind == "calendar"):
+    for c in (x for x in ents if KINDS[x.kind].today == "events"):
         a = c.attrs or {}
         for ev in a.get("upcoming") or []:
             try:
@@ -109,7 +110,7 @@ def build(hub: Any, settings: dict[str, Any], *, person_id: str | None = None,
     events.sort(key=lambda ev: (not ev["allDay"], ev["start"]))
 
     # Weather: official warnings, then rain worth an umbrella.
-    for w in (x for x in ents if x.kind == "weather"):
+    for w in (x for x in ents if KINDS[x.kind].today == "weather"):
         a = w.attrs or {}
         for al in a.get("alerts") or []:
             heads.insert(0, {"id": f"{w.id}:{al.get('id')}", "source": "weather", "icon": "warning", "entity": w.id,

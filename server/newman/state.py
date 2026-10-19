@@ -25,6 +25,11 @@ def battery_low_for(entity_id: str) -> float:
     return own if isinstance(own, (int, float)) else BATTERY_LOW["default"]
 
 
+# A device moved to another category (Devices > a device > Category; categories.py): entity id -> category id.
+# Everything that groups devices by category reads Entity.category, so it follows the move.
+CATEGORY_OVERRIDES: dict[str, str] = {}
+
+
 # Lock states (ring-mqtt publishes these verbatim); kept as names for readability.
 LOCKED, UNLOCKED, JAMMED = "LOCKED", "UNLOCKED", "JAMMED"
 
@@ -45,7 +50,8 @@ class Entity:
 
     @property
     def category(self) -> str:
-        return KINDS[self.kind].category
+        """Its category: the one it was moved to, else its kind's."""
+        return CATEGORY_OVERRIDES.get(self.id) or KINDS[self.kind].category
 
     @property
     def is_active(self) -> bool:

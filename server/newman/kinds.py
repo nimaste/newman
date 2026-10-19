@@ -10,17 +10,38 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+@dataclass(frozen=True)
+class Category:
+    """Where devices are grouped (Devices, the phone's Home cards). `screen`: the purpose-built phone screen
+    its card opens ("cameras" | "climate" | "lights" | "security"), None = the plain list of its devices.
+    `home`: its place among the cards on a new Home (None = off until someone switches it on)."""
+    id: str
+    name: str
+    screen: str | None = None
+    home: int | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        return {"id": self.id, "name": self.name, "screen": self.screen}
+
+
 CATEGORIES = [
-    ("security", "Security"),
-    ("cameras", "Cameras"),
-    ("garage", "Garage"),
-    ("lighting", "Lighting"),
-    ("climate", "Climate"),
-    ("cleaning", "Cleaning"),
-    ("appliances", "Appliances"),
-    ("servers", "Servers & network"),
-    ("other", "Other"),
+    Category("security", "Security", screen="security", home=4),
+    Category("cameras", "Cameras", screen="cameras", home=1),
+    Category("garage", "Garage", screen="security"),
+    Category("lighting", "Lighting", screen="lights", home=3),
+    Category("climate", "Climate", screen="climate", home=2),
+    Category("cleaning", "Cleaning"),
+    Category("appliances", "Appliances"),
+    Category("servers", "Servers & network"),
+    Category("other", "Other"),
 ]
+CATEGORY = {c.id: c for c in CATEGORIES}
+
+# Icons a device can be given in place of its kind's (Devices > a device > Icon): every kind's own, plus a few
+# for things Newman has no kind for. Clients draw each name with their own symbol, else a generic one.
+GENERIC_ICONS = ("appliance", "plug", "outlet", "bulb", "lamp", "fan", "heater", "pump", "pool", "sprinkler",
+                 "garden", "tv", "speaker", "printer", "server", "router", "car", "battery", "water", "window",
+                 "door", "sensor", "button", "star")
 
 
 # Objects a camera system can detect (Frigate's common labels). A camera/zone entity's attrs["events"]
@@ -170,6 +191,9 @@ class Kind:
     # ids read out when someone asks about one ("what's the weather"); default: its first two.
     spoken: tuple[str, ...] = ()
     summary: tuple[str, ...] = ()
+    # What it adds to Today (today.py): "todo" (an upkeep item), "events" (a calendar), "weather" (warnings
+    # and rain) - "" for nothing.
+    today: str = ""
     # Shown instead of the state's label while an attr has a value: (attr, value, label) - a wall
     # tablet with its screen off shows "Screen off" (its state stays charging / on battery).
     notes: tuple[tuple[str, Any, str], ...] = ()
@@ -340,7 +364,7 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
                      Property("snowToday", "Snow today", "cm", "snowToday", "number"),
                      Property("gusts", "Wind gusts", "km/h", "gusts", "number"),
                      Property("uv", "UV index today", "", "uv", "number")],
-         spoken=("outside", "outdoors", "weather", "forecast"), summary=("temperature", "high", "low", "precipChance")),
+         spoken=("outside", "outdoors", "weather", "forecast"), summary=("temperature", "high", "low", "precipChance"), today="weather"),
     # Plugs and relays.
     Kind("switch", "Switch", "Switches & plugs", "lighting", [("on", "On"), ("off", "Off")], active_state="on",
          noun="switch", commands=[Command("turn_on", "Turn on", "turned on", "power", "on"),
@@ -613,7 +637,7 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
          events=[Event("due", "Comes due", "{device} comes due", "{device}", "{device} is {detail}"),
                  Event("soon", "Is coming up", "{device} is coming up", "{device}", "{device} is coming up ({detail})")],
          properties=[Property("daysLeft", "Days left", "days", "daysLeft", "number"),
-                     Property("runtimeHours", "Running hours since last done", "h", "runtimeHours", "number")]),
+                     Property("runtimeHours", "Running hours since last done", "h", "runtimeHours", "number")], today="todo"),
     # A wall tablet's own battery, as the wall app reports it (POST /api/tablet/battery): one device per
     # tablet account. With a smart plug and two automations (on below 20 %, off above 80 %) a tablet that
     # lives on the wall isn't kept at 100 % all day - what swells its battery. Temperature warns first.
@@ -665,7 +689,7 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
     Kind("calendar", "Calendar", "Calendars", "other",
          [("free", "Nothing on"), ("busy", "Event now")], active_state="busy", noun="calendar",
          events=[Event("start", "An event starts", "an event starts on {device}", "{device}",
-                       "An event is starting on {device}")]),
+                       "An event is starting on {device}")], today="events"),
     # A network ad blocker (AdGuard Home, Pi-hole, Technitium): "on" while it's filtering; "paused" turns itself
     # back on at attrs.resumesAt (epoch seconds). Numbers cover roughly the last day, as the server counts them.
     Kind("dns_filter", "DNS filter", "DNS filters", "servers",
@@ -852,9 +876,15 @@ def format_value(p: dict, v: Any) -> str:
 def meta_json(version: str) -> dict:
     return {
         "version": version,
-        "categories": [{"id": c, "name": n} for c, n in CATEGORIES],
+        "categories": [c.to_json() for c in CATEGORIES],
         "kinds": [k.to_json() for k in KINDS.values()],
+        "icons": icons(),
     }
+
+
+def icons() -> list[str]:
+    """Every icon name a device can be given: each kind's own (its id), then the generic ones."""
+    return list(dict.fromkeys([*KINDS, *GENERIC_ICONS]))
 
 
 def kind(kind_id: str) -> Kind:
@@ -868,4 +898,4 @@ def join_names(names: list[str], word: str = "and") -> str:
     return f"{', '.join(names[:-1])} {word} {names[-1]}"
 
 
-__all__ = ["CATEGORIES", "Command", "Event", "Property", "Kind", "properties_for", "humanize", "find_property", "property_matches", "format_value", "OPS", "KINDS", "render", "event_phrase", "meta_json", "kind", "join_names", "asdict"]
+__all__ = ["CATEGORIES", "CATEGORY", "Category", "icons", "Command", "Event", "Property", "Kind", "properties_for", "humanize", "find_property", "property_matches", "format_value", "OPS", "KINDS", "render", "event_phrase", "meta_json", "kind", "join_names", "asdict"]

@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any
 
 from .automations.describe import clean_dates, dates_errors, dates_ok
+from .categories import screen_of
 from .kinds import KINDS, properties_for
 
 GRID_COLS, GRID_ROWS = 12, 8
@@ -169,8 +170,8 @@ def reports_temperature(ent: Any) -> bool:
     """A room's temperature: a reading in °C / °F that is the device's own state (a temperature sensor, any
     sensor measuring one), or any temperature a climate device reports (a thermostat, the weather) - not a
     server's CPU or a disk."""
-    k = KINDS[ent.kind]
-    return any(p["type"] == "number" and is_temperature_unit(p["unit"]) and (not p["attr"] or k.category == "climate")
+    climate = screen_of(getattr(ent, "category", None) or KINDS[ent.kind].category) == "climate"
+    return any(p["type"] == "number" and is_temperature_unit(p["unit"]) and (not p["attr"] or climate)
                for p in properties_for(ent))
 
 
@@ -361,8 +362,8 @@ def starter(hub: Any, name: str = "Wall tablet") -> dict[str, Any]:
     secure_cmd = [e.id for e in ents if kinds[e.id].secure_state and kinds[e.id].commands]
     secure_ro = [e.id for e in ents if kinds[e.id].secure_state and not kinds[e.id].commands]
     modes = [e.id for e in ents if kinds[e.id].is_mode]
-    lights = [e.id for e in ents if kinds[e.id].category == "lighting" and kinds[e.id].commands]
-    readings = [{"entity": e.id, "property": p["id"]} for e in ents if kinds[e.id].category == "climate"
+    lights = [e.id for e in ents if screen_of(e.category) == "lights" and kinds[e.id].commands]
+    readings = [{"entity": e.id, "property": p["id"]} for e in ents if screen_of(e.category) == "climate"
                 for p in properties_for(e)[:1] if p["type"] == "number"]
 
     def tile(t: str, x: int, y: int, w: int, h: int, **config: Any) -> dict[str, Any]:

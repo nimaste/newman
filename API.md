@@ -728,8 +728,9 @@ Voice works cook mode on the tablet that heard it (see Voice: `action.type` `coo
 text worded by the hub:
 
 ```
-{"cards": [{"id": "cameras"|"climate"|"lights"|"security"|"today"|"people"|"appliances"|"cleaning",
-            "on", "title", "value", "detail", "tone": "normal"|"good"|"warm"|"danger", "camera"?: id}],
+{"cards": [{"id": category id | "today" | "people", "on", "new", "title", "category": id | null,
+            "screen": "cameras"|"climate"|"lights"|"security"|"today"|"people"|null,
+            "value", "detail", "tone": "normal"|"good"|"warm"|"danger", "camera"?: id}],
  "favourites": [ids, ≤4],
  "status": {"level": "ok"|"warn"|"danger", "summary": "Locked up · doors closed",
             "danger": [{"id", "title", "detail", "entity", "action": {"command", "label"} | null}],
@@ -737,11 +738,18 @@ text worded by the hub:
  "cameras": {"mode": "latest"|"featured", "featured", "top": {"camera", "label", "zone", "at",
              "snapshot", "clip"} | null},
  "climate": {"thermostat", "rooms": [{"entity", "name", "value"}], "range", "bands"},
- "canAutomate": bool}
+ "canAutomate": bool, "canEditHome": bool, "layout": "household"|"own"}
 ```
 
-- Cards come in the person's order (household default: the order above, Appliances and Cleaning off);
-  a card shows only when the house has devices for it (Today always).
+- **One card per category with a device in it** (`GET /api/categories`: built-in and made-in-Newman ones,
+  after any device moves), plus Today and People. `screen` is the category's purpose-built screen (from the
+  category's metadata), `null` = the plain list of that category's devices. A category with no screen gets
+  a plain card: one device - its name and state; several - "<n> <kind plural | devices>" and "<n> need a
+  look" / "<n> <active state>" / "All quiet". Card id `lights` from older layouts reads as `lighting`.
+- **Order and on/off** come from the person's own layout (when they may edit it and have one), else the
+  household layout (`layout` says which), else the defaults (Cameras, Climate, Lighting, Security, Today,
+  People on; the rest off). A card the layout doesn't mention goes last and off; `new` is true when Newman
+  never showed that card before (a category that turned up since) - until a saved layout includes it.
 - **Danger:** an alarm that's triggered, a device of an urgent kind out of its secure state (a leak), or
   any other device out of its secure state (a door or garage open, a lock unlocked) for its own
   `leftOpenMinutes`, else Settings > Devices `leftOpenMinutes` (15 to start), or more - with the command that fixes it when the kind has one. **Warnings:** device problems nobody
@@ -750,9 +758,34 @@ text worded by the hub:
 - **Cameras:** `latest` shows the newest camera alert; `featured` (Settings > Cameras) one camera.
 
 `PUT /api/home/me` `{"cards": [{"id", "on"}…in order], "favourites": [ids ≤4]}` (either; any non-tablet
-account) → the new Home. `PUT /api/home/climate` `{"rooms": [{"entity", "name"}…in order]}` (household;
+account; 403 when the admin switched off their "Can edit their own Home") → the new Home. `PUT /api/home/climate` `{"rooms": [{"entity", "name"}…in order]}` (household;
 temperature devices only; default every temperature sensor) → the new Home. Live: `{"type": "home"}` on
 the socket (at most once a second) whenever any of it changes; apps get it again. Settings key `home`.
+
+Admins (web › Dashboards › Phone Home): `GET /api/home/layouts` →
+`{"household": {"cards": [{"id", "on", "new", "title", "category", "screen"}], "favourites": [ids]},
+"categories": [as /api/categories], "people": [{"userId", "name", "layout": "household"|"own", "canEditHome"}]}`
+(no wall tablets) · `PUT /api/home/household` `{"cards", "favourites"}` (same checks as /me) ·
+`POST /api/home/people/{uid}/reset` (drops their own layout) · `PATCH /api/home/people/{uid}`
+`{"canEditHome": bool}` (admins always may: 400). Each answers like `GET /api/home/layouts` and sends
+`{"type": "home"}` to whoever it affects.
+
+## Categories
+
+`GET /api/categories` (any signed-in) → `[{"id", "name", "builtIn", "screen", "count"}]` - the built-in ones
+(kinds.CATEGORIES, with their `screen` role), then the ones made in Newman (`cat.<slug>`), each with how many
+devices are in it now. Every device's JSON has `category` (where it is now: moved, else its kind's) and
+`icon` (a name it was given, else null - draw its kind's icon). `GET /api/meta` has `"icons"`: every name a
+device can be given (each kind's id, then generic ones) and `categories` with their `screen`.
+
+- `PUT /api/entities/{id}/category` `{"category": id | null}` (admin) moves a device (null: back to its
+  kind's); `{"newName": "Pool"}` moves it into a new category of that name (or the one already called that).
+  A made-in-Newman category with nothing left in it is gone. → the device. Live: `entity`, `categories`.
+- `PUT /api/categories/{id}` `{"name"}` (admin) renames a made-in-Newman category (400 for a built-in one).
+- `PUT /api/entities/{id}/icon` `{"icon": name | null}` (admin) → the device.
+- Moving a device changes where it's grouped and counted (Home cards, Devices, the category screens, Lights
+  groups, the wall's suggested dashboard); what it does stays with its kind. Swapping a device carries both;
+  removing it drops them. Settings key `categories`.
 
 ## House settings
 

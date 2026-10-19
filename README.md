@@ -1606,10 +1606,17 @@ Without an outside address set there, `PUBLIC_URL` is used.
 One calm Home screen, worked out by the hub so both apps say the same thing: a line at the top that's
 green when all is well ("Locked up · doors closed · no leaks"), amber with each device problem nobody muted,
 red when something needs you now - the alarm going off, a leak, or a door, garage or lock left open for
-15 minutes (Settings › Devices, or the device's own time), with its fix (*Close*, *Lock*) right there. Under it the cards - Cameras (the newest alert, or
-one featured camera chosen in Settings › Cameras), Climate, Lights, Security, Today, People, and Appliances
-and Cleaning when switched on - and up to 4 favourite devices. *Edit Home* reorders, hides and shows cards
-and picks favourites, for that person only. Climate › Edit picks the rooms the Climate screen shows, for the
+15 minutes (Settings › Devices, or the device's own time), with its fix (*Close*, *Lock*) right there. Under it
+a card for every category that has devices - Cameras (the newest alert, or one featured camera chosen in
+Settings › Cameras), Climate, Lighting, Security, Garage, Appliances, a category you made… - plus Today and
+People, and up to 4 favourite devices. A category that turns up later (new devices of a new kind) arrives
+switched off and marked NEW. The admin sets the **household layout** (web › Dashboards › **Phone Home**:
+cards, order, favourites) and, per person, whether they may change their own; *Edit Home* on the phone
+reorders, hides and shows cards and picks favourites for that person only, and *Reset to household* undoes it.
+
+**Categories.** Each device is in its kind's category unless an admin moves it (web › a device › Category:
+any category, or *New category…* - "Pool"), and can be given another icon. A category made that way
+gets its own Home card and goes away when nothing's left in it. Climate › Edit picks the rooms the Climate screen shows, for the
 household; its comfort range and colours are in Settings › Climate.
 
 **Groups and rooms.** Several lights or switches can be made into one group (Kitchen Under Cabinet): one row

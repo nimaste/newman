@@ -180,6 +180,11 @@ async def replace_entities(h: "Newman", pairs: Any) -> dict[str, Any]:
             for gid in list(h.groups.all()):
                 await h.groups.refresh(gid)
 
+    if getattr(h, "categories", None):  # the category it was moved to and its icon (categories.py)
+        if n := h.categories.replace_ids(mapping):
+            counts["categories"] = n
+            counts["references"] += n
+
     if getattr(h, "live", None):  # "Live status while…" settings (live.py)
         if n := h.live.replace_ids(mapping):
             counts["live"] = n
