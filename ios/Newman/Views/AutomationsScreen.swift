@@ -53,6 +53,7 @@ struct AutomationsScreen: View {
 }
 
 /// An automation's switch, sent at once (put back if the hub refuses).
+@MainActor
 private func automationSwitch(_ model: AppModel, _ a: AutomationSummary) -> some View {
     Toggle(isOn: Binding(
         get: { a.enabled },

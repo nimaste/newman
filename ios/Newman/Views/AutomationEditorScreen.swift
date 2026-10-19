@@ -604,6 +604,7 @@ private struct ChoiceMenu: View {
     }
 }
 
+@MainActor
 private enum EditorText {
     static func names(_ ids: [String], _ model: AppModel) -> String {
         if ids.isEmpty { return "Choose a device" }
