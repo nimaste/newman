@@ -9,7 +9,7 @@ import { navigate, useApi, useHub } from '../hooks.js';
 import { useLiveRefresh } from '../live.js';
 import { Icon } from '../icons.jsx';
 import { fmtClock } from '../format.js';
-import { entityStateText, isActive, entityLabel, isModeKind, kindIcon, notSecure, plainCommands } from '../model.js';
+import { entityStateText, isActive, entityLabel, isModeKind, deviceIcon, notSecure, plainCommands } from '../model.js';
 import { formatPropValue } from '../automation.js';
 import LiveVideo from '../components/LiveVideo.jsx';
 import { pendingReplay } from '../pages/LiveView.jsx';
@@ -249,7 +249,7 @@ function DeviceCard({ e, kind, showArea }) {
       {showArea ? <div className="wt-dev-area">{roomOf(e) || ' '}</div> : null}
       <button type="button" className="wt-dev-main" disabled={!action || off || !!busy[e.id]} onClick={() => action && run(e, action)} aria-pressed={kind && kind.activeState ? isActive(e, kind) : undefined}>
         <span className="wt-dev-icon">
-          <Icon name={kindIcon(kind)} size={28} />
+          <Icon name={deviceIcon(e, kind)} size={28} />
         </span>
         <span className="wt-dev-text">
           <span className="wt-dev-name">{e.name}</span>
@@ -299,7 +299,7 @@ function DeviceRow({ e, kind, last, showArea }) {
   return (
     <div className={'wt-row' + (last ? ' is-last' : '')}>
       <span className={'wt-row-icon' + (warn ? ' is-warn' : calm ? ' is-calm' : '')}>
-        <Icon name={kindIcon(kind)} size={22} />
+        <Icon name={deviceIcon(e, kind)} size={22} />
       </span>
       <span className="wt-row-text">
         <span className="wt-row-name">{e.name}</span>
@@ -384,7 +384,7 @@ function ModeTile({ tile }) {
   return (
     <div className="wt-mode-row">
       <span className={'wt-mode-icon' + (calm ? ' is-calm' : '')}>
-        <Icon name={kindIcon(kind)} size={28} />
+        <Icon name={deviceIcon(e, kind)} size={28} />
       </span>
       <span className="wt-mode-text">
         <span className="wt-mode-name">{e.name}</span>
@@ -661,7 +661,7 @@ function AttentionSheet({ list, onClose, host }) {
             <div key={e.id} className="wt-sick-entry">
             <button type="button" className="wt-sick-row" onClick={() => openDevice({ entity: e.id, status: issuesText(e) })}>
               <span className="wt-sick-icon">
-                <Icon name={kindIcon(kindsById[e.kind])} size={24} />
+                <Icon name={deviceIcon(e, kindsById[e.kind])} size={24} />
               </span>
               <span className="wt-sick-text">
                 <span className="wt-sick-name">{e.name}</span>

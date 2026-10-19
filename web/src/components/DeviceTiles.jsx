@@ -10,7 +10,7 @@ import LiveVideo from './LiveVideo.jsx';
 import { DeviceControls } from './DeviceControls.jsx';
 import { StateText } from './DeviceList.jsx';
 import { Empty } from './Controls.jsx';
-import { groupByArea, kindIcon } from '../model.js';
+import { categoryOf, deviceIcon, groupByArea } from '../model.js';
 import { roomOf } from '../model.js';
 
 /** Group devices by type (kind order from meta), then optionally by room inside each. */
@@ -34,7 +34,7 @@ export function DeviceTile({ entity: e, kind, href, onSelect, selected, single, 
         <span className="tile-top">
           {!isCam ? (
             <span className="tile-icon" aria-hidden="true">
-              <Icon name={kindIcon(kind)} size={15} />
+              <Icon name={deviceIcon(e, kind)} size={15} />
             </span>
           ) : null}
           <span className="tile-name">{e.name}</span>
@@ -125,7 +125,7 @@ export function DeviceTilePicker({ selected, onChange, include, single, label, e
   const [cat, setCat] = useState('');
   const [q, setQ] = useState('');
   const all = (entities || []).filter((e) => include(e, kindsById[e.kind]));
-  const catOf = (e) => (kindsById[e.kind] ? kindsById[e.kind].category : e.category);
+  const catOf = (e) => categoryOf(e, kindsById);
   const cats = categories.filter((c) => all.some((e) => catOf(e) === c.id));
   const needle = q.trim().toLowerCase();
   const shown = all.filter(

@@ -1,14 +1,16 @@
 // Dashboards: what the wall tablet and the browser show. Everyone arranges their own; admins also
 // see and arrange other accounts' (a wall tablet's account can't edit its own). "Shown on" counts only
 // sign-ins the hub says are live (session.live), so a tablet's old, abandoned sign-ins don't pile up there.
-// (The phone apps have their own Home, arranged on the phone with Edit Home.)
+// Admins also get the Phone Home tab: the household layout every phone's Home starts from, and who may
+// change their own (components/PhoneHome.jsx).
 
 import { useEffect, useRef, useState } from 'react';
 import { api, enc, toast } from '../api.js';
 import { navigate, useApi } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useConfirm } from '../components/Feedback.jsx';
-import { Empty, ErrorBox, Loading, Modal, MoreMenu } from '../components/Controls.jsx';
+import { Empty, ErrorBox, Loading, Modal, MoreMenu, Tabs } from '../components/Controls.jsx';
+import PhoneHome from '../components/PhoneHome.jsx';
 import { Icon } from '../icons.jsx';
 import { plural } from '../format.js';
 import { ownerLabel } from './DashboardEditor.jsx';
@@ -87,6 +89,7 @@ export default function Dashboards() {
   const ownerOf = (d) => (d.userId && me && d.userId !== me.id ? userById[d.userId] || { id: d.userId, name: 'Another account' } : null);
   const [modal, setModal] = useState(null); // { kind: 'new' | 'rename', d? }
   const seeded = useRef(false);
+  const [tab, setTab] = useState('wall');
 
   // First visit: the starter the tablet would get (the hub lays it out from the house's devices).
   useEffect(() => {
@@ -175,88 +178,102 @@ export default function Dashboards() {
     <div className="app-page">
       <div className="app-head">
         <h1 className="page-title">Dashboards</h1>
-        <button type="button" className="btn btn-primary" onClick={() => setModal({ kind: 'new' })}>
-          <Icon name="plus" size={16} /> New dashboard
-        </button>
+        {tab === 'wall' ? (
+          <button type="button" className="btn btn-primary" onClick={() => setModal({ kind: 'new' })}>
+            <Icon name="plus" size={16} /> New dashboard
+          </button>
+        ) : null}
       </div>
-      <div className="pane pane--plain">
-        <div className="pane-body pane-body--flush-x">
-          <h2 className="dash-section">Wall &amp; browser</h2>
-          {!items ? (
-            list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : <Loading />
-          ) : !items.length ? (
-            <Empty title="Setting up your first dashboard…">Newman lays it out from your devices.</Empty>
-          ) : (
-            <div className="table-wrap">
-              <table className="dtable">
-                <thead>
-                  <tr>
-                    <th scope="col">Name</th>
-                    <th scope="col">Pages</th>
-                    <th scope="col">Default for</th>
-                    <th scope="col">Shown on</th>
-                    <th scope="col" className="dash-col-actions">
-                      <span className="sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((d) => {
-                    const pages = d.pages || [];
-                    const owner = ownerOf(d);
-                    return (
-                      <tr key={d.id}>
-                        <td>
-                          <a className="dtable-name" href={'#/dashboards/' + enc(d.id)}>
-                            {d.name}
-                          </a>
-                          {!d.isDefault ? <span className="dtable-sub">{whose(d)}</span> : null}
-                        </td>
-                        <td>
-                          <span title={pages.map((p) => p.name).join(', ')}>{pages.length}</span>
-                        </td>
-                        <td>{d.isDefault ? (owner ? owner.name : 'You') : <span className="muted">—</span>}</td>
-                        <td>
-                          <DeviceCount names={devicesFor(d)} />
-                        </td>
-                        <td className="dash-col-actions">
-                          <span className="dtable-actions">
-                            <a className="btn btn-sm" href={'#/dashboards/' + enc(d.id)}>
-                              Arrange
-                            </a>
-                            <MoreMenu
-                              label={`More for ${d.name}`}
-                              items={[
-                                { label: 'Rename', onClick: () => setModal({ kind: 'rename', d }) },
-                                { label: 'Duplicate', onClick: () => duplicate(d) },
-                                ...(d.isDefault ? [] : [{ label: 'Make default', onClick: () => makeDefault(d) }]),
-                                { label: 'Delete', danger: true, onClick: () => remove(d) },
-                              ]}
-                            />
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {bare.length ? (
-            <div className="dash-bare">
-              {bare.map((tb) => (
-                <span key={tb.id} className="dash-bare-item">
-                  <span className="muted">{ownerLabel(tb)} has no dashboard yet.</span>
-                  <button type="button" className="btn-link" onClick={() => create(tb.name, tb.id)}>
-                    Set one up
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
-
+      {isAdmin ? (
+        <div className="conn-tabs dash-tabs">
+          <Tabs label="Dashboards" value={tab} onChange={setTab} tabs={[{ id: 'wall', label: 'Wall tablets' }, { id: 'phone', label: 'Phone Home' }]} />
         </div>
-      </div>
+      ) : null}
+      {isAdmin && tab === 'phone' ? (
+        <div className="pane">
+          <div className="pane-body">
+            <PhoneHome />
+          </div>
+        </div>
+      ) : (
+        <div className="pane pane--plain">
+          <div className="pane-body pane-body--flush-x">
+            {!items ? (
+              list.error ? <ErrorBox error={list.error} onRetry={list.reload} /> : <Loading />
+            ) : !items.length ? (
+              <Empty title="Setting up your first dashboard…">Newman lays it out from your devices.</Empty>
+            ) : (
+              <div className="table-wrap">
+                <table className="dtable">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Pages</th>
+                      <th scope="col">Default for</th>
+                      <th scope="col">Shown on</th>
+                      <th scope="col" className="dash-col-actions">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((d) => {
+                      const pages = d.pages || [];
+                      const owner = ownerOf(d);
+                      return (
+                        <tr key={d.id}>
+                          <td>
+                            <a className="dtable-name" href={'#/dashboards/' + enc(d.id)}>
+                              {d.name}
+                            </a>
+                            {!d.isDefault ? <span className="dtable-sub">{whose(d)}</span> : null}
+                          </td>
+                          <td>
+                            <span title={pages.map((p) => p.name).join(', ')}>{pages.length}</span>
+                          </td>
+                          <td>{d.isDefault ? (owner ? owner.name : 'You') : <span className="muted">—</span>}</td>
+                          <td>
+                            <DeviceCount names={devicesFor(d)} />
+                          </td>
+                          <td className="dash-col-actions">
+                            <span className="dtable-actions">
+                              <a className="btn btn-sm" href={'#/dashboards/' + enc(d.id)}>
+                                Arrange
+                              </a>
+                              <MoreMenu
+                                label={`More for ${d.name}`}
+                                items={[
+                                  { label: 'Rename', onClick: () => setModal({ kind: 'rename', d }) },
+                                  { label: 'Duplicate', onClick: () => duplicate(d) },
+                                  ...(d.isDefault ? [] : [{ label: 'Make default', onClick: () => makeDefault(d) }]),
+                                  { label: 'Delete', danger: true, onClick: () => remove(d) },
+                                ]}
+                              />
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {bare.length ? (
+              <div className="dash-bare">
+                {bare.map((tb) => (
+                  <span key={tb.id} className="dash-bare-item">
+                    <span className="muted">{ownerLabel(tb)} has no dashboard yet.</span>
+                    <button type="button" className="btn-link" onClick={() => create(tb.name, tb.id)}>
+                      Set one up
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+          </div>
+        </div>
+      )}
       {modal && modal.kind === 'new' ? <NameModal title="New dashboard" initial="Wall tablet" label="Create" owners={isAdmin ? tablets : null} onClose={() => setModal(null)} onSave={create} /> : null}
       {modal && modal.kind === 'rename' ? <NameModal title="Rename dashboard" initial={modal.d.name} onClose={() => setModal(null)} onSave={(n) => rename(modal.d, n)} /> : null}
     </div>

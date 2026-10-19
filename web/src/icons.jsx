@@ -300,6 +300,25 @@ const ALIASES = {
   locate: 'bell',
   cleaning: 'vacuum',
   robot: 'vacuum',
+  // The hub's generic icon names (a device's own icon, Devices > a device > Icon).
+  appliance: 'bolt',
+  outlet: 'plug',
+  lamp: 'light',
+  heater: 'flame',
+  pump: 'droplet',
+  pool: 'droplet',
+  sprinkler: 'droplet',
+  water: 'droplet',
+  garden: 'sun',
+  tv: 'grid',
+  speaker: 'volume',
+  printer: 'list',
+  server: 'list',
+  router: 'webhook',
+  car: 'garage',
+  battery: 'bolt',
+  window: 'blinds',
+  button: 'pointer',
 };
 
 // Last resort for icon names from the hub we don't know: match on keywords.

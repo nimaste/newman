@@ -16,6 +16,7 @@ import RemoteControls, { hasRemoteControls } from '../components/RemoteControls.
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
 import DeviceWarnings, { hasWarnings, useDeviceWarnings } from '../components/DeviceWarnings.jsx';
 import { RoomSelect } from '../components/RoomPicker.jsx';
+import CategoryIcon from '../components/CategoryIcon.jsx';
 import { Icon } from '../icons.jsx';
 import { fmtWhen } from '../format.js';
 import { eventsFor, roomOf } from '../model.js';
@@ -204,6 +205,7 @@ export default function DeviceDetail({ id }) {
           ·{' '}
           <a href={'#/integrations/' + enc(e.integration)}>{e.integrationName || e.integration}</a>
         </span>
+        {isAdmin && e.integration !== 'groups' ? <CategoryIcon entity={e} /> : null}
       </div>
 
       <div className={'dev-grid' + (own ? ' dev-grid--cam' : '')}>

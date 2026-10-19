@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { onApiEvent } from './api.js';
 import { HubContext, navigate, useApi, useRoute } from './hooks.js';
 import { useLive, useLiveRefresh, useLiveStatus } from './live.js';
+import { setCategoryScreens } from './model.js';
 import Sidebar from './components/Sidebar.jsx';
 import { ConfirmProvider, Toasts } from './components/Feedback.jsx';
 import { ErrorBox, Loading } from './components/Controls.jsx';
@@ -46,6 +47,9 @@ export function useHubData() {
   const live = useLiveStatus();
   const socketDown = live.state === 'down';
   const entities = useApi('api/entities', { interval: socketDown ? FALLBACK_MS : 0 });
+  // Every category, made-in-Newman ones too (meta has the built-in ones only).
+  const cats = useApi('api/categories');
+  useLiveRefresh((m) => m.type === 'categories' || m.type === 'reconnected', () => cats.reload(), 200);
   // Each pushed device replaces its copy in the store (or is added); a removed one is dropped.
   useLive((m) => {
     if (m.type === 'entity-removed' && m.id) {
@@ -81,7 +85,8 @@ export function useHubData() {
   return useMemo(() => {
     const m = meta.data || null;
     const kinds = (m && m.kinds) || [];
-    const categories = (m && m.categories) || [];
+    const categories = Array.isArray(cats.data) && cats.data.length ? cats.data : (m && m.categories) || [];
+    setCategoryScreens(categories);
     const kindsById = Object.fromEntries(kinds.map((k) => [k.id, k]));
     const categoriesById = Object.fromEntries(categories.map((c) => [c.id, c]));
     const list = Array.isArray(entities.data) ? entities.data : null;
@@ -103,7 +108,7 @@ export function useHubData() {
       reloadStatus: status.reload,
       setEntities: entities.setData,
     };
-  }, [meta, status.data, entities.data, entities.error, hubDown, live]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [meta, cats.data, status.data, entities.data, entities.error, hubDown, live]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Replaces the current hash (no extra history entry) - for renamed pages. */

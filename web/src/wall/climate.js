@@ -2,6 +2,8 @@
 // (/api/meta, entity.properties), never from kind ids. Plain functions, checked by `npm test`.
 // Numbers are shown exactly as the device reports them (never rounded).
 
+import { categoryScreen } from '../model.js';
+
 export const isTempUnit = (u) => typeof u === 'string' && /^°[CF]$/.test(u.trim());
 
 /** A number command in °C / °F: what you set a thermostat with. */
@@ -19,7 +21,7 @@ const temps = (e) => ((e && e.properties) || []).filter((p) => p.type === 'numbe
  * sensor), or any temperature a climate device reports (a thermostat, the weather) - not a CPU or a disk.
  */
 export function reportsTemperature(e, kind) {
-  return temps(e).some((p) => !p.attr || (kind && kind.category === 'climate'));
+  return temps(e).some((p) => !p.attr || (kind && categoryScreen(kind.category) === 'climate'));
 }
 
 function humidityOf(e) {
@@ -32,7 +34,7 @@ const has = (p) => !!p && p.value !== null && p.value !== undefined && p.value !
 /** A room box: name, temperature and (if reported) humidity - exactly as reported. */
 export function roomOf(e, kind) {
   const t = temps(e);
-  const temp = t.find((p) => !p.attr) || t.find((p) => p.id === 'temperature') || (kind && kind.category === 'climate' ? t[0] : null) || null;
+  const temp = t.find((p) => !p.attr) || t.find((p) => p.id === 'temperature') || (kind && categoryScreen(kind.category) === 'climate' ? t[0] : null) || null;
   const hum = humidityOf(e);
   return { id: e.id, name: e.name, temp: has(temp) ? temp.value : null, unit: temp ? temp.unit : '', humidity: has(hum) ? hum.value : null, off: e.available === false };
 }

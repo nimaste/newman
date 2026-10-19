@@ -8,13 +8,14 @@ import { useApi, useHub } from '../hooks.js';
 import { useConfirm } from './Feedback.jsx';
 import { Check, Empty, ErrorBox, Loading, Modal } from './Controls.jsx';
 import { RoomSelect } from './RoomPicker.jsx';
-import { roomOf } from '../model.js';
+import { categoryOf, categoryScreen, roomOf } from '../model.js';
 import { plural } from '../format.js';
 
-/** What the hub lets into a group: something in the lighting category that turns on and off (kinds metadata). */
+/** What the hub lets into a group: something in a category that opens the lights screen (after any move)
+ * that turns on and off (kinds metadata). */
 export function groupable(e, kindsById) {
   const k = e && kindsById[e.kind];
-  if (!k || e.integration === 'groups' || k.category !== 'lighting') return false;
+  if (!k || e.integration === 'groups' || categoryScreen(categoryOf(e, kindsById)) !== 'lights') return false;
   const ids = new Set((k.commands || []).map((c) => c.id));
   return ids.has('turn_on') && ids.has('turn_off');
 }

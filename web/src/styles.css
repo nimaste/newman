@@ -8607,3 +8607,188 @@ span.place-bar-name {
   gap: 8px;
   padding: 4px 0 2px;
 }
+
+/* A category made in Newman can be renamed (Devices). */
+.dcat-top {
+  display: flex;
+  align-items: center;
+}
+.dcat-top .dcat-head {
+  flex: 1;
+  min-width: 0;
+}
+.dcat-rename {
+  flex: none;
+  padding: 0 18px 0 6px;
+  font-size: 13px;
+}
+
+/* A device's category and icon (admins, on its page). */
+.dev-cat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 24px;
+  margin-top: 8px;
+}
+.dev-cat-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.dev-cat-label {
+  font-weight: 700;
+  color: var(--muted);
+}
+.dev-cat-icon {
+  display: inline-flex;
+  color: var(--ink);
+}
+
+/* Dashboards > Phone Home (admins). */
+.dash-tabs {
+  margin-bottom: 14px;
+}
+.ph-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 28px;
+}
+.ph-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.ph-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ph-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+.ph-box {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ph-box-label {
+  padding: 8px 14px;
+  background: var(--line-softer);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ph-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ph-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--card);
+}
+.ph-card.is-off .ph-card-name {
+  color: var(--muted);
+  font-weight: 600;
+}
+.ph-card.is-dragging {
+  opacity: 0.5;
+}
+.ph-grip {
+  cursor: grab;
+  color: var(--faint);
+}
+.ph-card-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ph-new {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 11px;
+  font-weight: 800;
+}
+.ph-move {
+  display: flex;
+  gap: 2px;
+}
+.ph-favs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.ph-fav-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ph-fav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 12px;
+  border-radius: 16px;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ph-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.ph-person {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+}
+.ph-person + .ph-person {
+  border-top: 1px solid var(--line-soft);
+}
+.ph-person-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ph-person-name {
+  font-size: 15px;
+  font-weight: 800;
+}
+.ph-person-layout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ph-household {
+  color: var(--good);
+}
+.ph-own {
+  color: var(--amber);
+}

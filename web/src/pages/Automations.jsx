@@ -6,7 +6,7 @@ import { useAuth } from '../auth.jsx';
 import { Empty, ErrorBox, Loading, Switch } from '../components/Controls.jsx';
 import { fmtNext, fmtWhen } from '../format.js';
 import { Icon } from '../icons.jsx';
-import { automationBody, runTime } from '../model.js';
+import { automationBody, categoryOf as deviceCategory, runTime } from '../model.js';
 import { cleanForSend, conditionEntityIds, normalize, toMulti, triggerEntityIds } from '../automation.js';
 
 function lastText(a) {
@@ -25,9 +25,8 @@ function categoryOf(a, hub) {
     ...(a.actions || []).flatMap((x) => toMulti(x).entities),
   ];
   for (const id of ids) {
-    const e = hub.entitiesById[id];
-    const k = e && hub.kindsById[e.kind];
-    if (k && k.category) return k.category;
+    const c = deviceCategory(hub.entitiesById[id], hub.kindsById);
+    if (c) return c;
   }
   return 'other';
 }

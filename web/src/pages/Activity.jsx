@@ -6,15 +6,12 @@ import { Empty, ErrorBox, Loading } from '../components/Controls.jsx';
 import { ActivityItem } from '../components/Camera.jsx';
 import { AlertCard, alertFromEvent } from '../components/AlertCard.jsx';
 import { fmtClock, fmtDay } from '../format.js';
-import { kindIcon } from '../model.js';
+import { categoryOf, deviceIcon } from '../model.js';
 
 const PAGE = 50;
 
 // Icons for activity that isn't about one device.
 const EVENT_ICONS = { automation: 'bolt', followup: 'check', command: 'bolt', problem: 'alert', detection: 'camera', alert: 'camera', integration: 'plug', phone: 'phone', signin: 'key', account: 'user', weather: 'cloud' };
-// Activity about no longer known devices still files under a category (weather alerts → Climate).
-const EVENT_CATEGORY = { weather: 'climate' };
-
 /**
  * "Show" options: everything, one per device category from /api/meta (only those with
  * devices), automations and problems. Camera alerts/detections go with their device's category,
@@ -93,15 +90,21 @@ export default function Activity() {
   };
 
   const deviceKind = (x) => (x.entityId && entitiesById[x.entityId] ? entitiesById[x.entityId].kind : null);
-  const catOf = (kindId) => (kindId && kindsById[kindId] ? kindsById[kindId].category : null);
-  const usedCats = (categories || []).filter((c) => (entities || []).some((e) => catOf(e.kind) === c.id));
+  const deviceOf = (x) => (x.entityId ? entitiesById[x.entityId] || null : null);
+  const catOf = (e) => categoryOf(e, kindsById);
+  // An entry without a device (a weather warning) counts in the category of the devices of that kind.
+  const eventCat = (x) => {
+    const like = (entities || []).find((e) => e.kind === x.kind);
+    return like ? catOf(like) : null;
+  };
+  const usedCats = (categories || []).filter((c) => (entities || []).some((e) => catOf(e) === c.id));
   const views = [
     { id: 'all', label: 'Everything' },
     ...usedCats.map((c) => ({
       id: 'cat:' + c.id,
       label: c.name,
       category: c.id,
-      cameras: (entities || []).some((e) => catOf(e.kind) === c.id && kindsById[e.kind] && kindsById[e.kind].hasCamera),
+      cameras: (entities || []).some((e) => catOf(e) === c.id && kindsById[e.kind] && kindsById[e.kind].hasCamera),
     })),
     ...FIXED_VIEWS,
   ];
@@ -110,7 +113,7 @@ export default function Activity() {
   const matches = (x) => {
     if (current.id !== 'all') {
       const byEvent = (current.events || []).includes(x.kind) || (!!current.failedSignIns && x.kind === 'signin' && !!(x.data && x.data.failed)) || (!!current.cameras && !deviceKind(x) && CAMERA_ACTIVITY.includes(x.kind));
-      const byDevice = !!current.category && (catOf(deviceKind(x)) || EVENT_CATEGORY[x.kind]) === current.category;
+      const byDevice = !!current.category && (deviceOf(x) ? catOf(deviceOf(x)) : eventCat(x)) === current.category;
       if (!byEvent && !byDevice) return false;
     }
     if (!needle) return true;
@@ -120,7 +123,7 @@ export default function Activity() {
   const iconFor = (x) => {
     const k = deviceKind(x);
     if (EVENT_ICONS[x.kind] && x.kind !== 'command') return EVENT_ICONS[x.kind];
-    return k && kindsById[k] ? kindIcon(kindsById[k]) : EVENT_ICONS[x.kind] || 'dot';
+    return k && kindsById[k] ? deviceIcon(deviceOf(x), kindsById[k]) : EVENT_ICONS[x.kind] || 'dot';
   };
 
   const groups = [];

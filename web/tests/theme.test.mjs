@@ -6,6 +6,10 @@ import assert from 'node:assert/strict';
 import { christmasOf, chosenTheme, decorFit, msToMidnight, seasonActive, themeNow, SEASON } from '../src/wall/theme.js';
 import { deg, pct, reportsTemperature, roomColumns, roomOf, setsTemperature, thermostatOf, warmth } from '../src/wall/climate.js';
 import { stripWidth, tabFit } from '../src/wall/tabfit.js';
+import { setCategoryScreens } from '../src/model.js';
+
+// Each category's screen role comes from the hub (/api/categories), as the app loads it.
+setCategoryScreens([{ id: 'climate', screen: 'climate' }, { id: 'servers', screen: null }, { id: 'other', screen: null }]);
 
 const day = (y, m, d) => new Date(y, m - 1, d, 12);
 

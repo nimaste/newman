@@ -426,6 +426,28 @@ export function kindIcon(kind) {
   return byCat[kind.category] || 'dot';
 }
 
+/** A device's icon: the one it's been given in Newman, else its kind's. */
+export function deviceIcon(e, kind) {
+  return (e && e.icon) || kindIcon(kind);
+}
+
+/** A device's category: the hub's effective one (where it's been moved), else its kind's. */
+export function categoryOf(e, kindsById) {
+  if (e && e.category) return e.category;
+  const k = e && kindsById && kindsById[e.kind];
+  return (k && k.category) || null;
+}
+
+// Which purpose-built screen each category opens ("lights", "climate"…), from the hub's category
+// metadata - set by the hub data loader, so nothing here lists categories.
+let CATEGORY_SCREENS = {};
+export function setCategoryScreens(list) {
+  CATEGORY_SCREENS = Object.fromEntries((list || []).map((c) => [c.id, c.screen || null]));
+}
+export function categoryScreen(id) {
+  return (id && CATEGORY_SCREENS[id]) || null;
+}
+
 /** Strip server-computed fields before PUT/POST/describe. */
 export function automationBody(a, { keepId = true } = {}) {
   // eslint-disable-next-line no-unused-vars

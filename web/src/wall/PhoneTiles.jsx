@@ -7,7 +7,7 @@
 import { useApi, useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
 import { fmtClock, fmtDistance } from '../format.js';
-import { entityLabel, entityStateText, isActive, kindIcon, notSecure, plainCommands, stateChoices, stateLabelOf } from '../model.js';
+import { entityLabel, entityStateText, isActive, deviceIcon, notSecure, plainCommands, stateChoices, stateLabelOf } from '../model.js';
 import { formatPropValue } from '../automation.js';
 import LiveVideo from '../components/LiveVideo.jsx';
 import { Avatar } from '../components/FamilyBits.jsx';
@@ -444,7 +444,7 @@ function DeviceButton({ e, kind, w }) {
   const state = [entityStateText(e, kind), battery !== null ? `${battery}%` : '', problem || ''].filter(Boolean).join(' · ');
   return (
     <button type="button" className={'pt-devbtn' + (lit ? ' is-lit' : '') + (warn ? ' is-warn' : '') + (off ? ' is-off' : '')} disabled={!action || off || !!busy[e.id]} onClick={() => action && run(e, action)} title={e.name}>
-      {w >= 110 ? <Icon name={kindIcon(kind)} size={22} /> : null}
+      {w >= 110 ? <Icon name={deviceIcon(e, kind)} size={22} /> : null}
       <span className="pt-devbtn-text">
         <span className="pt-devbtn-name">{e.name}</span>
         <span className={'pt-devbtn-state' + (warn && !lit ? ' is-warn' : calm ? ' is-calm' : '')}>{state}</span>

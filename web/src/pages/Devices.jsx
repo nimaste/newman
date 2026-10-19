@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { enc } from '../api.js';
+import { api, enc, toast } from '../api.js';
 import { navigate, useApi, useHub, useRoute } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
-import { Check, Empty, ErrorBox, Loading, Segmented } from '../components/Controls.jsx';
+import { Check, Empty, ErrorBox, Loading, Modal, Segmented } from '../components/Controls.jsx';
 import { DeviceControls, EntityName, useDeviceActions } from '../components/DeviceControls.jsx';
 import { StateText } from '../components/DeviceList.jsx';
 import { DeviceTileGroups } from '../components/DeviceTiles.jsx';
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
 import LightGroupsDialog from '../components/LightGroups.jsx';
 import { Icon } from '../icons.jsx';
-import { groupByArea, issuesOf, needsLook, roomOf, summaryChips } from '../model.js';
+import { categoryOf, groupByArea, issuesOf, needsLook, roomOf, summaryChips } from '../model.js';
 import { plural } from '../format.js';
 
 // Which categories are open, remembered in this browser ({categoryId: true | false}). A category
@@ -32,25 +32,69 @@ function saveOpen(v) {
 }
 
 /** One category: a row that sums it up (name, count, status chips) and opens to its device tiles. */
-function CategoryRow({ name, count, chips, open, onToggle, children }) {
+function CategoryRow({ name, count, chips, open, onToggle, onRename, children }) {
   return (
     <section className={'dcat' + (open ? ' is-open' : '')} aria-label={name}>
-      <button type="button" className="dcat-head" aria-expanded={open} onClick={onToggle}>
-        <span className="dcat-caret" aria-hidden="true">
-          <Icon name="chevronRight" size={16} />
-        </span>
-        <span className="dcat-name">{name}</span>
-        <span className="dcat-count">{count}</span>
-        <span className="dcat-chips">
-          {chips.map((c, i) => (
-            <span key={i} className={'schip schip--' + c.tone} title={c.title || undefined}>
-              {c.text}
-            </span>
-          ))}
-        </span>
-      </button>
+      <div className="dcat-top">
+        <button type="button" className="dcat-head" aria-expanded={open} onClick={onToggle}>
+          <span className="dcat-caret" aria-hidden="true">
+            <Icon name="chevronRight" size={16} />
+          </span>
+          <span className="dcat-name">{name}</span>
+          <span className="dcat-count">{count}</span>
+          <span className="dcat-chips">
+            {chips.map((c, i) => (
+              <span key={i} className={'schip schip--' + c.tone} title={c.title || undefined}>
+                {c.text}
+              </span>
+            ))}
+          </span>
+        </button>
+        {onRename ? (
+          <button type="button" className="btn-link dcat-rename" onClick={onRename} aria-label={`Rename ${name}`}>
+            Rename
+          </button>
+        ) : null}
+      </div>
       {open ? <div className="dcat-body">{children}</div> : null}
     </section>
+  );
+}
+
+/** Renaming a category made in Newman (a device moved into "New category…"). */
+function RenameCategory({ category, onClose }) {
+  const [name, setName] = useState(category.name);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.put('api/categories/' + enc(category.id), { name: name.trim() });
+      toast(`Renamed to ${name.trim()}`, 'success');
+      onClose();
+    } catch {
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal title={`Rename “${category.name}”`} onClose={onClose}>
+      <form
+        className="stack-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim() && !saving) save();
+        }}
+      >
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="Category name" autoFocus />
+        <div className="inline-form">
+          <button type="submit" className="btn btn-primary" disabled={!name.trim() || saving}>
+            Save
+          </button>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -78,6 +122,7 @@ const STATUSES = [
 export default function Devices() {
   const { entities, entitiesError, kinds, kindsById, categories, reloadEntities } = useHub();
   const { isAdmin } = useAuth();
+  const [renaming, setRenaming] = useState(null);
   const { query } = useRoute();
   const autos = useApi('api/automations');
   const conns = useApi('api/integrations');
@@ -103,7 +148,7 @@ export default function Devices() {
     );
   }
 
-  const catOf = (e) => (kindsById[e.kind] ? kindsById[e.kind].category : e.category);
+  const catOf = (e) => categoryOf(e, kindsById);
   // Every installed connection by its name, plus any a device names that isn't installed (any more).
   const connList = (Array.isArray(conns.data) ? conns.data : []).map((c) => ({ id: c.id, name: c.name || c.id }));
   for (const e of entities) {
@@ -113,7 +158,7 @@ export default function Devices() {
 
   const allCats = categories.filter((c) => entities.some((e) => catOf(e) === c.id));
   const cat = allCats.some((c) => c.id === query.get('c')) ? query.get('c') : '';
-  const catKinds = cat ? kinds.filter((k) => k.category === cat && entities.some((e) => e.kind === k.id)) : [];
+  const catKinds = cat ? kinds.filter((k) => entities.some((e) => e.kind === k.id && catOf(e) === cat)) : [];
   const type = catKinds.some((k) => k.id === query.get('t')) ? query.get('t') : '';
   const status = STATUSES.find((s) => s.id === query.get('s')) || null;
   const conn = connList.some((c) => c.id === query.get('i')) ? query.get('i') : '';
@@ -168,7 +213,7 @@ export default function Devices() {
       const vis = shown.filter(inCat);
       const attention = all.some((e) => needsLook(e, lookup(e)));
       const open = filtering ? !closedNow.has(c.id) : (opened[c.id] ?? attention);
-      return { id: c.id, name: c.name, all, vis, open };
+      return { id: c.id, name: c.name, custom: c.builtIn === false, all, vis, open };
     })
     .filter((r) => (filtering ? r.vis.length : r.all.length));
   const allOpen = rows.length > 0 && rows.every((r) => r.open);
@@ -338,6 +383,7 @@ export default function Devices() {
                     chips={summaryChips(r.all, kinds)}
                     open={r.open}
                     onToggle={() => toggleRow(r)}
+                    onRename={isAdmin && r.custom ? () => setRenaming(r) : undefined}
                   >
                     <DeviceTileGroups
                       entities={r.vis}
@@ -450,6 +496,7 @@ export default function Devices() {
           )}
         </div></div>
       )}
+      {renaming ? <RenameCategory category={renaming} onClose={() => setRenaming(null)} /> : null}
     </div>
   );
 }

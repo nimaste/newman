@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
-import { kindIcon } from '../model.js';
+import { deviceIcon } from '../model.js';
 import { useDeviceOpener } from './TodayTile.jsx';
 import { ProblemList } from './MuteProblems.jsx';
 import { PEOPLE_COLOURS, doItem, snooze, undoItem, useRecentlyDone, useToday, useUpkeep, withRecent, failed } from './today.js';
@@ -139,7 +139,7 @@ export default function TodoView({ itemId, onBack }) {
                     return (
                       <button key={item.id} type="button" className={'wtodo-card' + (on ? ' is-sel' : '') + (item.justDone ? ' is-done' : '')} aria-pressed={on} onClick={() => (setSel(item.id), setAsking(false))}>
                         <span className="wtodo-icon">
-                          <Icon name={item.source === 'upkeep' ? item.icon || 'wrench' : kindIcon(ie && kindsById[ie.kind])} size={24} />
+                          <Icon name={item.source === 'upkeep' ? item.icon || 'wrench' : deviceIcon(ie, ie && kindsById[ie.kind])} size={24} />
                         </span>
                         <span className="wtodo-text">
                           <span className="wtodo-title">{item.title}</span>
