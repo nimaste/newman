@@ -98,7 +98,8 @@ fun AlertsScreen(onCamera: (String, String?) -> Unit, onBack: (() -> Unit)? = nu
     val filters = buildList {
         add(ALL to "All")
         if (!cameraAlerts.isNullOrEmpty()) add(CAMERAS to "Cameras")
-        state.meta?.categories?.filter { it.id in cats && it.id != "cameras" }?.forEach { add(it.id to it.name) }
+        // Camera alerts have their own filter: the category whose screen is the Cameras one isn't listed again.
+        state.meta?.categories?.filter { it.id in cats && it.screen != "cameras" }?.forEach { add(it.id to it.name) }
         if (HOME in cats) add(HOME to "Home")
     }
 
@@ -190,7 +191,7 @@ private fun ActivityCard(a: ActivityEntry, onCamera: (String, String?) -> Unit, 
         else -> androidx.compose.ui.graphics.Color(0x1AFFFFFF) to N.Text
     }
     val icon = when {
-        k != null -> HubModel.kindIcon(k)
+        k != null -> HubModel.deviceIcon(e, k)
         a.kind == "signin" || a.kind == "account" -> "user"
         a.kind == "automation" || a.kind == "followup" -> "bell"
         a.kind == "system" -> "gauge"

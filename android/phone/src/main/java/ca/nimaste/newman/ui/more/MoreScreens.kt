@@ -103,7 +103,7 @@ private const val SECTION_ROWS = 5
  */
 @Composable
 fun MoreTab(view: String?, onView: (String?) -> Unit, unseen: Int, onCamera: (String, String?) -> Unit, onSheet: (String) -> Unit,
-            onPerson: (String) -> Unit, onMe: () -> Unit, onEditHome: () -> Unit) {
+            onPerson: (String) -> Unit, onMe: () -> Unit, canEditHome: Boolean = true, onEditHome: () -> Unit) {
     val app = LocalApp.current
     var autos by remember { mutableStateOf<List<Automation>?>(null) }
     var loads by remember { mutableStateOf(0) }
@@ -123,12 +123,12 @@ fun MoreTab(view: String?, onView: (String?) -> Unit, unseen: Int, onCamera: (St
         view == MoreView.AUTOMATIONS -> AutomationsScreen(autos, onReload = { loads++ }, onBack = back,
             onOpen = { onView(MoreView.automation(it)) }, onNew = { onView(MoreView.NEW_AUTOMATION) }, onChanged = replace)
         autoId != null || view == MoreView.NEW_AUTOMATION -> AutomationEditor(autoId, onBack = back, onSaved = { loads++ })
-        else -> MoreHome(unseen, autos, onView, onMe, onEditHome)
+        else -> MoreHome(unseen, autos, onView, onMe, if (canEditHome) onEditHome else null)
     }
 }
 
 @Composable
-private fun MoreHome(unseen: Int, autos: List<Automation>?, onView: (String?) -> Unit, onMe: () -> Unit, onEditHome: () -> Unit) {
+private fun MoreHome(unseen: Int, autos: List<Automation>?, onView: (String?) -> Unit, onMe: () -> Unit, onEditHome: (() -> Unit)?) {
     val app = LocalApp.current
     val state by app.state.collectAsState()
     val people by app.people.state.collectAsState()
@@ -149,8 +149,11 @@ private fun MoreHome(unseen: Int, autos: List<Automation>?, onView: (String?) ->
         }
         item(key = "me") {
             HCard(padding = PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
-                MoreRow("pencil", H.Soft, H.Raised, "Edit Home", "Cards and favourites", onClick = onEditHome)
-                HDivider()
+                // Hidden when the admin keeps this person on the household Home.
+                if (onEditHome != null) {
+                    MoreRow("pencil", H.Soft, H.Raised, "Edit Home", "Cards and favourites", onClick = onEditHome)
+                    HDivider()
+                }
                 MoreRow(null, H.Text, H.PeopleBg, name.ifBlank { "Your account" }, "Look, location sharing, password, sign out",
                     initial = name.take(1).uppercase().ifBlank { null }, onClick = onMe)
             }
@@ -256,7 +259,7 @@ fun DevicesScreen(onBack: (() -> Unit)?, onSheet: (String) -> Unit) {
 
 /** One device: icon, name, its state (or its problems) and its quick control; tap for everything. */
 @Composable
-private fun DeviceListRow(e: Entity, k: Kind?, last: Boolean, onSheet: () -> Unit) {
+internal fun DeviceListRow(e: Entity, k: Kind?, last: Boolean, onSheet: () -> Unit) {
     val app = LocalApp.current
     val run = rememberRunner()
     val busy by app.busy.collectAsState()
@@ -280,7 +283,7 @@ private fun DeviceListRow(e: Entity, k: Kind?, last: Boolean, onSheet: () -> Uni
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                IconBubble(if (bad) "alert" else HubModel.kindIcon(k), bubbleBg, bubbleFg, size = 38.dp, iconSize = 19.dp)
+                IconBubble(if (bad) "alert" else HubModel.deviceIcon(e, k), bubbleBg, bubbleFg, size = 38.dp, iconSize = 19.dp)
                 Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                     Text(e.name, style = T.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(DeviceList.statusText(e, k), style = T.small.copy(color = stateColor), maxLines = 2, overflow = TextOverflow.Ellipsis)

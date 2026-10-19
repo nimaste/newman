@@ -119,7 +119,7 @@ fun DeviceCard(e: Entity, k: Kind?, onSheet: () -> Unit, textScale: Float = 1f) 
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            NIcon(HubModel.kindIcon(k), size = 24.dp, color = l.fg)
+            NIcon(HubModel.deviceIcon(e, k), size = 24.dp, color = l.fg)
             Spacer(Modifier.weight(1f))
             if (e.id in busy) CircularProgressIndicator(Modifier.size(14.dp), color = l.fg, strokeWidth = 2.dp)
             else if (action != null && LocalApp.current.needsConfirmation(e, action)) NIcon("fingerprint", size = 16.dp, color = l.fg.copy(alpha = 0.7f))
@@ -150,7 +150,7 @@ fun WideDeviceCard(e: Entity, k: Kind?, onSheet: () -> Unit, textScale: Float = 
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            IconBubble(HubModel.kindIcon(k), l.fg.copy(alpha = 0.12f), l.fg, size = 44.dp, iconSize = 22.dp)
+            IconBubble(HubModel.deviceIcon(e, k), l.fg.copy(alpha = 0.12f), l.fg, size = 44.dp, iconSize = 22.dp)
             Column(Modifier.weight(1f)) {
                 Text(e.name, style = T.label.copy(fontSize = 16.sp * textScale, color = l.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(stateLine(e, k, withArea = true), style = T.tiny.copy(fontSize = 12.sp * textScale, color = l.stateColor), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -288,7 +288,7 @@ fun DeviceButton(e: Entity, k: Kind?, onSheet: () -> Unit, textScale: Float = 1f
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (e.id in busy) CircularProgressIndicator(Modifier.size(20.dp), color = l.fg, strokeWidth = 2.dp)
-        else NIcon(HubModel.kindIcon(k), size = 22.dp, color = l.fg)
+        else NIcon(HubModel.deviceIcon(e, k), size = 22.dp, color = l.fg)
         Column(Modifier.weight(1f)) {
             Text(e.name, style = T.label.copy(fontSize = 14.sp * textScale, color = l.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(stateLine(e, k), style = T.tiny.copy(fontSize = 12.sp * textScale, color = l.stateColor), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -330,7 +330,7 @@ fun DeviceRow(e: Entity, k: Kind?, last: Boolean, showArea: Boolean, onSheet: ()
             Row(Modifier.weight(1f).fillMaxHeight().spoken(spokenDevice(e, k, e.id in busy, withArea = if (showArea) e.attrs.string("area") else null))
                 .clickable(onClickLabel = SHOW_ALL, role = Role.Button, onClick = onSheet), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IconBubble(HubModel.kindIcon(k), bubbleBg, bubbleFg)
+                IconBubble(HubModel.deviceIcon(e, k), bubbleBg, bubbleFg)
                 Column(Modifier.weight(1f)) {
                     Text(e.name, style = T.label.copy(fontSize = 15.sp * textScale), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(stateLine(e, k, withArea = showArea), style = T.small.copy(fontSize = 13.sp * textScale, color = stateColor),

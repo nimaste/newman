@@ -2,6 +2,7 @@ package ca.nimaste.newman.core
 
 import ca.nimaste.newman.core.model.AutoEdit
 import ca.nimaste.newman.core.model.CameraAlert
+import ca.nimaste.newman.core.model.Category
 import ca.nimaste.newman.core.model.ClimateBand
 import ca.nimaste.newman.core.model.Command
 import ca.nimaste.newman.core.model.Entity
@@ -140,7 +141,8 @@ class HomeTest {
     private val off = Command("turn_off", "Turn off", confirmsTo = "off")
     private val toggle = Command("toggle", "Toggle")
     private val bright = Command("set_brightness", "Brightness", takesValue = true, valueType = "percent", attr = "brightness")
-    private val meta = Meta(kinds = listOf(
+    private val meta = Meta(categories = listOf(Category("lighting", "Lighting", "lights"), Category("security", "Security", "security"),
+        Category("climate", "Climate", "climate"), Category("other", "Other")), kinds = listOf(
         Kind("light", category = "lighting", states = listOf(KindState("on"), KindState("off")), activeState = "on", commands = listOf(on, off, toggle, bright)),
         Kind("switch", category = "lighting", states = listOf(KindState("on"), KindState("off")), activeState = "on", commands = listOf(on, off)),
         Kind("remote", category = "lighting"),

@@ -218,18 +218,33 @@ object HubModel {
 
     fun issuesOf(e: Entity?): List<String> = e?.health?.issues ?: emptyList()
 
+    /** A kind's own symbol, where this app has a nicer one than the generic rules below give. */
+    private val KIND_ICONS = mapOf("lock" to "lock", "doorbell" to "bell", "contact" to "door", "motion" to "motion",
+        "alarm" to "shield", "camera" to "camera", "light" to "light", "remote" to "grid", "zone" to "camera",
+        "thermostat" to "thermometer", "temperature" to "thermometer", "garage" to "garage", "weather" to "cloud",
+        "calendar" to "calendar", "vacuum" to "vacuum", "switch" to "power", "fan" to "fan", "cover" to "blinds",
+        "sensor" to "gauge", "leak" to "droplet", "smoke" to "flame", "binary" to "toggle", "siren" to "megaphone",
+        "button" to "pointer", "speaker" to "speaker", "webhook" to "webhook")
+
+    /** The generic icon names a device can be given (GET /api/meta "icons") drawn with this app's nearest symbol. */
+    private val GENERIC_ICONS = mapOf("appliance" to "sliders", "plug" to "power", "outlet" to "power", "bulb" to "bulb",
+        "lamp" to "light", "fan" to "fan", "heater" to "flame", "pump" to "droplet", "pool" to "droplet", "sprinkler" to "droplet",
+        "garden" to "sun", "tv" to "play", "speaker" to "speaker", "printer" to "list", "server" to "list", "router" to "webhook",
+        "car" to "garage", "battery" to "bolt", "water" to "droplet", "window" to "blinds", "door" to "door", "sensor" to "gauge",
+        "button" to "pointer", "star" to "star")
+
+    /** An icon name from the hub (a kind's id or a generic one) as this app's symbol; anything else passes through (NIcon falls back). */
+    fun iconName(name: String): String = KIND_ICONS[name] ?: GENERIC_ICONS[name] ?: name
+
+    /** The icon a device is drawn with: the one it was given in Newman, else its kind's. */
+    fun deviceIcon(e: Entity?, k: Kind?): String = e?.icon?.takeIf { it.isNotBlank() }?.let { iconName(it) } ?: kindIcon(k)
+
     /** Kind icon name: a nicety map, then capabilities, then category (model.js kindIcon). */
     fun kindIcon(k: Kind?): String {
         if (k == null) return "dot"
-        val byKind = mapOf("lock" to "lock", "doorbell" to "bell", "contact" to "door", "motion" to "motion",
-            "alarm" to "shield", "camera" to "camera", "light" to "light", "remote" to "grid", "zone" to "camera",
-            "thermostat" to "thermometer", "temperature" to "thermometer", "garage" to "garage", "weather" to "cloud",
-            "calendar" to "calendar", "vacuum" to "vacuum", "switch" to "power", "fan" to "fan", "cover" to "blinds",
-            "sensor" to "gauge", "leak" to "droplet", "smoke" to "flame", "binary" to "toggle", "siren" to "megaphone",
-            "button" to "pointer", "speaker" to "speaker", "webhook" to "webhook")
         val byCat = mapOf("security" to "shield", "garage" to "garage", "lighting" to "light",
             "climate" to "thermometer", "cleaning" to "vacuum", "cameras" to "camera")
-        byKind[k.id]?.let { return it }
+        KIND_ICONS[k.id]?.let { return it }
         if (k.hasCamera) return "camera"
         k.commands.firstOrNull { it.icon.isNotEmpty() }?.let { return it.icon }
         if (k.events.isNotEmpty()) return "bell"

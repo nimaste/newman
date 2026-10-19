@@ -70,6 +70,8 @@ object H {
     val Knob = Color(0xFFC9D2EF)
     val Accent = Color(0xFF7AA2FF)
     val Info = Color(0xFF9DB8FF)
+    /** The NEW badge on a card that turned up since Home was last arranged. */
+    val NewBg = Color(0xFF1C2A5A)
     val Text = Color(0xFFEEF2FF)
     val Soft = Color(0xFFC9D2EF)
     val Sub = Color(0xFFA3AED0)

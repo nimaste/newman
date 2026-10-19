@@ -14,13 +14,24 @@ data class HomeData(
     val cameras: HomeCameras = HomeCameras(),
     val climate: HomeClimate = HomeClimate(),
     val canAutomate: Boolean = false,
+    /** May this person change their own Home (Edit Home); false: the admin's household layout, no Edit Home. */
+    val canEditHome: Boolean = true,
+    /** Which layout this Home is: "household" or "own". */
+    val layout: String = "household",
 )
 
-/** One Home card: cameras | climate | lights | security | today | people | appliances | cleaning. */
+/**
+ * One Home card: a category in use (its id), or "today" / "people". [screen] is the purpose-built screen it opens
+ * (cameras, climate, lights, security, today, people); null opens the generic category screen for [category].
+ */
 @Serializable
 data class HomeCard(
     val id: String,
     val on: Boolean = true,
+    /** A category that turned up since the layout was saved: off until someone switches it on. */
+    val new: Boolean = false,
+    val category: String? = null,
+    val screen: String? = null,
     val title: String = "",
     val value: String = "",
     val detail: String = "",
@@ -165,11 +176,16 @@ object HomeLogic {
     /** A group: a device listing its members (attrs.members). */
     fun members(e: Entity): List<String> = e.attrs.strings("members")
 
-    /** Lights and switches of the lighting category that turn on and off (not remotes), by kinds metadata. */
+    /** The device's category after any move in Newman (its own, else its kind's; "other" when neither says). */
+    fun categoryOf(e: Entity, meta: Meta?): String = e.category.ifEmpty { meta?.kind(e.kind)?.category ?: "" }.ifEmpty { "other" }
+
+    /** The purpose-built screen of the category it's in ("lights", "security"…), from the category's metadata. */
+    fun screenOf(e: Entity, meta: Meta?): String? = meta?.screenOf(categoryOf(e, meta))
+
+    /** Devices in a category whose screen is the Lights one that turn on and off (not remotes), by kinds metadata. */
     fun isLight(e: Entity, meta: Meta?): Boolean {
         val k = meta?.kind(e.kind) ?: return false
-        val cat = e.category.ifEmpty { k.category }
-        return cat == "lighting" && k.activeState != null && k.commands.isNotEmpty() && !HubModel.isRemote(e, k)
+        return screenOf(e, meta) == "lights" && k.activeState != null && k.commands.isNotEmpty() && !HubModel.isRemote(e, k)
     }
 
     /**
@@ -227,22 +243,50 @@ object HomeLogic {
         val all: List<Entity> get() = alarms + controls + sensors.flatMap { it.second }
     }
 
+    /**
+     * Everything in a category whose screen is the Security one (after any moves): alarm panels; things you lock
+     * or open (a secure state and commands); and every other device there, one section per kind.
+     */
     fun securityParts(entities: Collection<Entity>, meta: Meta?): SecurityParts {
-        val alarms = entities.filter { e ->
+        val mine = entities.filter { screenOf(it, meta) == "security" }
+        val alarms = mine.filter { e ->
             val k = meta?.kind(e.kind) ?: return@filter false
-            (e.category.ifEmpty { k.category }) == "security" && k.secureState == null && !k.isMode &&
-                k.commands.any { it.valueType == "state" } && HubModel.stateChoices(k).isNotEmpty()
+            k.secureState == null && !k.isMode && k.commands.any { it.valueType == "state" } && HubModel.stateChoices(k).isNotEmpty()
         }
-        val secured = entities.filter { meta?.kind(it.kind)?.secureState != null }
-        val controls = secured.filter { HubModel.plainCommands(meta?.kind(it.kind)).isNotEmpty() }
-        val sensors = secured.filter { it !in controls }.groupBy { it.kind }
+        val rest = mine.filter { it !in alarms }
+        val controls = rest.filter { meta?.kind(it.kind)?.secureState != null && HubModel.plainCommands(meta?.kind(it.kind)).isNotEmpty() }
+        val sensors = rest.filter { it !in controls }.groupBy { it.kind }
             .mapNotNull { (kind, list) -> meta?.kind(kind)?.let { it to list } }
         return SecurityParts(alarms, controls, sensors)
     }
 
+    /** The controls grouped by kind, each section titled by the kind's plural name. */
+    fun controlGroups(parts: SecurityParts, meta: Meta?): List<Pair<Kind, List<Entity>>> =
+        parts.controls.groupBy { it.kind }.mapNotNull { (kind, list) -> meta?.kind(kind)?.let { it to list } }
+
     /** Temperature sensors Climate can list: climate devices whose state is a number. */
     fun climateSensors(entities: Collection<Entity>, meta: Meta?): List<Entity> = entities.filter { e ->
         val k = meta?.kind(e.kind)
-        (e.category.ifEmpty { k?.category ?: "" }) == "climate" && k?.states?.isEmpty() == true && e.state?.trim()?.toDoubleOrNull() != null
+        screenOf(e, meta) == "climate" && k?.states?.isEmpty() == true && e.state?.trim()?.toDoubleOrNull() != null
     }
+
+    // -- any category: its own screen and its card's icon -------------------------------------------
+
+    /** A category's devices (after any moves), by name. */
+    fun categoryDevices(entities: Collection<Entity>, meta: Meta?, category: String): List<Entity> =
+        entities.filter { categoryOf(it, meta) == category }.sortedBy { it.name.lowercase() }
+
+    /** The icon most of a category's devices are drawn with (their own, else their kind's); ties by name. */
+    fun categoryIcon(entities: Collection<Entity>, meta: Meta?, category: String): String =
+        categoryDevices(entities, meta, category).map { HubModel.deviceIcon(it, meta?.kind(it.kind)) }
+            .groupingBy { it }.eachCount().entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .firstOrNull()?.key ?: "grid"
+
+    /** Each purpose-built screen's card icon; a card with no screen uses its devices' most common icon. */
+    val SCREEN_ICONS = mapOf("cameras" to "camera", "climate" to "thermometer", "lights" to "bulb", "security" to "shield",
+        "today" to "calendar", "people" to "user")
+
+    fun cardIcon(card: HomeCard, entities: Collection<Entity>, meta: Meta?): String =
+        card.screen?.let { SCREEN_ICONS[it] } ?: card.category?.let { categoryIcon(entities, meta, it) } ?: "grid"
 }

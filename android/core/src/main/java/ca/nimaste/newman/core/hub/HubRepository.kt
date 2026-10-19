@@ -109,7 +109,9 @@ class HubRepository(
                 val dash = async { hubCall { api.currentDashboard() } }
                 val auth = async { hubCall { api.authState() } }
                 val activity = async { runCatching { hubCall { api.events(limit = 100) } }.getOrNull() }
-                val m = meta.await()
+                // Categories made in Newman (and every category's screen) - older hubs: /api/meta's built-in ones.
+                val cats = async { runCatching { hubCall { api.categories() } }.getOrNull() }
+                val m = meta.await().let { mm -> cats.await()?.takeIf { it.isNotEmpty() }?.let { mm.copy(categories = it) } ?: mm }
                 val list = entities.await()
                 val d = dash.await()
                 val a = auth.await()
@@ -134,6 +136,13 @@ class HubRepository(
 
     /** Nothing to do: the phone no longer follows a phone layout (kept for the live message's effect). */
     suspend fun reloadLayout() = Unit
+
+    /** The categories again (one was made, renamed or emptied): names and screens for every screen. */
+    suspend fun reloadCategories() {
+        runCatching { hubCall { api.categories() } }.onSuccess { c ->
+            if (c.isNotEmpty()) _state.update { s -> s.copy(meta = s.meta?.copy(categories = c)) }
+        }
+    }
 
     suspend fun reloadAuth() {
         runCatching { hubCall { api.authState() } }.onSuccess { a -> _state.update { it.copy(auth = a) } }

@@ -129,7 +129,10 @@ class AppViewModel @Inject constructor(
         viewModelScope.launch {
             // The hub says the Home data or the house settings changed, or the connection came back.
             hub.liveMessages.collect { m ->
-                if ((m is LiveMessage.Unknown && (m.type == "home" || m.type == "settings-house")) || m is LiveMessage.Reconnected) reloadHome()
+                if ((m is LiveMessage.Unknown && (m.type == "home" || m.type == "settings-house" || m.type == "categories")) ||
+                    m is LiveMessage.Reconnected) reloadHome()
+                // A category was made, renamed or emptied: every screen's names and screens come from the list.
+                if (m is LiveMessage.Unknown && m.type == "categories") viewModelScope.launch { hub.reloadCategories() }
             }
         }
         viewModelScope.launch {

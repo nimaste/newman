@@ -51,14 +51,23 @@ data class Meta(
     val version: String = "",
     val categories: List<Category> = emptyList(),
     val kinds: List<Kind> = emptyList(),
+    /** Every icon name a device can be given (kinds' ids, then generic ones); the app draws each with its nearest symbol. */
+    val icons: List<String> = emptyList(),
 ) {
     val kindsById: Map<String, Kind> by lazy { kinds.associateBy { it.id } }
     fun kind(id: String?): Kind? = id?.let { kindsById[it] }
     fun categoryName(id: String?): String? = categories.firstOrNull { it.id == id }?.name
+
+    /** The purpose-built screen a category opens ("lights", "security"…), from the category's own metadata; null: the generic one. */
+    fun screenOf(categoryId: String?): String? = categories.firstOrNull { it.id == categoryId }?.screen
 }
 
+/**
+ * A category: the hub's built-in ones and any made in Newman (GET /api/categories), with the screen it opens
+ * (null: the generic category screen) and how many devices are in it.
+ */
 @Serializable
-data class Category(val id: String, val name: String = id)
+data class Category(val id: String, val name: String = id, val screen: String? = null, val builtIn: Boolean = true, val count: Int = 0)
 
 @Serializable
 data class KindState(val id: String, val label: String = id)
@@ -174,6 +183,8 @@ data class Entity(
     val room: String? = null,
     /** The light/switch group this device belongs to (a group entity's id), or null. */
     val group: String? = null,
+    /** The icon it was given in Newman (an /api/meta icon name), else null: its kind's. */
+    val icon: String? = null,
 )
 
 // -- dashboards ----------------------------------------------------------------------------------

@@ -47,8 +47,8 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Security: the alarm's modes, locks and doors you control (each with its next action), the sensors
- * by kind (doors, water…), and today's events from them.
+ * Security: everything in a category whose screen is Security - the alarm's modes, what you lock or open
+ * (by kind, each with its next action), every other device by kind, and today's events from them.
  */
 @Composable
 fun SecurityScreen(home: HomeData?, onBack: () -> Unit, onSheet: (String) -> Unit, onAlerts: () -> Unit) {
@@ -57,7 +57,7 @@ fun SecurityScreen(home: HomeData?, onBack: () -> Unit, onSheet: (String) -> Uni
     val busy by app.busy.collectAsState()
     val run = rememberRunner()
     val parts = remember(state.entities, state.meta) { HomeLogic.securityParts(state.named.values, state.meta) }
-    val card = home?.cards?.firstOrNull { it.id == "security" }
+    val card = home?.cards?.firstOrNull { it.screen == "security" }
     val start = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toEpochSecond().toDouble()
     // Today's events: GET /api/alerts?category=security (older hubs: the activity of these devices), again when activity arrives.
     var events by remember { mutableStateOf<List<Pair<Double, String>>?>(null) }
@@ -85,15 +85,16 @@ fun SecurityScreen(home: HomeData?, onBack: () -> Unit, onSheet: (String) -> Uni
                 }
             }
         }
-        if (parts.controls.isNotEmpty()) item(key = "controls") {
+        // Things you lock or open, one card per kind, titled by the kind's own plural name.
+        HomeLogic.controlGroups(parts, state.meta).forEach { (kind, list) -> item(key = "controls:${kind.id}") {
             HCard {
-                Caps("Locks & garage", Modifier.padding(top = 10.dp, bottom = 2.dp))
-                parts.controls.forEachIndexed { i, e ->
+                Caps(kind.plural, Modifier.padding(top = 10.dp, bottom = 2.dp))
+                list.forEachIndexed { i, e ->
                     val k = state.kind(e)
                     val action = HubModel.nextAction(e, k)
                     val open = HubModel.notSecure(e, k)
                     val battery = HubModel.vitals(e).battery
-                    HRow(last = i == parts.controls.lastIndex) {
+                    HRow(last = i == list.lastIndex) {
                         Column(Modifier.weight(1f).clickable(role = Role.Button, onClickLabel = "show all controls") { onSheet(e.id) }) {
                             Text(e.name, style = HT.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(listOfNotNull(HubModel.stateLabel(e, k), battery?.let { "battery $it%" }).joinToString(" · "),
@@ -104,7 +105,7 @@ fun SecurityScreen(home: HomeData?, onBack: () -> Unit, onSheet: (String) -> Uni
                     }
                 }
             }
-        }
+        } }
         if (parts.sensors.isNotEmpty()) item(key = "sensors") {
             HCard(padding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -121,7 +122,7 @@ fun SecurityScreen(home: HomeData?, onBack: () -> Unit, onSheet: (String) -> Uni
                                             .clickable(role = Role.Button) { onSheet(e.id) }.spoken("${e.name}, ${HubModel.entityStateText(e, k)}").padding(10.dp),
                                     ) {
                                         Text(e.name, style = HT.name.copy(fontSize = 13.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(HubModel.entityStateText(e, k), style = HT.small.copy(color = if (open) H.HotText else H.GoodText), maxLines = 1,
+                                        Text(HubModel.entityStateText(e, k), style = HT.small.copy(color = if (open) H.HotText else if (k?.secureState != null) H.GoodText else H.Sub), maxLines = 1,
                                             overflow = TextOverflow.Ellipsis)
                                     }
                                 }

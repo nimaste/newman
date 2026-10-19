@@ -189,7 +189,7 @@ private fun Header(e: Entity, k: Kind?) {
     val v = HubModel.vitals(e)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(48.dp).background(N.Glass, CircleShape), contentAlignment = Alignment.Center) {
-            NIcon(HubModel.kindIcon(k), size = 24.dp)
+            NIcon(HubModel.deviceIcon(e, k), size = 24.dp)
         }
         Column(Modifier.weight(1f)) {
             Text(e.name, style = T.title, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.heading())

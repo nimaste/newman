@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -64,6 +65,7 @@ fun EditHomeScreen(home: HomeData?, onDone: () -> Unit) {
     var picking by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     val titles = home?.cards?.associate { it.id to it.title } ?: emptyMap()
+    val fresh = home?.cards?.filter { it.new }?.map { it.id }?.toSet() ?: emptySet()
     HScreen("Edit Home", big = false, trailing = {
         AccentButton("Done", enabled = !saving && home != null) {
             saving = true
@@ -81,7 +83,13 @@ fun EditHomeScreen(home: HomeData?, onDone: () -> Unit) {
                     val title = titles[c.id]?.ifBlank { null } ?: c.id.replaceFirstChar { it.uppercase() }
                     HRow(last = i == cards.lastIndex) {
                         DragHandle(handle, "Drag to reorder $title")
-                        Text(title, style = HT.row.copy(color = if (c.on) H.Text else H.Sub), modifier = Modifier.weight(1f))
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(title, style = HT.row.copy(color = if (c.on) H.Text else H.Sub), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false))
+                            // A category that turned up since this layout was saved (off until switched on).
+                            if (c.id in fresh) Text("NEW", style = HT.small.copy(fontSize = 11.sp, color = H.Info, fontWeight = FontWeight.ExtraBold),
+                                modifier = Modifier.background(H.NewBg, RoundedCornerShape(10.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
+                        }
                         HSwitch(c.on, label = if (c.on) "Hide $title" else "Show $title", small = true) { on ->
                             cards = cards.map { if (it.id == c.id) it.copy(on = on) else it }
                         }
@@ -142,7 +150,7 @@ fun DevicePickerSheet(state: HubState, exclude: Set<String> = emptySet(), title:
                     val k = state.kind(e)
                     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = Role.Button) { onPick(e.id) }.padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        NIcon(HubModel.kindIcon(k), size = 20.dp, color = H.Soft)
+                        NIcon(HubModel.deviceIcon(e, k), size = 20.dp, color = H.Soft)
                         Column(Modifier.weight(1f)) {
                             Text(e.name, style = HT.row, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(listOfNotNull(e.room, k?.name).joinToString(" · "), style = HT.small)

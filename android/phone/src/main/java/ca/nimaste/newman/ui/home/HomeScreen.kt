@@ -94,6 +94,11 @@ object HomeView {
     const val TODAY = "today"
     const val PEOPLE = "people"
     const val EDIT = "edit"
+    /** "category:<id>": the generic screen of a category with no purpose-built one. */
+    const val CATEGORY = "category:"
+
+    fun category(id: String) = CATEGORY + id
+    fun categoryId(view: String?): String? = view?.takeIf { it.startsWith(CATEGORY) }?.removePrefix(CATEGORY)
 
     /** Where Back goes: Climate's rooms back to Climate, the rest back to Home. */
     fun parent(view: String?): String? = if (view == CLIMATE_ROOMS) CLIMATE else null
@@ -140,8 +145,11 @@ fun HomeScreen(openRequest: MutableStateFlow<String?>, onCamera: (String, String
                     Tabs.CAMERAS -> CamerasTab(home, cameraView, onOpen = { cameraView = it }, onFullScreen = onCamera)
                     Tabs.DEVICES -> DevicesScreen(onBack = null, onSheet = onSheet)
                     Tabs.MORE -> MoreTab(moreView, onView = { moreView = it }, unseen = unseen, onCamera = onCamera, onSheet = onSheet,
-                        onPerson = { onPerson(it, false) }, onMe = onMe, onEditHome = { tab = Tabs.HOME; homeView = HomeView.EDIT })
-                    else -> when (homeView) {
+                        onPerson = { onPerson(it, false) }, onMe = onMe, canEditHome = home?.canEditHome != false,
+                        onEditHome = { tab = Tabs.HOME; homeView = HomeView.EDIT })
+                    else -> HomeView.categoryId(homeView)?.let { cat ->
+                        CategoryScreen(cat, onBack = { homeView = null }, onSheet = onSheet)
+                    } ?: when (homeView) {
                         HomeView.CLIMATE -> ClimateScreen(home, onBack = { homeView = null }, onEditRooms = { homeView = HomeView.CLIMATE_ROOMS }, onSheet = onSheet)
                         HomeView.CLIMATE_ROOMS -> ClimateRoomsScreen(home, onDone = { homeView = HomeView.CLIMATE })
                         HomeView.LIGHTS -> LightsScreen(onBack = { homeView = null }, onSheet = onSheet)
@@ -226,7 +234,7 @@ private fun HomeMain(home: HomeData?, state: HubState, onView: (String) -> Unit,
     ) {
         HScreen("Home", trailing = {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundIcon("pencil", "Edit Home") { onView(HomeView.EDIT) }
+                if (home?.canEditHome != false) RoundIcon("pencil", "Edit Home") { onView(HomeView.EDIT) }
                 val name = state.auth?.user?.name ?: app.store.userName ?: ""
                 Box(
                     Modifier.minimumInteractiveComponentSize().size(40.dp).clip(CircleShape).background(H.Raised).border(1.dp, H.RaisedLine, CircleShape)
@@ -250,14 +258,15 @@ private fun HomeMain(home: HomeData?, state: HubState, onView: (String) -> Unit,
                     pair.forEach { c ->
                         Box(Modifier.weight(1f)) {
                             HomeCardView(c, state) {
-                                when (c.id) {
+                                // The card's purpose-built screen (from its category's metadata), else that category's own list.
+                                when (c.screen) {
                                     "cameras" -> onTab(Tabs.CAMERAS)
                                     "climate" -> onView(HomeView.CLIMATE)
                                     "lights" -> onView(HomeView.LIGHTS)
                                     "security" -> onView(HomeView.SECURITY)
                                     "today" -> onView(HomeView.TODAY)
                                     "people" -> onView(HomeView.PEOPLE)
-                                    else -> onTab(Tabs.DEVICES)
+                                    else -> c.category?.let { onView(HomeView.category(it)) } ?: onTab(Tabs.DEVICES)
                                 }
                             }
                         }
@@ -332,7 +341,7 @@ private fun StatusArea(home: HomeData, state: HubState, onSheet: (String) -> Uni
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(Modifier.size(34.dp).background(H.DangerBubble, CircleShape), contentAlignment = Alignment.Center) {
-                    NIcon(e?.let { HubModel.kindIcon(state.kind(it)) } ?: "alert", size = 18.dp, color = H.DangerIcon, stroke = 2.2f)
+                    NIcon(e?.let { HubModel.deviceIcon(it, state.kind(it)) } ?: "alert", size = 18.dp, color = H.DangerIcon, stroke = 2.2f)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(d.title, style = HT.name.copy(color = H.DangerHead))
@@ -375,17 +384,17 @@ private fun HomeCardView(c: HomeCard, state: HubState, onClick: () -> Unit) {
     val detailColor = when (c.tone) {
         "danger" -> H.HotText
         "good" -> H.GoodText
-        "warm" -> if (c.id == "lights") H.LightText else H.WarmText
+        "warm" -> if (c.screen == "lights") H.LightText else H.WarmText
         else -> H.Sub
     }
     val shape = RoundedCornerShape(20.dp)
     Column(
         Modifier.fillMaxWidth().height(118.dp).clip(shape).background(if (danger) H.Hot else H.Card).border(1.dp, if (danger) H.HotLine else H.CardLine, shape)
             .clickable(role = Role.Button, onClick = onClick).spoken(listOf(c.title, c.value, c.detail).filter { it.isNotBlank() }.joinToString(", "))
-            .padding(if (c.id == "cameras") 10.dp else 14.dp),
-        verticalArrangement = if (c.id == "cameras") Arrangement.spacedBy(8.dp) else Arrangement.SpaceBetween,
+            .padding(if (c.screen == "cameras") 10.dp else 14.dp),
+        verticalArrangement = if (c.screen == "cameras") Arrangement.spacedBy(8.dp) else Arrangement.SpaceBetween,
     ) {
-        if (c.id == "cameras") {
+        if (c.screen == "cameras") {
             val cam = c.camera?.let { state.named[it] }
             Box(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(12.dp)).background(H.Picture)) {
                 if (cam != null) CameraStill(cam, Modifier.fillMaxSize(), heightPx = 240)
@@ -407,10 +416,10 @@ private fun HomeCardView(c: HomeCard, state: HubState, onClick: () -> Unit) {
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(c.title, style = HT.name.copy(fontSize = 14.sp), modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val (icon, tint) = cardIcon(c.id)
+            val (icon, tint) = cardIcon(c, state)
             NIcon(icon, size = 20.dp, color = if (danger) H.HotText else tint, stroke = 2.2f)
         }
-        if (c.id == "people") {
+        if (c.screen == "people") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(34.dp).clip(CircleShape).background(H.PeopleBg).border(2.dp, if (c.tone == "good") H.Good else H.RaisedLine, CircleShape),
                     contentAlignment = Alignment.Center) { Text(c.value.take(1).uppercase(), style = HT.name.copy(fontSize = 14.sp)) }
@@ -429,18 +438,19 @@ private fun HomeCardView(c: HomeCard, state: HubState, onClick: () -> Unit) {
     }
 }
 
-/** Each card's icon and colour - the one table (the cards are the hub's fixed list; the cameras card shows its picture). */
-internal fun cardIcon(id: String): Pair<String, Color> = when (id) {
-    "cameras" -> "camera" to H.Info
-    "climate" -> "thermometer" to H.Warm
-    "lights" -> "bulb" to H.Light
-    "security" -> "shield" to H.Good
-    "today" -> "calendar" to H.Info
-    "people" -> "user" to H.People
-    "cleaning" -> "vacuum" to H.Info
-    "appliances" -> "power" to H.Info
-    else -> "dot" to H.Sub
-}
+/**
+ * A card's icon and colour: the purpose-built screens' from the one table (HomeLogic.SCREEN_ICONS); any other
+ * category - including ones that turn up later - its devices' most common icon in a neutral colour.
+ */
+internal fun cardIcon(c: HomeCard, state: HubState): Pair<String, Color> =
+    HomeLogic.cardIcon(c, state.named.values, state.meta) to when (c.screen) {
+        "cameras", "today" -> H.Info
+        "climate" -> H.Warm
+        "lights" -> H.Light
+        "security" -> H.Good
+        "people" -> H.People
+        else -> H.Soft
+    }
 
 /** Up to four favourites: tap does what a tap does (on/off, lock…), hold shows everything. */
 @Composable
@@ -471,7 +481,7 @@ private fun Favourites(favs: List<Entity>, state: HubState, onSheet: (String) ->
                         .padding(10.dp),
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    NIcon(HubModel.kindIcon(k), size = 18.dp, color = if (lit) H.Light else fg, stroke = 2.2f)
+                    NIcon(HubModel.deviceIcon(e, k), size = 18.dp, color = if (lit) H.Light else fg, stroke = 2.2f)
                     Column {
                         Text(e.name, style = HT.small.copy(fontSize = 11.sp, color = H.Text, fontWeight = FontWeight.ExtraBold), maxLines = 2,
                             overflow = TextOverflow.Ellipsis, lineHeight = 13.sp)

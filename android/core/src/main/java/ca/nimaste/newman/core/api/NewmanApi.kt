@@ -6,6 +6,7 @@ import ca.nimaste.newman.core.model.AuthState
 import ca.nimaste.newman.core.model.Automation
 import ca.nimaste.newman.core.model.AutomationRun
 import ca.nimaste.newman.core.model.CameraAlert
+import ca.nimaste.newman.core.model.Category
 import ca.nimaste.newman.core.model.ClimateRoomsBody
 import ca.nimaste.newman.core.model.CommandRequest
 import ca.nimaste.newman.core.model.HomeData
@@ -192,6 +193,10 @@ interface NewmanApi {
 
     @GET("api/home")
     suspend fun home(): HomeData
+
+    /** Every category (built-in, then made in Newman) with the screen it opens and its device count. */
+    @GET("api/categories")
+    suspend fun categories(): List<Category>
 
     /** The signed-in person's Edit Home: cards in order with on/off, and favourites. */
     @PUT("api/home/me")
