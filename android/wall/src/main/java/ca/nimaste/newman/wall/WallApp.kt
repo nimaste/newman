@@ -14,6 +14,7 @@ import ca.nimaste.newman.core.settings.ConnectionStore
 import ca.nimaste.newman.core.wall.ComeBack
 import ca.nimaste.newman.core.wall.WallBrightness
 import ca.nimaste.newman.core.wall.WallShell
+import ca.nimaste.newman.core.voice.AssistantReturn
 import okhttp3.OkHttpClient
 
 class WallApp : Application() {
@@ -69,6 +70,11 @@ class WallSettings(context: Context) {
     var returnAfterAssistant: Boolean
         get() = prefs.getBoolean("return_after_assistant", true)
         set(v) = prefs.edit().putBoolean("return_after_assistant", v).apply()
+
+    /** Seconds of quiet after the assistant's answer before coming back ("Wait after Alexa goes quiet"). */
+    var returnQuietSeconds: Int
+        get() = AssistantReturn.quietSetting(prefs.getInt("return_quiet_seconds", AssistantReturn.QUIET_DEFAULT_S))
+        set(v) = prefs.edit().putInt("return_quiet_seconds", AssistantReturn.quietSetting(v)).apply()
 
     /** Come back to the front after leaving it any other way (Home, Recents, another app): ComeBack. */
     var comeBackAfterLeaving: Boolean

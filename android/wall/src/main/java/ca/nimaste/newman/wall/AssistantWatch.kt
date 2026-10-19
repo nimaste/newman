@@ -108,6 +108,7 @@ class AssistantWatch(
         val all = am?.activePlaybackConfigurations ?: emptyList()
         baseline = all.filter { started(it) }.toSet()
         val screenOn = power?.isInteractive != false
+        back.quietMs = settings.returnQuietSeconds * 1000L
         val why = if (!settings.returnAfterAssistant) "the setting is off"
         else back.left(now(), AssistantReturn.leaveBlocker(screenOn = screenOn, ownScreen = ownScreen, closing = closing))
         Log.w(TAG, "Return: the wall left the front (user leave hint: $userLeaveHint, screen on: $screenOn, " +

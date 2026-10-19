@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import ca.nimaste.newman.core.mtls.MTLSStore
+import ca.nimaste.newman.core.voice.AssistantReturn
 import ca.nimaste.newman.core.mtls.P12Validator
 import ca.nimaste.newman.core.net.ServerAddress
 import ca.nimaste.newman.core.settings.ConnectionStore
@@ -202,6 +203,7 @@ class WallSettingsActivity : ComponentActivity() {
         var dimLevel by remember { mutableFloatStateOf(settings.dimLevel.coerceIn(WallBrightness.FLOOR, WallBrightness.MAX_DIM)) }
         var pin by remember { mutableStateOf(settings.pinScreen) }
         var returnAfter by remember { mutableStateOf(settings.returnAfterAssistant) }
+        var returnQuiet by remember { mutableFloatStateOf(settings.returnQuietSeconds.toFloat()) }
         var comeBackAfter by remember { mutableStateOf(settings.comeBackAfterLeaving) }
         var comeBackMinutes by remember { mutableStateOf(settings.comeBackMinutes) }
         var comeBackOnWake by remember { mutableStateOf(settings.comeBackOnWake) }
@@ -233,6 +235,7 @@ class WallSettingsActivity : ComponentActivity() {
             settings.dimLevel = dimLevel
             settings.pinScreen = pin
             settings.returnAfterAssistant = returnAfter
+            settings.returnQuietSeconds = returnQuiet.roundToInt()
             settings.comeBackAfterLeaving = comeBackAfter
             settings.comeBackMinutes = comeBackMinutes
             settings.comeBackOnWake = comeBackOnWake
@@ -285,6 +288,16 @@ class WallSettingsActivity : ComponentActivity() {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Switch(returnAfter, { returnAfter = it })
                     Text("Return to Newman after Alexa or another assistant", color = Ink)
+                }
+                if (returnAfter) {
+                    Text("Wait after Alexa goes quiet: ${returnQuiet.roundToInt()} s", color = Ink)
+                    Slider(
+                        returnQuiet, { returnQuiet = it.roundToInt().toFloat() },
+                        valueRange = AssistantReturn.QUIET_MIN_S.toFloat()..AssistantReturn.QUIET_MAX_S.toFloat(),
+                        steps = AssistantReturn.QUIET_MAX_S - AssistantReturn.QUIET_MIN_S - 1,
+                        modifier = Modifier.widthIn(max = 640.dp),
+                    )
+                    Text("Newman comes back once Alexa has made no sound for this long. Longer gives her more time to think before she answers.", color = Muted)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Switch(comeBackAfter, { comeBackAfter = it })

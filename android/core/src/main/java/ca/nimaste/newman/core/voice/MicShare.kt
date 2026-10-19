@@ -93,6 +93,7 @@ class MicGate(
  * counts; Alexa+ can take well over 6 s to answer, and coming to the front over it cuts its speech).
  * Once something has played, return when no other app has played anything for [quietMs] (a new
  * playback in that window - a follow-up answer - starts it over), at least [minAwayMs] after leaving.
+ * [quietMs] is the tablet's "Wait after Alexa goes quiet" setting ([quietSetting]).
  * If nothing plays within [noAnswerMs] (a text-only answer, or the user just looked), return then.
  * If another app plays for [longPlayMs] without a break (music the user asked for), return anyway -
  * it keeps playing behind the wall. After [giveUpMs] it gives up. Coming back by hand ([entered])
@@ -100,7 +101,8 @@ class MicGate(
  */
 class AssistantReturn(
     private val minAwayMs: Long = 4_000,
-    private val quietMs: Long = 6_000,
+    /** Quiet this long after the answer before coming back; the wall sets it from its settings. */
+    var quietMs: Long = 6_000,
     private val noAnswerMs: Long = 30_000,
     private val longPlayMs: Long = 20_000,
     private val giveUpMs: Long = 120_000,
@@ -195,6 +197,14 @@ class AssistantReturn(
     }
 
     companion object {
+        /** "Wait after Alexa goes quiet": its slider's range and starting value, in seconds. */
+        const val QUIET_MIN_S = 6
+        const val QUIET_MAX_S = 30
+        const val QUIET_DEFAULT_S = 12
+
+        /** A saved wait, kept within the slider's range. */
+        fun quietSetting(seconds: Int): Int = seconds.coerceIn(QUIET_MIN_S, QUIET_MAX_S)
+
         /** Why the wall leaving the front isn't an assistant taking over, or null when it may be. */
         fun leaveBlocker(screenOn: Boolean, ownScreen: Boolean, closing: Boolean): String? = when {
             closing -> "the wall is closing"

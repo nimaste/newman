@@ -226,4 +226,23 @@ class MicShareTest {
         assertFalse(AssistantReturn.isStarted(started.replace("state:started", "state:idle")))
         assertTrue(AssistantReturn.isStarted("AudioPlaybackConfiguration piid:57")) // no state shown: assume playing
     }
+
+    @Test
+    fun quietWaitComesFromTheSetting() {
+        val r = AssistantReturn()
+        r.quietMs = 12_000L
+        assertNull(r.left(0, null))
+        r.othersPlaying(true, 3_000)
+        r.othersPlaying(false, 4_500) // Alexa's tone, then thinking
+        assertEquals(Action.NONE, r.check(10_500)) // 6 s would have come back here and cut her off
+        assertEquals(Action.NONE, r.check(16_400))
+        assertEquals(Action.RETURN, r.check(16_500))
+    }
+
+    @Test
+    fun quietSettingStaysInRange() {
+        assertEquals(6, AssistantReturn.quietSetting(1))
+        assertEquals(12, AssistantReturn.quietSetting(12))
+        assertEquals(30, AssistantReturn.quietSetting(90))
+    }
 }
