@@ -17,6 +17,8 @@ const NAV = [
   { id: 'integrations', label: 'Connections', count: (h) => h.status && h.status.integrations && h.status.integrations.length },
   // One hub = one household: its people, where they are, their phones, places and accounts.
   { id: 'household', label: 'Household', count: (h) => h.status && h.status.people, also: ['people', 'phones', 'test-phones'] },
+  // How the whole house behaves (battery warnings, hold-to-dim, climate colours, cameras, history).
+  { id: 'house', label: 'Settings' },
   // (Profile and Sign-in settings live in the menu under your name.)
 ];
 

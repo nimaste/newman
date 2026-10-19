@@ -1512,6 +1512,49 @@ function runLine(r) {
   return { time: fmtWhen(r.startedAt) || fmtClock(r.startedAt), status, text: last };
 }
 
+// "Don't repeat for": after it runs, triggers within this wait are skipped (cooldownMinutes; null = the
+// default - no wait, or Settings › Cameras' wait when a camera detection starts it).
+const REPEAT_WAITS = [
+  ['', 'Default'],
+  ['0', 'No wait'],
+  ['1', '1 minute'],
+  ['5', '5 minutes'],
+  ['15', '15 minutes'],
+  ['30', '30 minutes'],
+  ['60', '1 hour'],
+];
+
+function RepeatSection({ auto, patch }) {
+  const v = auto.cooldownMinutes;
+  const value = v === null || v === undefined ? '' : String(v);
+  const known = REPEAT_WAITS.some(([k]) => k === value);
+  return (
+    <section className="bsec" aria-labelledby="sec-repeat">
+      <div className="bsec-head">
+        <h2 id="sec-repeat" className="bsec-title">
+          Don’t repeat for
+        </h2>
+        <span className="bsec-hint">After it runs, it ignores new triggers for this long. Default: no wait, or the camera wait from Settings for camera detections.</span>
+      </div>
+      <div className="bsec-line">
+        <select
+          className="blank blank--select"
+          aria-label="Don't repeat for"
+          value={value}
+          onChange={(e) => patch((a) => ({ ...a, cooldownMinutes: e.target.value === '' ? null : Number(e.target.value) }))}
+        >
+          {REPEAT_WAITS.map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+          {!known ? <option value={value}>{value} minutes</option> : null}
+        </select>
+      </div>
+    </section>
+  );
+}
+
 export default function AutomationEditor({ id, templateId, query }) {
   const hub = useHub();
   const hubRef = useRef(hub);
@@ -1521,7 +1564,9 @@ export default function AutomationEditor({ id, templateId, query }) {
   const startTrigger = query ? query.get('trigger') : null;
   const startProperty = query ? query.get('property') : null;
   const confirm = useConfirm();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  // Admins always; others when an admin lets them (Accounts › Make & change automations).
+  const isAdmin = !!(user && user.canAutomate);
   const isNew = id === 'new';
   const people = useApi('api/people');
   const runs = useApi(isNew ? null : 'api/runs?automationId=' + enc(id));
@@ -1761,7 +1806,7 @@ export default function AutomationEditor({ id, templateId, query }) {
         <input className="name-input" readOnly={!isAdmin} aria-label="Automation name" value={auto.name} onChange={(e) => patch((a) => ({ ...a, name: e.target.value }))} placeholder="Name this automation" />
         {!auto.enabled ? <span className="pill">Off</span> : null}
         {dirty && !isNew && isAdmin ? <span className="dirty-pill">Unsaved</span> : null}
-        {!isAdmin ? <span className="pill" title="Only an admin can change automations">View only</span> : null}
+        {!isAdmin ? <span className="pill" title="An admin can let you change automations">View only</span> : null}
         {isAdmin ? (
         <>
         <button type="button" className="btn head-btn" onClick={testRun} disabled={isNew || testing || saving || (dirty && !canSave)} title={isNew ? 'Save it first, then test it' : 'Runs now and skips the Only-if check'}>
@@ -1825,6 +1870,7 @@ export default function AutomationEditor({ id, templateId, query }) {
             <div ref={sections.if}>
               <OnlyIfSection key={triggerKind(auto.trigger) === 'time' ? 'time' : 'other'} auto={auto} patch={patch} hub={hub} />
             </div>
+            <RepeatSection auto={auto} patch={patch} />
           </fieldset>
         </div>
 

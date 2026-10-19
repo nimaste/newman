@@ -15,7 +15,7 @@ import { api, enc, toast } from '../api.js';
 import { useApi } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { useConfirm } from '../components/Feedback.jsx';
-import { Check, Empty, ErrorBox, Loading, Modal, MoreMenu } from '../components/Controls.jsx';
+import { Check, Empty, ErrorBox, Loading, Modal, MoreMenu, Switch } from '../components/Controls.jsx';
 import Household, { AddRow, HouseholdSplit } from '../components/Household.jsx';
 import { Icon } from '../icons.jsx';
 import { fmtWhen, initial } from '../format.js';
@@ -303,6 +303,23 @@ function AccountDetail({ u, self, lastSeen, people, tablets, patch, onReset, onR
                 <option value="tablet">Wall tablet</option>
               </select>
               {self ? <span className="muted small hh-fact-note">You can't change your own role.</span> : null}
+            </dd>
+            <dt>Automations</dt>
+            <dd>
+              {u.role === 'admin' ? (
+                <span>Always (admin)</span>
+              ) : u.role === 'tablet' ? (
+                <span className="muted">Never (a tablet)</span>
+              ) : (
+                <>
+                  <Switch
+                    checked={!!u.canAutomate}
+                    label="Make & change automations"
+                    onChange={(on) => patch(u, { canAutomate: on }, on ? `${u.name} can make and change automations` : `${u.name} can only view automations`)}
+                  />
+                  <div className="muted small hh-fact-note">{u.canAutomate ? 'Can create, change, switch off, run and delete them.' : 'View only: sees every automation and when it last ran.'}</div>
+                </>
+              )}
             </dd>
             {household ? (
               <>

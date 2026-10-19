@@ -198,8 +198,8 @@ export function isTransitional(entity, kind) {
 
 /** [{area, items}] sorted by room, devices without a room last (area: 'No room'). */
 export function groupByArea(list) {
-  if (!list.some((e) => e.attrs && e.attrs.area)) return [{ area: null, items: list }];
-  const key = (e) => (e.attrs && e.attrs.area) || '';
+  if (!list.some((e) => roomOf(e))) return [{ area: null, items: list }];
+  const key = (e) => roomOf(e);
   const areas = [...new Set(list.map(key))].sort((a, b) => (!a ? 1 : !b ? -1 : a.localeCompare(b)));
   return areas.map((area) => ({ area: area || 'No room', items: list.filter((e) => key(e) === area) }));
 }
@@ -438,4 +438,9 @@ export function runTime(r) {
   if (r === null || r === undefined) return null;
   if (typeof r === 'object') return r.startedAt || r.at || r.ts || null;
   return r;
+}
+
+/** A device's room: the one set in Newman, else its connection's (Lutron's area), else ''. */
+export function roomOf(e) {
+  return (e && (e.room || (e.attrs && e.attrs.area))) || '';
 }

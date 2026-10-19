@@ -11,6 +11,7 @@ import { DeviceControls } from './DeviceControls.jsx';
 import { StateText } from './DeviceList.jsx';
 import { Empty } from './Controls.jsx';
 import { groupByArea, kindIcon } from '../model.js';
+import { roomOf } from '../model.js';
 
 /** Group devices by type (kind order from meta), then optionally by room inside each. */
 export function groupByKind(list, kinds, kindsById) {
@@ -25,7 +26,7 @@ export function DeviceTile({ entity: e, kind, href, onSelect, selected, single, 
   // Anything with a picture shows it, whatever its kind: live video when it has a stream.
   const isCam = stills && (!!e.live || hasStill(e));
   const pic = isCam ? <LiveVideo entity={e} quality="sub" stillHeight={180} className="tile-still" showNote={false} /> : null;
-  const room = e.attrs && e.attrs.area;
+  const room = roomOf(e);
   const sub = [room && !e.name.includes(room) ? room : null, kind ? kind.name : null].filter(Boolean).join(' · ');
   const body = (
     <>
@@ -128,7 +129,7 @@ export function DeviceTilePicker({ selected, onChange, include, single, label, e
   const cats = categories.filter((c) => all.some((e) => catOf(e) === c.id));
   const needle = q.trim().toLowerCase();
   const shown = all.filter(
-    (e) => (!cat || catOf(e) === cat) && (!needle || e.name.toLowerCase().includes(needle) || ((e.attrs && e.attrs.area) || '').toLowerCase().includes(needle)),
+    (e) => (!cat || catOf(e) === cat) && (!needle || e.name.toLowerCase().includes(needle) || roomOf(e).toLowerCase().includes(needle)),
   );
   const missing = selected.filter((id) => !entitiesById[id]);
   const toggle = (id) => {

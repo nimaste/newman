@@ -1,4 +1,4 @@
-// Your profile: password, wall-tablet PIN, two-factor, and the devices you're signed in on.
+// Your profile: quiet hours, password, wall-tablet PIN, two-factor, and the devices you're signed in on.
 
 import { useState } from 'react';
 import { api, enc, toast } from '../api.js';
@@ -6,7 +6,7 @@ import { useApi } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import ProfileLook from '../components/ProfileLook.jsx';
 import { useConfirm } from '../components/Feedback.jsx';
-import { ErrorBox, Loading } from '../components/Controls.jsx';
+import { Check, ErrorBox, Loading, Switch } from '../components/Controls.jsx';
 import { Icon } from '../icons.jsx';
 import { fmtWhen } from '../format.js';
 
@@ -375,6 +375,85 @@ function LookCard({ user }) {
   );
 }
 
+const QUIET_ALLOW = [
+  { id: 'alarm', label: 'The alarm, leaks and smoke' },
+  { id: 'doorbell', label: 'The doorbell' },
+  { id: 'people', label: 'People on cameras' },
+  { id: 'urgent', label: 'Automations marked urgent' },
+];
+
+/** Quiet hours (GET/PUT api/me/quiet-hours): their phones get everyday notifications silently in that window. */
+function QuietHoursCard() {
+  const res = useApi('api/me/quiet-hours');
+  const q = res.data;
+  const put = async (change) => {
+    const next = { ...q, ...change };
+    res.setData(next);
+    try {
+      res.setData(await api.put('api/me/quiet-hours', next));
+    } catch {
+      res.reload();
+    }
+  };
+  return (
+    <section className="card prof-card prof-card--wide" aria-labelledby="quiet-title">
+      {!q ? (
+        res.error ? <ErrorBox error={res.error} onRetry={res.reload} /> : <Loading />
+      ) : (
+        <div className="set-list">
+          <div className="set-row">
+            <div className="set-text">
+              <h2 id="quiet-title" className="set-name quiet-title">
+                Quiet hours
+              </h2>
+              <span className="set-help">Your phone stays silent for everyday notifications. They still arrive, without a sound.</span>
+            </div>
+            <div className="set-control set-control--end">
+              <Switch checked={!!q.enabled} ariaLabel="Quiet hours" onChange={(v) => put({ enabled: v })} />
+            </div>
+          </div>
+          <div className="set-row">
+            <div className="set-text">
+              <span className="set-name set-name--sm">When</span>
+            </div>
+            <div className="set-control">
+              <span className="set-inline">
+                <label className="set-word" htmlFor="quiet-from">
+                  From
+                </label>
+                <input id="quiet-from" type="time" className="input input--sm quiet-time" defaultValue={q.from} key={'f' + q.from} onBlur={(e) => e.target.value && e.target.value !== q.from && put({ from: e.target.value })} />
+                <label className="set-word" htmlFor="quiet-to">
+                  to
+                </label>
+                <input id="quiet-to" type="time" className="input input--sm quiet-time" defaultValue={q.to} key={'t' + q.to} onBlur={(e) => e.target.value && e.target.value !== q.to && put({ to: e.target.value })} />
+                <select className="input input--sm" aria-label="Days" value={q.days} onChange={(e) => put({ days: e.target.value })}>
+                  <option value="all">Every day</option>
+                  <option value="weekdays">Weekdays</option>
+                  <option value="weekends">Weekends</option>
+                </select>
+              </span>
+            </div>
+          </div>
+          <div className="set-row">
+            <div className="set-text">
+              <span className="set-name set-name--sm">Still ring through</span>
+            </div>
+            <div className="set-control">
+              <span className="radio-stack">
+                {QUIET_ALLOW.map((a) => (
+                  <Check key={a.id} checked={(q.allow || []).includes(a.id)} onChange={(v) => put({ allow: v ? [...(q.allow || []), a.id] : (q.allow || []).filter((x) => x !== a.id) })}>
+                    {a.label}
+                  </Check>
+                ))}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Profile() {
   const { user, refresh } = useAuth();
   return (
@@ -386,6 +465,7 @@ export default function Profile() {
         <div className="pane-body pane-body--flush-x">
           <div className="prof-grid">
             <LookCard user={user} />
+            {user.personId ? <QuietHoursCard /> : null}
             <PasswordCard />
             <PinCard user={user} refresh={refresh} />
             <TwoFactorCard user={user} refresh={refresh} />

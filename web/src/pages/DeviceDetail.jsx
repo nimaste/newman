@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { enc } from '../api.js';
-import { devicesListHref, navigate, useActivityFeed, useApi, useHub } from '../hooks.js';
+import { api, enc } from '../api.js';
+import { devicesListHref, navigate, useActivityFeed, useApi, useHub, useRoute } from '../hooks.js';
 import { useAuth } from '../auth.jsx';
 import { Empty, ErrorBox, Loading, Tabs } from '../components/Controls.jsx';
 import { DeviceControls, EntityName, useDeviceActions } from '../components/DeviceControls.jsx';
@@ -14,9 +14,11 @@ import VideoSettings, { hasVideoSettings } from '../components/VideoSettings.jsx
 import LiveStatusSettings, { hasLiveStatus } from '../components/LiveStatusSettings.jsx';
 import RemoteControls, { hasRemoteControls } from '../components/RemoteControls.jsx';
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
+import DeviceWarnings, { hasWarnings, useDeviceWarnings } from '../components/DeviceWarnings.jsx';
+import { RoomSelect } from '../components/RoomPicker.jsx';
 import { Icon } from '../icons.jsx';
 import { fmtWhen } from '../format.js';
-import { eventsFor } from '../model.js';
+import { eventsFor, roomOf } from '../model.js';
 import { formatPropValue, triggerItems } from '../automation.js';
 
 // Attributes worth showing, in this order; anything else scalar is shown after them.
@@ -75,14 +77,18 @@ function attrRows(entity, kind) {
 
 export default function DeviceDetail({ id }) {
   const { entities, entitiesById, kindsById, reloadEntities, entitiesError } = useHub();
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const canAutomate = !!(user && user.canAutomate);
+  const { query } = useRoute();
   const autos = useApi('api/automations');
   // Devices whose camera system keeps alerts show those; other devices their recent activity.
   const isCam = !!(entitiesById[id] && alertsPathFor(entitiesById[id]));
   const events = useActivityFeed(200, { enabled: !isCam });
+  const warnings = useDeviceWarnings(id);
   const { run, rename, busy } = useDeviceActions();
-  const [tab, setTab] = useState(null);
+  const [tab, setTab] = useState(() => query.get('tab'));
   const [removing, setRemoving] = useState(false);
+  const [roomEdit, setRoomEdit] = useState(false);
 
   const crumb = (
     <a className="crumb" href={devicesListHref()}>
@@ -113,7 +119,17 @@ export default function DeviceDetail({ id }) {
   }
 
   const kind = kindsById[e.kind];
-  const area = e.attrs && e.attrs.area;
+  const area = roomOf(e);
+  // A group member's room is the group's (set on the group); anything else can have its own.
+  const roomSettable = isAdmin && !e.group && e.integration !== 'groups';
+  const setRoom = async (room) => {
+    setRoomEdit(false);
+    try {
+      await api.put('api/entities/' + enc(e.id) + '/room', { room });
+    } catch {
+      /* toast shown */
+    }
+  };
   const list = autos.data || [];
   const byId = Object.fromEntries(list.map((a) => [a.id, a]));
   const used = (e.usedBy || []).map((aid) => byId[aid] || { id: aid, name: aid });
@@ -152,6 +168,7 @@ export default function DeviceDetail({ id }) {
     { id: 'automations', label: `Automations (${used.length})` },
     ...(!isCam ? [{ id: 'activity', label: 'Activity' }] : []),
     ...(props.length || attrs.length ? [{ id: 'details', label: props.length ? 'Values & details' : 'Details' }] : []),
+    ...(hasWarnings(warnings.data) ? [{ id: 'warnings', label: 'Warnings' }] : []),
     ...(isAdmin && hasVideoSettings(e, entities, kindsById) ? [{ id: 'video', label: 'Video' }] : []),
     ...(isAdmin && hasLiveStatus(e) ? [{ id: 'live', label: 'Live status' }] : []),
   ];
@@ -164,7 +181,27 @@ export default function DeviceDetail({ id }) {
         <EntityName entity={e} onRename={isAdmin ? (n) => rename(e, n) : null} link={false} className="device-title" />
         <span className="device-meta2">
           {kind ? kind.name : e.kind}
-          {area ? ' · ' + area : ''} ·{' '}
+          {roomEdit ? (
+            <>
+              {' · '}
+              <RoomSelect value={e.room || null} noneLabel={e.attrs && e.attrs.area ? `Its connection's (${e.attrs.area})` : 'No room'} onChange={setRoom} />{' '}
+              <button type="button" className="btn-link" onClick={() => setRoomEdit(false)}>
+                Cancel
+              </button>
+            </>
+          ) : roomSettable ? (
+            <>
+              {' · '}
+              <button type="button" className="btn-link dev-room-btn" onClick={() => setRoomEdit(true)} title="Set its room">
+                {area || 'No room'}
+              </button>
+            </>
+          ) : area ? (
+            ' · ' + area
+          ) : (
+            ''
+          )}{' '}
+          ·{' '}
           <a href={'#/integrations/' + enc(e.integration)}>{e.integrationName || e.integration}</a>
         </span>
       </div>
@@ -266,6 +303,7 @@ export default function DeviceDetail({ id }) {
             <Tabs label="Device sections" value={current} onChange={setTab} tabs={tabs} />
           </div>
           <div className="pane-body">
+            {current === 'warnings' ? <DeviceWarnings entity={e} res={warnings} isAdmin={isAdmin} /> : null}
             {current === 'video' ? <VideoSettings entity={e} /> : null}
             {current === 'live' ? <LiveStatusSettings entity={e} /> : null}
             {current === 'alerts' ? (
@@ -294,7 +332,7 @@ export default function DeviceDetail({ id }) {
                             : ctlKeys.has(ev.id) ? null : 'No actions yet'}
                         </div>
                       </div>
-                      {isAdmin ? <button type="button" className="btn btn-sm2" onClick={() => navigate(`automations/new?entity=${enc(id)}&event=${enc(ev.id)}`)} aria-label={`Add an action for ${ev.label}`}>
+                      {canAutomate ? <button type="button" className="btn btn-sm2" onClick={() => navigate(`automations/new?entity=${enc(id)}&event=${enc(ev.id)}`)} aria-label={`Add an action for ${ev.label}`}>
                         <Icon name="plus" size={14} /> Add an action
                       </button> : null}
                     </div>
@@ -304,7 +342,7 @@ export default function DeviceDetail({ id }) {
             ) : null}
             {current === 'automations' ? (
               <div className="stack">
-                {canWatch && isAdmin ? (
+                {canWatch && canAutomate ? (
                   <button type="button" className="btn btn-sm2" style={{ alignSelf: 'flex-start' }} onClick={() => navigate(`automations/new?entity=${enc(id)}&trigger=state`)}>
                     <Icon name="bolt" size={14} /> Create automation with this device
                   </button>
@@ -347,7 +385,7 @@ export default function DeviceDetail({ id }) {
                         <dt>{p.label}</dt>
                         <dd>
                           <span>{formatPropValue(p, p.value)}</span>
-                          {isAdmin ? (
+                          {canAutomate ? (
                             <button type="button" className="btn btn-sm2" onClick={() => navigate(`automations/new?entity=${enc(id)}&property=${enc(p.id)}`)} aria-label={`Create automation with ${p.label}`}>
                               <Icon name="bolt" size={13} /> Automate
                             </button>

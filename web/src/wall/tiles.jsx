@@ -24,6 +24,7 @@ import PhoneTileBody from './PhoneTiles.jsx';
 import { MusicTile, NowPlayingChip } from './Music.jsx';
 import { RecipesTile } from './CookMode.jsx';
 import ClimateTile from './ClimateTile.jsx';
+import { roomOf } from '../model.js';
 
 
 function useEnts(ids) {
@@ -245,7 +246,7 @@ function DeviceCard({ e, kind, showArea }) {
   const [sheet, setSheet] = useState(null); // null | { start? }
   return (
     <div className={'wt-dev' + (lit ? ' is-lit' : '') + (warn || problem ? ' is-warn' : '') + (off ? ' is-off' : '')}>
-      {showArea ? <div className="wt-dev-area">{(e.attrs && e.attrs.area) || ' '}</div> : null}
+      {showArea ? <div className="wt-dev-area">{roomOf(e) || ' '}</div> : null}
       <button type="button" className="wt-dev-main" disabled={!action || off || !!busy[e.id]} onClick={() => action && run(e, action)} aria-pressed={kind && kind.activeState ? isActive(e, kind) : undefined}>
         <span className="wt-dev-icon">
           <Icon name={kindIcon(kind)} size={28} />
@@ -306,7 +307,7 @@ function DeviceRow({ e, kind, last, showArea }) {
           {entityStateText(e, kind)}
           {battery !== null ? ` · ${battery}%` : ''}
           {problem ? ` · ${problem}` : ''}
-          {showArea && e.attrs && e.attrs.area ? ` · ${e.attrs.area}` : ''}
+          {showArea && roomOf(e) ? ` · ${roomOf(e)}` : ''}
         </span>
       </span>
       {action ? (
@@ -330,7 +331,7 @@ function DevicesTile({ tile }) {
   const c = tile.config;
   let ents = useEnts(c.entities);
   const byArea = c.groupBy === 'area';
-  if (byArea) ents = ents.slice().sort((a, b) => ((a.attrs && a.attrs.area) || '~').localeCompare((b.attrs && b.attrs.area) || '~'));
+  if (byArea) ents = ents.slice().sort((a, b) => (roomOf(a) || '~').localeCompare(roomOf(b) || '~'));
   const listRef = useRef(null);
   const fitRows = useFit(listRef, 52, ents.length);
   if (c.style === 'list') {

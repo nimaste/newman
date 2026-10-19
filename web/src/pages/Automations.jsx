@@ -35,7 +35,9 @@ function categoryOf(a, hub) {
 export default function Automations() {
   const hub = useHub();
   const { categories, categoriesById } = hub;
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  // Admins always; others when an admin lets them (Accounts); everyone else just views.
+  const isAdmin = !!(user && user.canAutomate);
   const autos = useApi('api/automations');
   // Last/next runs change when an automation runs: refresh on those live activity entries.
   useLiveRefresh((m) => m.type === 'activity' && !!m.entry && ['automation', 'followup'].includes(m.entry.kind), () => autos.reload(), 500);

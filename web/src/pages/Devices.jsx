@@ -7,8 +7,9 @@ import { DeviceControls, EntityName, useDeviceActions } from '../components/Devi
 import { StateText } from '../components/DeviceList.jsx';
 import { DeviceTileGroups } from '../components/DeviceTiles.jsx';
 import RemoveDevicesDialog, { isOffline } from '../components/RemoveDevices.jsx';
+import LightGroupsDialog from '../components/LightGroups.jsx';
 import { Icon } from '../icons.jsx';
-import { groupByArea, issuesOf, needsLook, summaryChips } from '../model.js';
+import { groupByArea, issuesOf, needsLook, roomOf, summaryChips } from '../model.js';
 import { plural } from '../format.js';
 
 // Which categories are open, remembered in this browser ({categoryId: true | false}). A category
@@ -83,6 +84,7 @@ export default function Devices() {
   const { run, rename, busy } = useDeviceActions();
   const [picked, setPicked] = useState(() => new Set());
   const [confirming, setConfirming] = useState(null); // the devices being removed
+  const [groupsOpen, setGroupsOpen] = useState(false);
   const [opened, setOpened] = useState(loadOpen);
   // While searching or filtering every category with a match is open; ones you close then stay
   // closed until the filters change (not remembered).
@@ -125,7 +127,7 @@ export default function Devices() {
     if (skip !== 's' && status && !status.test(e)) return false;
     if (skip !== 'i' && conn && e.integration !== conn) return false;
     if (!needle) return true;
-    const area = (e.attrs && e.attrs.area) || '';
+    const area = roomOf(e);
     return e.name.toLowerCase().includes(needle) || area.toLowerCase().includes(needle);
   };
   const shown = entities.filter((e) => passes(e));
@@ -207,7 +209,13 @@ export default function Devices() {
             {allOpen ? 'Collapse all' : 'Expand all'}
           </button>
         ) : null}
+        {isAdmin ? (
+          <button type="button" className="btn" onClick={() => setGroupsOpen(true)}>
+            Light groups
+          </button>
+        ) : null}
       </div>
+      {groupsOpen ? <LightGroupsDialog onClose={() => setGroupsOpen(false)} /> : null}
 
       <div className="page-tools">
         <div className="filter-bar filter-bar--inline filter-bar--devices" role="search">

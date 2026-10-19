@@ -2,6 +2,7 @@ import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
 import { entityStateText, isRemote, stateClass } from '../model.js';
 import { Empty } from './Controls.jsx';
+import { roomOf } from '../model.js';
 
 /**
  * Device picker grouped by kind, with live state. Multi-select renders
@@ -68,7 +69,7 @@ export default function EntityPicker({ selected, onChange, include, single, labe
                   ) : null}
                   <span className="muted" style={{ fontWeight: 500 }}>
                     {e.state || e.available === false ? ' · ' : ''}
-                    {[e.attrs && e.attrs.area, e.integrationName || e.integration].filter(Boolean).join(' · ')}
+                    {[roomOf(e), e.integrationName || e.integration].filter(Boolean).join(' · ')}
                   </span>
                 </>
               ),

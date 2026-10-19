@@ -23,7 +23,7 @@ import Places from './pages/Places.jsx';
 import Profile from './pages/Profile.jsx';
 import Dashboards from './pages/Dashboards.jsx';
 import DashboardEditor from './pages/DashboardEditor.jsx';
-import PhoneLayoutEditor from './pages/PhoneLayoutEditor.jsx';
+import HouseSettings from './pages/HouseSettings.jsx';
 import Accounts from './pages/Accounts.jsx';
 import SignInSettings from './pages/SignInSettings.jsx';
 import Backups from './pages/Backups.jsx';
@@ -153,9 +153,11 @@ function Page({ route }) {
     case 'profile':
       return <Profile />;
     case 'dashboards':
-      // #/dashboards/phone/<default | me | account id>: a phone layout; else a wall dashboard.
-      if (sub === 'phone') return <PhoneLayoutEditor key={route.parts[2] || 'me'} who={route.parts[2] || 'me'} />;
+      // (The phones have their own Home now - Edit Home on the phone; old #/dashboards/phone links land here.)
+      if (sub === 'phone') return <Redirect to="dashboards" />;
       return sub ? <DashboardEditor key={sub} id={sub} /> : <Dashboards />;
+    case 'house':
+      return <HouseSettings />;
     case 'settings':
       return <SignInSettings />;
     case 'backups':
@@ -214,6 +216,7 @@ function Dashboard() {
       household: 'Household · ' + ({ phones: 'Phones', 'test-phones': 'Phones', accounts: 'Accounts', map: 'Map', places: 'Places' }[route.parts[1]] || 'People'),
       profile: 'Your profile',
       dashboards: 'Dashboards',
+      house: 'Settings',
       settings: 'Sign-in settings',
       backups: 'Backups',
     };

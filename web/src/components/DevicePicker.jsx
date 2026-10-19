@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
 import { entityStateText } from '../model.js';
+import { roomOf } from '../model.js';
 
 const W = 580;
 const H = 430;
@@ -23,7 +24,7 @@ function Popover({ anchor, include, selected = [], multi, onPick, onClose, exclu
   const [type, setType] = useState(firstSel ? firstSel.kind : types[0] ? types[0].k.id : '');
   const needle = q.trim().toLowerCase();
   const shown = needle
-    ? all.filter((e) => e.name.toLowerCase().includes(needle) || ((e.attrs && e.attrs.area) || '').toLowerCase().includes(needle))
+    ? all.filter((e) => e.name.toLowerCase().includes(needle) || roomOf(e).toLowerCase().includes(needle))
     : all.filter((e) => e.kind === type);
 
   // Fixed position next to the blank that opened it, kept inside the window.
@@ -110,7 +111,7 @@ function Popover({ anchor, include, selected = [], multi, onPick, onClose, exclu
           {!shown.length ? <div className="muted dpop-empty">Nothing matches.</div> : null}
           {shown.map((e) => {
             const on = multi ? chosen.includes(e.id) : selected.includes(e.id);
-            const room = e.attrs && e.attrs.area && !e.name.includes(e.attrs.area) ? e.attrs.area : null;
+            const room = roomOf(e) && !e.name.includes(roomOf(e)) ? roomOf(e) : null;
             return (
               <button key={e.id} type="button" role="option" aria-selected={on} className="dpop-item" onClick={() => pick(e.id)}>
                 {multi ? (

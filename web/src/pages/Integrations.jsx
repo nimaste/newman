@@ -15,6 +15,7 @@ import { ActivityItem } from '../components/Camera.jsx';
 import { Icon } from '../icons.jsx';
 import { AddByCodeDialog, PairedDevices, WebhookAddresses } from '../components/ConnectionExtras.jsx';
 import { cleanDetail, plural } from '../format.js';
+import { roomOf } from '../model.js';
 
 const MASK = '••••';
 const STATUS_LABEL = { connected: 'Connected', connecting: 'Connecting', pairing: 'Pairing', error: 'Not working', disabled: 'Paused' };
@@ -547,7 +548,7 @@ function DevicesTab({ devices }) {
   const types = kinds.filter((k) => devices.some((e) => e.kind === k.id));
   const needle = q.trim().toLowerCase();
   const shown = devices.filter(
-    (e) => (!type || e.kind === type) && (!needle || e.name.toLowerCase().includes(needle) || ((e.attrs && e.attrs.area) || '').toLowerCase().includes(needle)),
+    (e) => (!type || e.kind === type) && (!needle || e.name.toLowerCase().includes(needle) || roomOf(e).toLowerCase().includes(needle)),
   );
   return (
     <>
