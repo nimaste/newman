@@ -22,7 +22,7 @@
 - [Remotes and their Controls](#remotes-and-their-controls) — what a remote's buttons do, without automations
 - [Upkeep and Today](#upkeep-and-today)
 - [Dashboards and the wall tablet](#dashboards-and-the-wall-tablet) (and [phone layouts](#phone-layouts), [wall tablet battery and smart charging](#wall-tablet-battery))
-- [Apps](#apps) — the phone and wall apps, connecting them, widgets, live statuses
+- [Apps](#apps) — the phone and wall apps, connecting them, [the phone's Home](#the-phones-home) (groups, rooms, quiet hours), [Settings](#settings), widgets, live statuses
 - [Deploying behind Caddy](#deploying-behind-caddy)
 - [Settings (environment variables)](#settings-environment-variables)
 - [Data and backups](#data-and-backups)
@@ -239,6 +239,12 @@ keypad whose "No AC power" is muted still says when its battery runs low. Muted 
 in grey with who muted them and until when, on the device's page, with **Unmute**. Anyone signed in -
 wall tablets too - can mute; the Activity log says who did.
 
+Admins can also **switch a warning off** for good on a device's **Warnings** tab - every problem that
+device can report, each with a switch - and give it **its own low-battery level** (5–50 %) instead of the
+house's (Settings › Devices, 20 % to start). A door, window, lock or garage can also get its own **left open**
+time (1–240 minutes) before Home says it needs you, instead of the house's (Settings › Devices, 15 minutes). A switched-off warning never shows anywhere: not in Needs
+attention, To do, the chips or the phone's Home.
+
 ### Reconnecting a connection
 
 Every connection's page has **Reconnect** (also in its ⋯ menu, admins only): it starts the connection
@@ -280,6 +286,9 @@ The connection's settings choose cameras and zones to **leave out** (*Leave out 
 everything else, including cameras added to Frigate later, appears. Settings from older versions, which listed
 the cameras to *include*, are converted once Frigate can be reached: left out = what Frigate has minus what
 was ticked (all ticked = nothing left out). Until Frigate answers, the old list keeps applying.
+
+Every object Frigate tracks is offered in automations - its own custom labels too (a `fedex` or `amazon`
+model's labels show as *Fedex detected*, *Amazon detected*), not just the common ones (person, car, dog…).
 
 ### Camera video settings
 
@@ -1080,6 +1089,15 @@ Built in the dashboard as **When → What happens → Only if**, read back as a 
   between dates — every year (“December 1 to January 6” wraps over New Year; February 29 counts as
   the 28th in other years) or just once in a given year. Dates use the hub's own date.
 
+**Don't repeat for** - after it runs, an automation ignores new triggers for that many minutes (logged as a
+skipped run). Left on the default it doesn't wait, except one started by a camera detection, which waits
+the camera default (Settings › Cameras, 1 minute to start). Brighten/dim while held ramp in the time set in
+Settings › Lights (3.5 s to start), a tap steps 10 % (5, 10 or 20), and a Pico counts as held after 0.5 s.
+
+**Who can change them** - admins always; anyone else only when an admin switched on *Make & change automations* on
+their account (Household › Accounts); wall tablets never. Everyone can still see them - on the web without
+New automation, switches or Save.
+
 A new blank automation starts with one empty *Do* row and no notification (*+ Add something that
 happens* → *Send a notification* adds one); *Only if* starts empty, and a device row left without a
 device is left out when it's saved. Recipes and *Create automation* from a device keep their own starts.
@@ -1224,7 +1242,7 @@ row in a narrow tile, more when it's wide (the rest as *+N more*). Numbers are e
 report. Settings: **Thermostat** (anything set to a temperature), **Rooms** (devices that report a room
 temperature), **Outside** (a weather place, optional), **Opens page** (one of the dashboard's pages,
 optional). A tap opens that page, or with none chosen, the thermostat's own dial. It is for the wall
-(the phone apps don't draw it yet, so the phone layout editor doesn't offer it).
+(the phone apps don't draw it yet).
 
 **Updates reach open screens by themselves.** A wall tablet (or a browser tab) keeps running the page
 it loaded until something reloads it - for days on a tablet. So every page compares its own web build
@@ -1258,23 +1276,9 @@ it expires a year later; those don't count, and expired sign-ins are deleted.
 
 ### Phone layouts
 
-The phone app has its own layouts (Dashboards → **Phone app**, a table of each layout's tabs and who uses it): a
-**household default** that everyone uses, and a **customized** layout for anyone who wants their own (*Customize for*
-*…* in the default's ⋯ menu starts from a copy of the default; *Reset to the default* in a customized phone's ⋯ menu
-goes back). Admins arrange the default and anyone's, and can **Reset everyone to the default** (asked once); family
-and guests see only their own phone. Wall tablet accounts have none.
-
-The phone editor draws an actual phone (390 × 844): the page's 4-column grid of square cells with the
-real tiles, the Today card at the top of the first tab, the links to the other pages under it, and the
-bottom tabs — up to three pages, then People and Alerts. Drag a tile to move it and its corner to
-resize, in whole cells; arrows and Shift+arrows do the same. *Show as a tab* is per page (a fourth is
-refused with a note); pages that aren't tabs open from links on the first tab. Saving the default
-reaches everyone using it at once; their apps reload.
-
-The first default is laid out from the first admin's wall dashboard by the rules the apps used before
-(the Today page becomes the Today card, the next three pages are tabs; tiles flow in order, wide ones
-across the phone, small ones side by side, a big-tiles devices tile as one card per device; sizes in
-[API.md](API.md#phone-layouts)), so phones look the same until someone arranges them.
+*Older phone apps only.* Current apps show [the phone's Home](#the-phones-home), set up on the phone
+itself, and the web no longer has a phone layout editor. Older apps keep getting the layout last saved
+(a household default, or a person's own) through the API ([API.md](API.md#phone-layouts)) until they update.
 
 ### Wall tablet battery
 
@@ -1596,6 +1600,36 @@ Apps that were set up before this keep their saved address and stay signed in.
 The hub's **name** and **outside address** (e.g. `https://home.example.com/`) are set under
 **Sign-in settings → This Newman**; they go into `/api/hello`, the mDNS announcement and the QR code.
 Without an outside address set there, `PUBLIC_URL` is used.
+
+### The phone's Home
+
+One calm Home screen, worked out by the hub so both apps say the same thing: a line at the top that's
+green when all is well ("Locked up · doors closed · no leaks"), amber with each device problem nobody muted,
+red when something needs you now - the alarm going off, a leak, or a door, garage or lock left open for
+15 minutes (Settings › Devices, or the device's own time), with its fix (*Close*, *Lock*) right there. Under it the cards - Cameras (the newest alert, or
+one featured camera chosen in Settings › Cameras), Climate, Lights, Security, Today, People, and Appliances
+and Cleaning when switched on - and up to 4 favourite devices. *Edit Home* reorders, hides and shows cards
+and picks favourites, for that person only. Climate › Edit picks the rooms the Climate screen shows, for the
+household; its comfort range and colours are in Settings › Climate.
+
+**Groups and rooms.** Several lights or switches can be made into one group (Kitchen Under Cabinet): one row
+everywhere, switched and dimmed together, on while any of them is, its brightness the average of those on;
+its lights stay behind *Show the N lights*. A device is in one group at most. Groups and a device's **room**
+(which otherwise comes from its connection) are set by admins - on the web, Devices › **Light groups** (name,
+room, which lights) and the room by a device's name on its page; the Lights screen is grouped by room.
+
+**Quiet hours** (web › Profile, each person's own): from-to and days in which that person's phones get
+notifications without a sound - except what they allow through: the alarm, leaks and smoke; the doorbell;
+people on cameras; automations marked urgent. Every notification carries its alert, so tapping one of any
+age opens it in the app (camera ones play the clip) rather than an expired link.
+
+### Settings
+
+The web's **Settings** page (admins change, everyone sees): **Devices** - the low-battery level and how long something may be left open; **Lights** -
+how long a full brighten/dim while held takes (3–6 s), a tap's step (5/10/20 %), how long a Pico button is
+held before it ramps; **Climate** - the comfort range and colours; **Cameras** - Home's latest alert or one
+featured camera, the default wait for camera automations, how many days alert videos are kept (1–7);
+**History** - how many days Activity and automation runs are kept (1–90).
 
 ### Home-screen widgets and quick tiles
 

@@ -111,6 +111,7 @@ class FrigateIntegration(Integration):
         self._refresh_lock = asyncio.Lock()
         self._refresh_task: asyncio.Task | None = None
         self._cams: dict[str, dict[str, Any]] = {}   # frigate camera name -> {eid, track, zones}
+        self._labels: set[str] = set(DETECTABLE)        # every object label its cameras track (custom ones too)
         self._zones: dict[str, dict[str, Any]] = {}  # frigate zone name -> {eid, camera, objects}
         self._fired: dict[str, set[str]] = {}         # frigate event id -> {"camera", "zone:<name>"...} already emitted
         self._snapshots: dict[str, str] = {}          # frigate event id -> Newman snapshot id
@@ -244,7 +245,8 @@ class FrigateIntegration(Integration):
         for cam, c in enabled_cameras(cfg).items():
             if not self._wanted("cameras", cam):
                 continue
-            track = [o for o in (c.get("objects") or {}).get("track", []) if o in DETECTABLE]
+            # Every label Frigate tracks for it - its own custom labels too, not just the common ones.
+            track = [o for o in (c.get("objects") or {}).get("track", []) if isinstance(o, str) and o]
             live = list(((c.get("live") or {}).get("streams") or {}).values())
             eid = self.entity_id(f"camera_{cam}")
             cams[cam] = {"eid": eid, "track": track, "zones": list((c.get("zones") or {}).keys())}
@@ -258,7 +260,7 @@ class FrigateIntegration(Integration):
                 if not self._wanted("zones", zone):
                     continue
                 z = z or {}
-                objects = [o for o in (z.get("objects") or track) if o in DETECTABLE]
+                objects = [o for o in (z.get("objects") or track) if isinstance(o, str) and o]
                 zeid = self.entity_id(f"zone_{zone}")
                 zones[zone] = {"eid": zeid, "camera": cam, "objects": objects}
                 counts = self._counts_now(zeid, objects)
@@ -270,6 +272,8 @@ class FrigateIntegration(Integration):
         for gone in [z["eid"] for k, z in self._zones.items() if k not in zones]:
             await self.hub.update(gone, available=False)
         self._cams, self._zones = cams, zones
+        self._labels = set(DETECTABLE) | {o for c in cams.values() for o in c["track"]} | \
+            {o for z in zones.values() for o in z["objects"]}
 
     def _counts_now(self, eid: str, objects: list[str]) -> dict[str, int]:
         """Live counts for these objects, keeping what's already known (a refresh mustn't zero them)."""
@@ -372,7 +376,7 @@ class FrigateIntegration(Integration):
                 pass
             return
         parts = topic.split("/")
-        if len(parts) == 3 and parts[2] in DETECTABLE:
+        if len(parts) == 3 and parts[2] in self._labels:
             try:
                 count = int(raw)
             except (TypeError, ValueError):
@@ -395,7 +399,7 @@ class FrigateIntegration(Integration):
                 after.get("severity") != "alert" and use == "alerts"):
             return  # not the kind of review item this connection is set to use
         data = after.get("data") or {}
-        objects = [o for o in data.get("objects") or [] if o in DETECTABLE]
+        objects = [o for o in data.get("objects") or [] if o in self._labels]
         if not objects:
             return
         fired = self._fired.setdefault(rid, set())
@@ -453,7 +457,7 @@ class FrigateIntegration(Integration):
             if r.get("camera") not in self._cams:
                 continue
             rid = r["id"]
-            objects = [o for o in data.get("objects") or [] if o in DETECTABLE]
+            objects = [o for o in data.get("objects") or [] if o in self._labels]
             out.append({
                 "id": rid, "camera": r["camera"], "cameraName": self.hub.name(self._cams[r["camera"]]["eid"]),
                 "entityId": self._cams[r["camera"]]["eid"], "severity": r.get("severity"),

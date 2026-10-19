@@ -27,6 +27,9 @@ from . import auth as A
 from . import backup as B
 from . import connect as CN
 from . import controls as C
+from . import groups as G
+from . import home as HM
+from . import house as HS
 from . import muting as M
 from . import today as T
 from . import dashboards as D
@@ -50,6 +53,7 @@ from .live import LiveStatuses, add_live_routes
 from .locations import Locator
 from .mapkit import MapKitTokens
 from .push.notifier import Notification
+from .quiet import QuietHours
 from .push.widgets import WidgetPush
 from .state import Entity
 from . import widgets as W
@@ -139,6 +143,20 @@ def build_app(h: "Newman") -> web.Application:
     h.engine.listeners.append(lambda: live.automations_changed(h.engine.autos))
     # Problems someone muted ("No AC power" on a keypad that isn't meant to stay plugged in): muting.py.
     muting = h.muting = getattr(h, "muting", None) or M.Muting(h.store, h.hub)
+    # House settings (the web's Settings page): battery level, dimming, cameras, how long history is kept.
+    house = h.house = HS.House(h.store, camera_ok=lambda i: bool((e := h.hub.get(i)) and HM.is_camera(e)))
+    h.engine.house = house
+    # Light/switch groups and rooms (groups.py): groups are devices of their own, connection "groups".
+    groups = h.groups = G.Groups(h.store, h.hub, h.integrations)
+    # Quiet hours, per person (quiet.py): their phones get everyday notifications silently.
+    quiet = QuietHours(h.store)
+    h.notifier.quiet = quiet.silent
+
+    def can_automate(u: dict[str, Any] | None) -> bool:
+        """May make and change automations: admins always, wall tablets never, anyone else if allowed."""
+        if not u:
+            return False
+        return u["role"] == "admin" or (u["role"] != "tablet" and bool(u.get("can_automate")))
 
     def entity_json(e: Entity, origins: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         # origins: video.origins(), when building many devices at once (else worked out per device).
@@ -162,6 +180,8 @@ def build_app(h: "Newman") -> web.Application:
                 "liveStatus": live.setting_json(e),
                 # A remote's Controls - its lights and what each press does (controls.py); null when none.
                 "controls": h.engine.controls.json(e),
+                # Its room (set in Newman, else its connection's) and the group it's in (groups.py).
+                "room": groups.room_of(e), "group": groups.member_group(e.id),
                 "usedBy": h.engine.used_by(e.id), "updatedAt": e.updated_at}
 
     def person_json(p: dict[str, Any], viewer: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
@@ -213,7 +233,7 @@ def build_app(h: "Newman") -> web.Application:
         return {"id": u["id"], "username": u["username"], "name": u["name"], "role": u["role"],
                 "personId": u.get("person_id"), "twoFactor": bool(u.get("totp_enabled")),
                 "hasPin": bool(u.get("pin_hash")), "disabled": bool(u.get("disabled")),
-                "location": loc.settings_json(u),
+                "location": loc.settings_json(u), "canAutomate": can_automate(u),
                 "seesPeople": loc.tablet_sees_people(u)}  # a wall tablet's "Can see where people are"
 
     def session_json(s: dict[str, Any], current: str | None) -> dict[str, Any]:
@@ -266,11 +286,15 @@ def build_app(h: "Newman") -> web.Application:
         follow = p.startswith("/api/people/") and p.endswith(("/refresh", "/follow"))
         if p.startswith("/api/auth/"):
             return True  # own account; admin-only parts check inside
+        if p == "/api/automations/describe" and s["kind"] != "tablet":
+            return True  # wording an automation changes nothing
+        if p.startswith("/api/automations") and m not in ("GET", "HEAD"):
+            return can_automate(u) and s["kind"] != "tablet"  # make / change / switch / run: if allowed
         if s["kind"] == "tablet" and m not in ("GET", "HEAD") and not command and not follow:
             return False  # no configuration from a wall tablet
         if u["role"] == "admin":
             return True
-        if p.startswith("/api/dashboards") or p.startswith("/api/phone-layout"):
+        if p.startswith("/api/dashboards") or p.startswith("/api/phone-layout") or p.startswith("/api/home"):
             return True  # everyone arranges their own dashboards and phone (checked inside)
         if m in ("GET", "HEAD"):
             return not (p.startswith("/api/test/") or p.startswith("/api/users"))
@@ -291,6 +315,8 @@ def build_app(h: "Newman") -> web.Application:
                 return web.json_response({"error": "Please sign in", "signIn": True}, status=401)
             req["session"], req["user"] = found
         if not allowed(req):
+            if p.startswith("/api/automations") and req["session"]["kind"] != "tablet":
+                return _err(403, "Your account can't change automations")
             return _err(403, "Your account can't do that" if req["session"]["kind"] != "tablet"
                         else "Change this from the Newman dashboard, not the wall tablet")
         return await handler(req)
@@ -690,6 +716,11 @@ def build_app(h: "Newman") -> web.Application:
                                         not all(h.store.person(str(x)) or str(x) in tablets for x in vis)):
                     return _err(400, "Choose who can see them from the household and wall tablets")
                 changes["loc_visible"] = None if vis is None else json.dumps([str(x) for x in vis])
+        if "canAutomate" in data:
+            role = changes.get("role") or u["role"]
+            if not isinstance(data["canAutomate"], bool) or role == "tablet":
+                return _err(400, "\"Make & change automations\" is true or false, for anyone but a wall tablet")
+            changes["can_automate"] = int(data["canAutomate"])
         if "seesPeople" in data:
             if not isinstance(data["seesPeople"], bool) or (changes.get("role") or u["role"]) != "tablet":
                 return _err(400, "Only a wall tablet's account has \"Can see where people are\" (true or false)")
@@ -1259,6 +1290,8 @@ def build_app(h: "Newman") -> web.Application:
             h.store.forget_entity(i)
             h.engine.controls.remove(i)  # a remote that's gone takes its Controls with it
             muting.forget(i)
+            muting.warnings.forget(i)
+            groups.forget(i)
         h.hub.set_name_overrides(h.store.entity_names())
         for lid in video.forget(ids):
             if ent := h.hub.get(lid):
@@ -1297,6 +1330,206 @@ def build_app(h: "Newman") -> web.Application:
             h.store.log_event("system", f"{req['user']['name']} unmuted “{text}” on {ent.name}", entity_id=ent.id)
             await broadcast({"type": "entity", "entity": entity_json(ent)})
         return web.json_response({"health": muting.health(ent)})
+
+    # -- a device's warnings (its Warnings tab), rooms and groups -----------------------------------
+
+    @r.get("/api/entities/{eid}/warnings")
+    async def get_warnings(req: web.Request) -> web.Response:
+        """{"batteryLow": its own level | null, "houseBatteryLow", "hasBattery", "warnings": [{"id", "label",
+        "on"}]} - every problem it can report and whether it's switched on."""
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        return web.json_response(muting.warnings.json(ent, house.get()["devices"]))
+
+    @r.put("/api/entities/{eid}/warnings")
+    async def put_warnings(req: web.Request) -> web.Response:
+        """Admin: {"batteryLow": 5-50 | null, "warnings": {issue id: bool}} (either or both)."""
+        require_admin(req)
+        ent = h.hub.get(req.match_info["eid"])
+        if not ent:
+            return _err(404, "Unknown device")
+        try:
+            muting.warnings.set(ent, await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        await broadcast({"type": "entity", "entity": entity_json(ent)})
+        home_changed()
+        return web.json_response(muting.warnings.json(ent, house.get()["devices"]))
+
+    @r.put("/api/entities/{eid}/room")
+    async def put_room(req: web.Request) -> web.Response:
+        """Admin: {"room": "Kitchen" | null} - the device's room in Newman (null: its connection's again)."""
+        require_admin(req)
+        eid = req.match_info["eid"]
+        if not h.hub.get(eid):
+            return _err(404, "Unknown device")
+        await groups.set_room(eid, (await body(req)).get("room"))
+        return web.json_response(entity_json(h.hub.get(eid)))
+
+    @r.get("/api/rooms")
+    async def rooms(_: web.Request) -> web.Response:
+        """Every room in use, for pickers."""
+        return web.json_response(groups.rooms())
+
+    @r.get("/api/groups")
+    async def list_groups(_: web.Request) -> web.Response:
+        return web.json_response([groups.json(gid) for gid in groups.all()])
+
+    @r.post("/api/groups")
+    async def create_group(req: web.Request) -> web.Response:
+        """Admin: {"name", "members": [light / switch ids], "room"?} -> the group."""
+        require_admin(req)
+        try:
+            gid = await groups.create(await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        h.store.log_event("system", f"Made the group {groups.all()[gid]['name']}", f"By {req['user']['name']}", gid)
+        return web.json_response(groups.json(gid))
+
+    @r.put("/api/groups/{gid}")
+    async def update_group(req: web.Request) -> web.Response:
+        require_admin(req)
+        gid = req.match_info["gid"]
+        try:
+            await groups.update(gid, await body(req))
+        except KeyError:
+            return _err(404, "Unknown group")
+        except ValueError as e:
+            return _err(400, str(e))
+        return web.json_response(groups.json(gid))
+
+    @r.delete("/api/groups/{gid}")
+    async def delete_group(req: web.Request) -> web.Response:
+        require_admin(req)
+        gid = req.match_info["gid"]
+        name = (groups.all().get(gid) or {}).get("name")
+        if not await groups.delete(gid):
+            return _err(404, "Unknown group")
+        h.store.log_event("system", f"Removed the group {name}", f"By {req['user']['name']}")
+        return web.json_response({"ok": True})
+
+    async def touched(ids: list[str]) -> None:
+        for eid in ids:
+            if ent := h.hub.get(eid):
+                await broadcast({"type": "entity", "entity": entity_json(ent)})
+        home_changed()
+    groups.touched.append(touched)
+
+    # -- house settings (the web's Settings page) ---------------------------------------------------------
+
+    @r.get("/api/settings/house")
+    async def get_house(_: web.Request) -> web.Response:
+        return web.json_response(house.get())
+
+    @r.patch("/api/settings/house")
+    async def patch_house(req: web.Request) -> web.Response:
+        """Admin: any part, e.g. {"lights": {"step": 5}} -> all the settings."""
+        require_admin(req)
+        try:
+            s = house.patch(await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        await broadcast({"type": "settings-house", "settings": s})
+        home_changed()
+        return web.json_response(s)
+
+    # -- quiet hours (each person's Profile) ---------------------------------------------------------------
+
+    def own_person(req: web.Request) -> str:
+        pid = req["user"].get("person_id")
+        if not pid:
+            raise web.HTTPBadRequest(text='{"error": "This account isn\'t a person, so it has no quiet hours"}',
+                                     content_type="application/json")
+        return pid
+
+    @r.get("/api/me/quiet-hours")
+    async def get_quiet(req: web.Request) -> web.Response:
+        return web.json_response(quiet.get(own_person(req)))
+
+    @r.put("/api/me/quiet-hours")
+    async def put_quiet(req: web.Request) -> web.Response:
+        """{"enabled", "from": "22:00", "to": "07:00", "days": "all"|"weekdays"|"weekends",
+        "allow": [alarm, doorbell, people, urgent]} - their phones get the rest silently in that window."""
+        pid = own_person(req)
+        try:
+            return web.json_response(quiet.set(pid, await body(req)))
+        except ValueError as e:
+            return _err(400, str(e))
+
+    # -- the phone's Home screen (home.py) -----------------------------------------------------------------
+
+    def today_for(u: dict[str, Any]) -> dict[str, Any]:
+        st = h.store.settings()
+        return T.build(h.hub, st, person_id=u.get("person_id"), dismissed=st.get("todayDismissed") or {})
+
+    def people_brief(viewer: dict[str, Any], session: dict[str, Any]) -> list[dict[str, Any]]:
+        out = []
+        for p in h.store.people():
+            pj = loc.person_json(p, viewer, session)
+            out.append({"name": p["name"], "home": bool(pj.get("home"))})
+        return out
+
+    home = h.home = HM.Home(h.hub, h.store, groups, house, muting, today=lambda _u: {}, people=lambda: [])
+
+    @r.get("/api/home")
+    async def get_home(req: web.Request) -> web.Response:
+        u, s = req["user"], req["session"]
+        if s["kind"] == "tablet":
+            return _err(403, "The phone's Home is for phones")
+        home.people = lambda: people_brief(u, s)
+        return web.json_response(home.json(u["id"], can_automate(u), today_for(u)))
+
+    @r.put("/api/home/me")
+    async def put_home_mine(req: web.Request) -> web.Response:
+        """{"cards": [{"id", "on"}…in order], "favourites": [ids, ≤4]} - this account's Edit Home."""
+        u, s = req["user"], req["session"]
+        if s["kind"] == "tablet":
+            return _err(403, "The phone's Home is for phones")
+        try:
+            home.set_mine(u["id"], await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        await send_to_user(u["id"], {"type": "home"})
+        home.people = lambda: people_brief(u, s)
+        return web.json_response(home.json(u["id"], can_automate(u), today_for(u)))
+
+    @r.put("/api/home/climate")
+    async def put_home_climate(req: web.Request) -> web.Response:
+        """{"rooms": [{"entity", "name"}…in order]} - the household's Climate rooms (any temperature sensor)."""
+        if req["session"]["kind"] == "tablet":
+            return _err(403, "Change this from a phone or the dashboard")
+        try:
+            home.set_climate(await body(req))
+        except ValueError as e:
+            return _err(400, str(e))
+        home_changed()
+        u, s = req["user"], req["session"]
+        home.people = lambda: people_brief(u, s)
+        return web.json_response(home.json(u["id"], can_automate(u), today_for(u)))
+
+    home_pending: dict[str, Any] = {"task": None, "last": 0.0}
+
+    def home_changed() -> None:
+        """Tells the phones' Home screens to read it again - at most once a second."""
+        if home_pending["task"] and not home_pending["task"].done():
+            return
+
+        async def later() -> None:
+            await asyncio.sleep(max(0.0, 1.0 - (time.time() - home_pending["last"])))
+            home_pending["last"] = time.time()
+            await broadcast({"type": "home"})
+        try:
+            home_pending["task"] = asyncio.get_running_loop().create_task(later())
+        except RuntimeError:
+            pass
+
+    async def home_on_change(old: Entity | None, new: Entity) -> None:
+        cat = KINDS[new.kind].category
+        if cat in ("servers",):
+            return  # nothing on Home comes from these
+        if old is None or old.state != new.state or old.available != new.available or cat in ("climate", "lighting"):
+            home_changed()
 
     @r.post("/api/entities/{eid}/command")
     async def command(req: web.Request) -> web.Response:
@@ -1763,8 +1996,11 @@ def build_app(h: "Newman") -> web.Application:
 
     @r.get("/api/events")
     async def events(req: web.Request) -> web.Response:
+        """?limit, before, kind, since; ?runId=<a notification's alertId> - that automation run's entry."""
         before = float(req.query["before"]) if "before" in req.query else None
-        return web.json_response(h.store.events(int(req.query.get("limit", 100)), before, req.query.get("kind")))
+        since = float(req.query["since"]) if "since" in req.query else None
+        return web.json_response(h.store.events(int(req.query.get("limit", 100)), before, req.query.get("kind"),
+                                                run_id=req.query.get("runId") or None, since=since))
 
     # -- integrations -----------------------------------------------------------------------------
 
@@ -2208,8 +2444,9 @@ def build_app(h: "Newman") -> web.Application:
                 await up.aclose()
         return web.FileResponse(cached, headers={"Content-Type": "video/mp4", "Cache-Control": "private, max-age=86400"})
 
-    def prune_clips(days: int = 3) -> None:
-        cutoff = time.time() - days * 86400
+    def prune_clips(days: int | None = None) -> None:
+        """Copies of watched clips older than Settings > Cameras says go."""
+        cutoff = time.time() - (days if days is not None else house.clip_days()) * 86400
         for f in h.clip_dir.glob("*.mp4"):
             if f.stat().st_mtime < cutoff:
                 f.unlink(missing_ok=True)
@@ -2350,6 +2587,8 @@ def build_app(h: "Newman") -> web.Application:
             await push_linked(eid)
 
     h.hub.subscribe_changes(muting.on_change)  # first: a "fixed" mute goes before the screens hear of it
+    h.hub.subscribe(home.on_state)  # when each device's state last changed ("open for 15 minutes")
+    h.hub.subscribe_changes(home_on_change)
     h.hub.subscribe_changes(on_entity)
     h.hub.subscribe_changes(widget_push.changed)
     h.hub.subscribe_registry(on_entity_added, on_entities_removed)
@@ -2408,11 +2647,60 @@ def build_app(h: "Newman") -> web.Application:
         out.sort(key=lambda x: x.get("start") or 0, reverse=True)
         return out[:limit]
 
+    def alert_brief(a: dict[str, Any]) -> dict[str, Any]:
+        """The phone's shape of a camera alert, added to what each connection sends: at, label, zone,
+        snapshot, clip (the signed-in API path)."""
+        objs = [str(o).replace("_", " ") for o in a.get("objects") or []]
+        clip = a.get("clip") if isinstance(a.get("clip"), str) else None
+        iid, _, ev = (clip or "").partition(":")
+        return {**a, "at": a.get("start"), "label": " & ".join(objs).capitalize() or "Activity",
+                "zone": (a.get("zones") or [None])[0], "snapshot": a.get("snapshotUrl"),
+                "clip": f"api/clips/{iid}/{ev}" if clip and ev else a.get("clipUrl")}
+
+    def activity_brief(ev: dict[str, Any]) -> dict[str, Any]:
+        data = ev.get("data") or {}
+        clip = data.get("clip")
+        iid, _, rest = str(clip or "").partition(":")
+        return {"id": ev["id"], "at": ev["ts"], "title": ev["title"], "body": ev["body"], "entity": ev["entityId"],
+                "label": str(ev["title"]).split(" at ")[0] if ev["kind"] == "alert" else ev["title"],
+                "zone": (ev["body"] or None) if ev["kind"] == "alert" else None,
+                "snapshot": data.get("snapshotUrl") or (f"api/snapshots/{data['snapshotId']}" if data.get("snapshotId") else None),
+                "clip": f"api/clips/{iid}/{rest}" if clip and rest else None, "kind": ev["kind"]}
+
     @r.get("/api/alerts")
     async def alerts(req: web.Request) -> web.Response:
-        """Most recent alerts across every connection that has them, newest first."""
-        insts = [i for i in h.integrations.instances.values() if i.has_alerts(None)]
-        return web.json_response(await gather_alerts(insts, *_page(req)))
+        """Most recent alerts across every connection that has them, newest first.
+        ?entity=<camera id>: just that device's (its connection's alerts). ?since=<unix>: from then on.
+        ?category=security[,garage…]: the activity entries about devices of those categories instead
+        (the phone's Security screen) - each {"id", "at", "title", "body", "entity", "label", "zone",
+        "snapshot", "clip", "kind"}. ?limit (default 10, at most 100)."""
+        limit, before = _page(req)
+        since = float(req.query["since"]) if "since" in req.query else None
+        if cats := [c for c in req.query.get("category", "").split(",") if c]:
+            out = []
+            for ev in h.store.events(500, before, since=since):
+                e = h.hub.get(ev.get("entityId") or "")
+                if e and KINDS[e.kind].category in cats:
+                    out.append(activity_brief(ev))
+                    if len(out) >= limit:
+                        break
+            return web.json_response(out)
+        if eid := req.query.get("entity"):
+            ent = h.hub.get(eid)
+            inst = h.integrations.instances.get(ent.integration) if ent else None
+            if not inst or not inst.has_alerts(eid):
+                return _err(404, "That device has no alerts")
+            try:
+                found = [dict(a, integration=inst.id) for a in await inst.alerts(eid, limit, before)]
+            except Exception as e:
+                return _err(502, f"{inst.display_name} unreachable: {e}")
+        else:
+            insts = [i for i in h.integrations.instances.values() if i.has_alerts(None)]
+            found = await gather_alerts(insts, limit, before)
+        out = [alert_brief(a) for a in found]
+        if since is not None:
+            out = [a for a in out if (a.get("at") or 0) >= since]
+        return web.json_response(out)
 
     @r.get("/api/integrations/{iid}/alerts")
     async def integration_alerts(req: web.Request) -> web.Response:
@@ -2629,6 +2917,10 @@ def build_app(h: "Newman") -> web.Application:
         await widget_push.close()
     app.on_cleanup.append(close_widget_push)
     app.on_startup.append(live.start)
+
+    async def groups_start(_app: web.Application) -> None:
+        await groups.start()
+    app.on_startup.append(groups_start)
     app.on_cleanup.append(live.close)
     app[LOCATOR] = loc
 

@@ -109,8 +109,12 @@ address changes. `NEWMAN_MDNS=0` turns it off.
   "state": "LOCKED", "stateLabel": "Locked", "available": true,
   "attrs": {"batteryLevel": 100, "tamperStatus": "ok"},
   "health": {"ok": true, "issues": []},
+  "room": "Kitchen", "group": null,
   "usedBy": ["auto_1"], "updatedAt": 1790000000.0}]
 ```
+
+`room` is the room set in Newman, else the connection's `attrs.area`, else null. `group` is the id of the
+light/switch group the device belongs to (null when none) - see [Groups and rooms](#groups-and-rooms).
 
 `health.issues` are short strings ("Battery 15%", "Tamper reported", "Offline").
 
@@ -204,6 +208,38 @@ Any signed-in account may mute, wall tablets included; each change is logged in 
 as an `entity` update. Settings key `mutedIssues` holds them; swapping a device moves them, removing it
 drops them.
 
+**Warnings switched off** (admin, the web's Warnings tab): `GET /api/entities/{id}/warnings` →
+`{"batteryLow": its own level | null, "houseBatteryLow": Settings level, "hasBattery",
+"leftOpenMinutes": its own | null, "houseLeftOpenMinutes": Settings minutes, "hasSecureState",
+"warnings": [{"id", "label", "on"}]}` - every problem this device can report. `PUT /api/entities/{id}/warnings`
+`{"batteryLow": 5-50 | null, "leftOpenMinutes": 1-240 | null, "warnings": {issue id: bool}}` (any of them;
+null = the house setting; 400 for an issue the device can't report, or `leftOpenMinutes` on a device whose
+kind has no secure state) → the same. `leftOpenMinutes` is how long a door, window, lock or garage may stay
+out of its secure state before Home says it needs you. A switched-off problem never appears in `ok` / `issues` / `items`, Needs attention,
+To do or Home; `battery_low` uses the device's own level when set (else Settings > Devices). Settings key
+`deviceWarnings`; swapping a device moves them, removing it drops them.
+
+### Groups and rooms
+
+A **group** is one light or switch made of several: a real device with id `group.<slug>`, integration
+`groups`, kind `light` when every member is a dimmable light (else `switch`), `attrs.members` (ids),
+`attrs.dimmable`. It's `on` while any member is on; `attrs.brightness` is the average of the members that
+are on; `available` while any member is. Its commands (`turn_on`, `turn_off`, `toggle`, `set_brightness`,
+brighten/dim while held, fades) go to every member together; a command fails only when no member took it.
+A device is in at most one group; only lighting devices that turn on and off can be members.
+
+* `GET /api/groups` → `[{"id", "name", "members", "room", "kind"}]`
+* `POST /api/groups` (admin) `{"name", "members": [ids], "room"?: str | null}` → the group (400 `{"error"}`)
+* `PUT /api/groups/{id}` (admin) any of `{"name", "members", "room"}` → the group
+* `DELETE /api/groups/{id}` (admin) → `{"ok": true}` (automations naming it then list the missing device)
+* `PUT /api/entities/{id}/room` (admin) `{"room": str | null}` → the entity (null = back to the
+  connection's area). A group's room is set with the group.
+* `GET /api/rooms` → `["Kitchen", …]` - every room in use, for pickers.
+
+Each change is logged in Activity and sent live as `entity` updates plus `{"type": "home"}`. Settings keys
+`groups` and `rooms`; swapping a member moves it, `POST /api/entities/remove` lists a group as `usedBy`
+`{"type": "group"}` (and a Home favourite as `{"type": "favourite"}`).
+
 ## Dashboards and wall tablets
 
 A dashboard: `{"id", "userId", "isDefault", "name", "theme", "christmas", "pages": [{"id", "name", "icon", "tiles": [Tile]}], "names": {entityId: "Show as"}, "home": Home, "tabNames": "current"}`
@@ -270,6 +306,8 @@ settings and its own copies of the Christmas pictures; a plain create never take
 also has `phone: [w, h]`, its starting size on a phone layout.
 
 ## Phone layouts
+
+*Older phone apps only - current apps use [Phone Home](#phone-home). Kept working for them.*
 
 How the phone apps arrange their pages: a **household default**, and optionally a layout of a
 person's own (everyone else uses the default; a reset goes back to it). Wall tablets' accounts have
@@ -684,6 +722,66 @@ normalised unit names).
 A wall tablet's session may use all of these (POST / PATCH / DELETE `api/cook` count as using the house).
 Voice works cook mode on the tablet that heard it (see Voice: `action.type` `cook`).
 
+## Phone Home
+
+`GET /api/home` (any signed-in account but a wall tablet) - everything the phone's Home screen shows, all
+text worded by the hub:
+
+```
+{"cards": [{"id": "cameras"|"climate"|"lights"|"security"|"today"|"people"|"appliances"|"cleaning",
+            "on", "title", "value", "detail", "tone": "normal"|"good"|"warm"|"danger", "camera"?: id}],
+ "favourites": [ids, ≤4],
+ "status": {"level": "ok"|"warn"|"danger", "summary": "Locked up · doors closed",
+            "danger": [{"id", "title", "detail", "entity", "action": {"command", "label"} | null}],
+            "warnings": [{"entity", "issue", "text": "Motion Detector · Battery 15%"}]},
+ "cameras": {"mode": "latest"|"featured", "featured", "top": {"camera", "label", "zone", "at",
+             "snapshot", "clip"} | null},
+ "climate": {"thermostat", "rooms": [{"entity", "name", "value"}], "range", "bands"},
+ "canAutomate": bool}
+```
+
+- Cards come in the person's order (household default: the order above, Appliances and Cleaning off);
+  a card shows only when the house has devices for it (Today always).
+- **Danger:** an alarm that's triggered, a device of an urgent kind out of its secure state (a leak), or
+  any other device out of its secure state (a door or garage open, a lock unlocked) for its own
+  `leftOpenMinutes`, else Settings > Devices `leftOpenMinutes` (15 to start), or more - with the command that fixes it when the kind has one. **Warnings:** device problems nobody
+  muted or switched off.
+- **Lights** counts groups and the lighting devices with a brightness that aren't in a group.
+- **Cameras:** `latest` shows the newest camera alert; `featured` (Settings > Cameras) one camera.
+
+`PUT /api/home/me` `{"cards": [{"id", "on"}…in order], "favourites": [ids ≤4]}` (either; any non-tablet
+account) → the new Home. `PUT /api/home/climate` `{"rooms": [{"entity", "name"}…in order]}` (household;
+temperature devices only; default every temperature sensor) → the new Home. Live: `{"type": "home"}` on
+the socket (at most once a second) whenever any of it changes; apps get it again. Settings key `home`.
+
+## House settings
+
+`GET /api/settings/house` (any signed-in) → 
+```
+{"devices": {"batteryLow": 20, "leftOpenMinutes": 15},
+ "lights": {"rampSeconds": 3.5, "step": 10, "holdSeconds": 0.5},
+ "climate": {"range": [18, 26], "bands": [{"name": "Cool", "below": 21.5, "color": "#9db8ff"},
+             {"name": "Comfortable", "color": "#f5b14c"}, {"name": "Warm", "above": 22.0, "color": "#ff9a4d"}]},
+ "cameras": {"mode": "latest", "featured": null, "cooldownMinutes": 1, "clipDays": 3},
+ "history": {"activityDays": 90, "runDays": 90}}
+```
+`PATCH /api/settings/house` (admin; any part) → the whole thing, or 400 `{"error"}`. Limits: batteryLow
+5–50, leftOpenMinutes 1–240 (whole minutes), rampSeconds 3–6 (a full brighten/dim while held), step 5|10|20 (a tap's brightness step), holdSeconds
+0.3–1.5 (how long a Pico button is held before it ramps), cooldownMinutes 0–1440 (camera automations' default
+wait), clipDays 1–7 (alert videos kept), activityDays / runDays 1–90 (Activity and automation runs kept),
+`featured` a camera, range low < high, 3 bands ascending with `#rrggbb` colours. Takes effect at once;
+the socket gets `{"type": "settings-house"}`.
+
+## Quiet hours
+
+`GET /api/me/quiet-hours` · `PUT /api/me/quiet-hours` (the signed-in person's; 400 for an account with no
+person) `{"enabled", "from": "22:00", "to": "07:00", "days": "all"|"weekdays"|"weekends", "allow": ["alarm",
+"doorbell", "people", "urgent"]}` (default off, 22:00–07:00, every day, alarm + doorbell + urgent). A window
+past midnight belongs to the day it starts. Inside it, that person's phones get every notification except
+the allowed kinds silently: iOS without a sound at `interruption-level: passive`; Android data `"quiet": "1"`.
+Kinds: **alarm** (an automation with the alarm wall style, or triggered by an urgent or alarm device),
+**doorbell** (a doorbell sound), **people** (a camera's person detection), **urgent** (time-sensitive).
+
 ## People and phones
 
 A **person** receives notifications; a **phone** is one registered app install.
@@ -882,9 +980,20 @@ counts `"controls"`). Deleting an automation a press runs leaves that press doin
   },
   "autoCommand": {"enabled": false, "command": "lock"},
   "recipients": ["p_chris", "p_marlina"],
-  "followUp": {"enabled": true, "message": "{person} locked {devices}.", "remindMinutes": 30, "remindTimes": 3}
+  "followUp": {"enabled": true, "message": "{person} locked {devices}.", "remindMinutes": 30, "remindTimes": 3},
+  "cooldownMinutes": null
 }
 ```
+
+**Who may change them:** `GET /api/auth/state` → `user.canAutomate` (admins always, wall tablets never,
+others as an admin set with `PATCH /api/users/{id}` `{"canAutomate": bool}`). Every write - `POST`, `PUT`,
+`PATCH` (enabled too), `DELETE`, `/run` - answers 403 `{"error": "Your account can't change automations"}`
+otherwise; reading and `POST /api/automations/describe` stay open to every non-tablet account.
+
+**Don't repeat for** - `cooldownMinutes`: 0–1440, or `null` = the default: no wait, except one started by a
+camera detection waits Settings > Cameras `cooldownMinutes` (1 by default); `0` = never wait. A trigger
+within the wait after a run is logged as a skipped run ("Not repeated: it ran 1 minute ago and waits 5
+minutes between runs").
 
 **Trigger ("When")** - a list of parts, any kinds mixed:
 
@@ -1162,7 +1271,16 @@ app answers `{type: "clip", pcm (base64 PCM16), rate: 16000, ms}` · `{type: "cl
 
 ## Activity
 
-`GET /api/events?limit=&before=&kind=` → `[{"id", "ts", "kind", "title", "body", "entityId", "data"}]`
+`GET /api/events?limit=&before=&kind=&since=&runId=` → `[{"id", "ts", "kind", "title", "body", "entityId", "data"}]`
+(`runId`: the entries of one automation run - a push's `alertId`).
+
+## Alerts
+
+`GET /api/alerts?entity=&since=&limit=&before=` → camera alerts, newest first, each with `"at"`, `"label"`
+("Person"), `"zone"` (first zone | null), `"snapshot"` and `"clip"` (signed-in API paths) added to what the
+connection sends. `?entity=` one camera's; `?since=<unix>` from then on.
+`GET /api/alerts?category=security[,garage]&since=` → the Activity entries about devices of those
+categories: `[{"id", "at", "title", "body", "entity", "label", "zone", "snapshot", "clip", "kind"}]`.
 
 ## Integrations
 
@@ -1316,7 +1434,9 @@ a command the automation didn't offer.
 Common fields (APNs custom keys / FCM data, all strings):
 `kind` (`automation | followup | test`), `run_id`, `automation_id`, `title`, `body`,
 `buttons` (JSON `[{"id","label","icon","sensitive"}]`), `snapshot_id?`, `snapshot_url?`, `action_url`, `action_subject`,
-`action_exp`, `action_token`, `time_sensitive` (`"true"|"false"`), `thread`.
+`action_exp`, `action_token`, `time_sensitive` (`"true"|"false"`), `thread`, `alertId` (the automation run
+it came from: open it with `GET /api/events?runId=`; absent on pushes not tied to a run), `quiet` (`"1"` during
+the person's [quiet hours](#quiet-hours) - post it silently).
 Camera alerts also carry `clip`, `clip_url`, `frigate_event_id` (the review id) and `camera`; tapping
 one opens that alert's video in the app.
 

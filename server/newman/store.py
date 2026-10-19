@@ -116,7 +116,9 @@ CREATE TABLE IF NOT EXISTS person_locations (
 # tablet account ids; NULL = the whole household) and the admin who made it required. A wall tablet's
 # account: whether it can see where people are (on by default).
 USER_COLUMNS = {"loc_mode": "TEXT NOT NULL DEFAULT 'choice'", "loc_enabled": "INTEGER NOT NULL DEFAULT 0",
-                "loc_visible": "TEXT", "loc_required_by": "TEXT", "tablet_people": "INTEGER NOT NULL DEFAULT 1"}
+                "loc_visible": "TEXT", "loc_required_by": "TEXT", "tablet_people": "INTEGER NOT NULL DEFAULT 1",
+                # May make and change automations (admins always may, wall tablets never): api.can_automate.
+                "can_automate": "INTEGER NOT NULL DEFAULT 0"}
 # How a person looks on maps (profiles.py): their colour ("#RRGGBB") and their photo's version (a hash).
 PEOPLE_COLUMNS = {"color": "TEXT", "photo": "TEXT"}
 
@@ -127,6 +129,8 @@ class Store:
         self._db = sqlite3.connect(data_dir / "newman.db", check_same_thread=False)
         # Called with each new activity entry (the API pushes them to open dashboards).
         self.event_listeners: list[Any] = []
+        # How long activity and automation runs are kept (house.py's "history" settings).
+        self.event_days, self.run_days = 90, 90
         self._db.row_factory = sqlite3.Row
         self._db.executescript(SCHEMA)
         # Camera activity is now one entry per Frigate *alert*; per-object "detection" entries
@@ -427,7 +431,7 @@ class Store:
                ON CONFLICT(id) DO UPDATE SET body=excluded.body""",
             (run["id"], run["automationId"], run["startedAt"], json.dumps(run)),
         )
-        self._exec("DELETE FROM runs WHERE started_at < ?", (time.time() - 90 * 86400,))
+        self._exec("DELETE FROM runs WHERE started_at < ?", (time.time() - self.run_days * 86400,))
 
     def run(self, run_id: str) -> dict[str, Any] | None:
         row = self._db.execute("SELECT body FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -507,7 +511,7 @@ class Store:
                   data: dict[str, Any] | None = None) -> None:
         self._exec("INSERT INTO events (ts, kind, title, body, entity_id, data) VALUES (?, ?, ?, ?, ?, ?)",
                    (time.time(), kind, title, body, entity_id, json.dumps(data or {})))
-        self._exec("DELETE FROM events WHERE ts < ?", (time.time() - 90 * 86400,))
+        self._exec("DELETE FROM events WHERE ts < ?", (time.time() - self.event_days * 86400,))
         if self.event_listeners:
             entry = self.events(1)[0]
             for listener in list(self.event_listeners):
@@ -519,11 +523,18 @@ class Store:
             "SELECT entity_id, COUNT(*) FROM events WHERE entity_id IS NOT NULL AND kind IN ('command', 'voice') "
             "AND ts >= ? GROUP BY entity_id", (since,))}
 
-    def events(self, limit: int = 100, before: float | None = None, kind: str | None = None) -> list[dict[str, Any]]:
+    def events(self, limit: int = 100, before: float | None = None, kind: str | None = None,
+               run_id: str | None = None, since: float | None = None) -> list[dict[str, Any]]:
         sql, args = "SELECT * FROM events WHERE ts < ?", [before or time.time() + 1]
         if kind:
             sql += " AND kind = ?"
             args.append(kind)
+        if since is not None:
+            sql += " AND ts >= ?"
+            args.append(since)
+        if run_id:  # the activity entry of one automation run (a notification's alertId)
+            sql += " AND json_extract(data, '$.runId') = ?"
+            args.append(run_id)
         sql += " ORDER BY ts DESC LIMIT ?"
         args.append(min(limit, 500))
         return [{"id": r["id"], "ts": r["ts"], "kind": r["kind"], "title": r["title"], "body": r["body"],

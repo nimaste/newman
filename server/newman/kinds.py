@@ -206,6 +206,13 @@ class Kind:
         for suffix in ("_double", "_long", "_released"):
             if event_id.endswith(suffix):
                 base = event_id[: -len(suffix)]
+        if attrs and event_id in (attrs.get("events") or []) and not any(e.id == event_id for e in self.events):
+            # An object label this kind's detections don't list (a custom Frigate label): worded like them.
+            tmpl = next((e for e in self.events if e.what and e.id != "motion"), None)
+            if tmpl:
+                what = event_id.replace("_", " ")
+                return Event(event_id, tmpl.label.replace(tmpl.what.capitalize(), what.capitalize(), 1),
+                             tmpl.phrase, tmpl.title, tmpl.body, what=what)
         named = next((b.get("label") for b in ((attrs or {}).get("buttons") or [])
                       if isinstance(b, dict) and b.get("id") == base and b.get("label")), None)
         if named:

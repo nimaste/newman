@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from .muting import unmuted_issues
+from .muting import switched_off, unmuted_issues
 
 DEFAULTS = {"todayRainThreshold": 50, "todayEveningFrom": "17:00"}
 LEVEL_ORDER = {"overdue": 0, "device": 1, "due": 2, "appliance": 3}
@@ -66,7 +66,9 @@ def build(hub: Any, settings: dict[str, Any], *, person_id: str | None = None,
                 heads.append({"id": f"{e.id}:tomorrow", "source": "upkeep", "icon": "clock", "entity": e.id,
                               "text": f"{e.name} is due tomorrow"})
             continue
-        issues = unmuted_issues(e, settings.get("mutedIssues") or {}, now.timestamp())  # muted ones: not to do
+        # Muted problems and those switched off on its Warnings tab: not to do.
+        issues = unmuted_issues(e, settings.get("mutedIssues") or {}, now.timestamp(),
+                                switched_off(settings.get("deviceWarnings") or {}, e.id))
         if issues and e.kind not in ("weather", "calendar"):
             todo.append({"id": f"{e.id}:health", "source": "device", "entity": e.id, "level": "device",
                          "title": f"{e.name}: {issues[0].lower()}", "status": ", ".join(issues[1:]) or issues[0],

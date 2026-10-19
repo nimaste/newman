@@ -42,6 +42,9 @@ DEFAULTS: dict[str, Any] = {
     # "card" (slides in, goes after a while) | "full" (full screen, with the camera if there is one) |
     # "alarm" (full screen until someone taps OK); `sound` plays a chime; `wake` lights up a dimmed screen.
     "wall": {"enabled": False, "tablets": [], "style": "card", "sound": True, "wake": True},
+    # "Don't repeat for": after it runs, triggers within this many minutes are skipped. None = no wait,
+    # except one started by a camera detection, which waits as long as Settings > Cameras says.
+    "cooldownMinutes": None,
     "autoCommand": {"enabled": False, "command": "lock"},
     # Show a live status (iPhone Live Activity / Android ongoing notification) of `entities` to `recipients`
     # (None = everyone; else person ids) until `until` says it's over (see clean_live). `title` "" = the
@@ -88,6 +91,8 @@ def normalize(auto: dict[str, Any]) -> dict[str, Any]:
     out["followUp"]["remindMinutes"] = _whole(rm) if rm not in (None, "", "off", 0, "0") else None
     rt = out["followUp"].get("remindTimes")
     out["followUp"]["remindTimes"] = DEFAULT_REMIND_TIMES if rt in (None, "") else _whole(rt)
+    cm = out.get("cooldownMinutes")
+    out["cooldownMinutes"] = None if cm in (None, "") else _whole(cm)
     return out
 
 
@@ -994,6 +999,9 @@ def remind_text(f: dict[str, Any]) -> str:
 def errors(auto: dict[str, Any], hub: Hub) -> list[str]:
     auto = normalize(auto)
     out = []
+    cm = auto["cooldownMinutes"]
+    if cm is not None and (isinstance(cm, bool) or not isinstance(cm, int) or not 0 <= cm <= 1440):
+        out.append("Don't repeat for: 0 to 1440 minutes")
     if auto["wall"].get("enabled") and auto["wall"].get("style") not in WALL_STYLES:
         out.append("Choose how it shows on the wall tablet: a card, full screen or an alarm")
     t = auto["trigger"]

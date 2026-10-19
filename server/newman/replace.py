@@ -168,6 +168,18 @@ async def replace_entities(h: "Newman", pairs: Any) -> dict[str, Any]:
             counts["muted"] = n
             counts["references"] += n
 
+    if getattr(h, "muting", None):  # its own battery level and switched-off warnings (muting.DeviceWarnings)
+        if n := h.muting.warnings.replace_ids(mapping):
+            counts["warnings"] = n
+            counts["references"] += n
+
+    if getattr(h, "groups", None):  # the groups it's in and its room (groups.py)
+        if n := h.groups.replace_ids(mapping):
+            counts["groups"] = n
+            counts["references"] += n
+            for gid in list(h.groups.all()):
+                await h.groups.refresh(gid)
+
     if getattr(h, "live", None):  # "Live status while…" settings (live.py)
         if n := h.live.replace_ids(mapping):
             counts["live"] = n
@@ -201,6 +213,9 @@ def uses(h: "Newman", entity_id: str) -> list[str]:
         if saved and found(saved["layout"]):
             out.append("phone layout")
             break
+    grp = getattr(h, "groups", None)
+    if grp and grp.member_group(entity_id):
+        out.append("group")
     push = getattr(h, "widget_push", None)
     if push and push.showing(entity_id):
         out.append("widget")
@@ -209,7 +224,8 @@ def uses(h: "Newman", entity_id: str) -> list[str]:
 
 def references(h: "Newman", entity_id: str) -> list[dict[str, Any]]:
     """Each thing that still uses a device, by name - the places uses() looks at:
-    [{"type": "automation" | "remoteControls" | "dashboard" | "phoneLayout" | "widget", "id", "name"}]."""
+    [{"type": "automation" | "remoteControls" | "group" | "favourite" | "dashboard" | "phoneLayout" | "widget",
+    "id", "name"}]."""
     def found(value: Any) -> bool:
         return swap(value, {entity_id: entity_id})[1] > 0
 
@@ -231,6 +247,12 @@ def references(h: "Newman", entity_id: str) -> list[dict[str, Any]]:
             who = "Household default" if uid == h.store.PHONE_DEFAULT else \
                 f"{users[uid]['name']}'s" if uid in users else "A"
             out.append({"type": "phoneLayout", "id": uid, "name": f"{who} phone layout"})
+    grp = getattr(h, "groups", None)
+    if grp and (gid := grp.member_group(entity_id)):
+        out.append({"type": "group", "id": gid, "name": f"The group {grp.all()[gid]['name']}"})
+    home = h.store.settings().get("home") or {}
+    if any(entity_id in ((a or {}).get("favourites") or []) for a in (home.get("accounts") or {}).values()):
+        out.append({"type": "favourite", "id": None, "name": "A phone's favourites"})
     push = getattr(h, "widget_push", None)
     if push and push.showing(entity_id):
         out.append({"type": "widget", "id": None, "name": "A phone widget"})

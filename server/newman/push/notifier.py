@@ -48,6 +48,20 @@ class Notification:
     snapshot_id: str | None = None
     action_subject: str | None = None  # run id the buttons act on
     data: dict[str, str] = field(default_factory=dict)
+    # The alert it's about (the automation run's id): the app opens it from the Alerts list when tapped,
+    # however old the notification - never through a link that expires.
+    alert_id: str | None = None
+    # What it is, for quiet hours (quiet.py): "alarm" (a leak, smoke, the alarm going off, a wall-tablet
+    # alarm), "people" (someone on a camera); "doorbell" and "urgent" come from the sound and time_sensitive.
+    topic: str = ""
+
+    def topics(self) -> set[str]:
+        out = {self.topic} if self.topic else set()
+        if self.sound.startswith("doorbell"):
+            out.add("doorbell")
+        if self.time_sensitive:
+            out.add("urgent")
+        return out
 
     def __post_init__(self) -> None:
         if self.buttons and not self.category:
@@ -61,6 +75,8 @@ class Notifier:
         self._fcm = FcmSender()
         self.location_tokens = LocationPushTokens(store)  # iPhones' Location Push Service tokens
         self.outbox: deque[dict[str, Any]] = deque(maxlen=300)
+        # (person id, topics) -> deliver silently now (quiet hours, quiet.py); set by the API.
+        self.quiet: Any = None
 
     def snapshot_url(self, snapshot_id: str, device_id: str) -> str:
         exp, tok = tokens.sign("snapshot", snapshot_id, device_id, tokens.SNAPSHOT_TTL_S)
@@ -70,6 +86,8 @@ class Notifier:
     def _fields(self, n: Notification, phone: Phone) -> dict[str, str]:
         out: dict[str, str] = {"kind": n.kind, "title": n.title, "body": n.body,
                                "time_sensitive": "true" if n.time_sensitive else "false", **n.data}
+        if n.alert_id:
+            out["alertId"] = n.alert_id
         if n.thread:
             out["thread"] = n.thread
         if n.buttons:
@@ -91,6 +109,9 @@ class Notifier:
 
     async def _send_one(self, n: Notification, phone: Phone) -> None:
         fields = self._fields(n, phone)
+        quiet = bool(self.quiet and self.quiet(phone.person_id, n.topics()))
+        if quiet:
+            fields["quiet"] = "1"
         try:
             if phone.platform == "test":
                 self.outbox.appendleft({"ts": time.time(), "deviceId": phone.device_id,
@@ -101,6 +122,9 @@ class Notifier:
                     "sound": n.sound,
                     "interruption-level": "time-sensitive" if n.time_sensitive else "active",
                 }
+                if quiet:  # quiet hours: delivered without a sound or lighting up the screen
+                    aps.pop("sound", None)
+                    aps["interruption-level"] = "passive"
                 if n.category:
                     aps["category"] = n.category
                 if n.thread:

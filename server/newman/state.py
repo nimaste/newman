@@ -15,6 +15,16 @@ from .kinds import KINDS
 
 log = logging.getLogger(__name__)
 
+# When a battery counts as low: the house setting (house.py) and each device's own level, if it has one
+# (muting.DeviceWarnings). Kept here so an Entity can work out its own problems.
+BATTERY_LOW: dict[str, Any] = {"default": 20, "devices": {}}
+
+
+def battery_low_for(entity_id: str) -> float:
+    own = BATTERY_LOW["devices"].get(entity_id)
+    return own if isinstance(own, (int, float)) else BATTERY_LOW["default"]
+
+
 # Lock states (ring-mqtt publishes these verbatim); kept as names for readability.
 LOCKED, UNLOCKED, JAMMED = "LOCKED", "UNLOCKED", "JAMMED"
 
@@ -56,7 +66,8 @@ class Entity:
         level = a.get("batteryLevel")
         if a.get("batteryStatus") == "failed":
             items.append(("battery_failed", "Battery failed"))
-        elif isinstance(level, (int, float)) and level <= 20 and a.get("charging") is not True:  # charging: in hand
+        elif isinstance(level, (int, float)) and level <= battery_low_for(self.id) \
+                and a.get("charging") is not True:  # charging: in hand
             items.append(("battery_low", f"Battery {level:g}%"))
         elif a.get("batteryLow") is True:  # the device itself says it's low / needs replacing (Matter)
             items.append(("battery_low", f"Battery low (takes {a['batteryType']})" if a.get("batteryType")
@@ -78,6 +89,27 @@ class Entity:
             items.append(("overlay_permission",
                           "Allow 'Display over other apps' for Newman Wall so it can keep its screen on"))
         return items
+
+    @property
+    def possible_issues(self) -> list[tuple[str, str]]:
+        """Every problem this device can report (by what it reports about itself), as (id, name) - the
+        switches on its Warnings tab. A problem it has right now is always among them."""
+        a, out = self.attrs, [("offline", "Offline")]
+        if any(k in a for k in ("batteryLevel", "batteryLow", "batteryStatus")):
+            out += [("battery_low", "Low battery")]
+        if "batteryStatus" in a:
+            out += [("battery_failed", "Battery failed")]
+        for key, iid, name in (("acStatus", "no_ac", "No AC power"), ("commStatus", "not_responding", "Not responding to the hub"),
+                               ("tamperStatus", "tamper", "Tamper"), ("linkQuality", "weak_signal", "Weak signal"),
+                               ("commandFailures", "ignored_commands", "Ignored remote commands"),
+                               ("canComeBack", "overlay_permission", "Can't keep its screen on")):
+            if key in a:
+                out.append((iid, name))
+        if JAMMED in [s for s, _ in KINDS[self.kind].states]:
+            out.append(("jammed", "Jammed"))
+        have = {i for i, _ in out}
+        out += [(iid, text) for iid, text in self.health_items if iid not in have]
+        return out
 
     @property
     def health_issues(self) -> list[str]:

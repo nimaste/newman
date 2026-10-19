@@ -100,6 +100,7 @@ class Engine:
         # Called (no arguments) after an automation is saved or deleted - the voice name index.
         self.listeners: list[Any] = []
         self.controls = RemoteControls(self)  # remotes' Controls: their lights and what each press does
+        self.house: Any = None  # house settings (house.py), set by the API: the camera default "Don't repeat for"
         hub.subscribe(self._on_change)
         hub.subscribe_events(self._on_event)
         hub.subscribe_changes(self._on_values)
@@ -423,6 +424,32 @@ class Engine:
 
     # -- runs -------------------------------------------------------------------------------
 
+    def cooldown_minutes(self, auto: dict[str, Any], trig: dict[str, Any]) -> int:
+        """How long it doesn't repeat after running: its own "Don't repeat for", else - started by a camera
+        detection - the camera default (Settings > Cameras), else no wait."""
+        own = auto.get("cooldownMinutes")
+        if isinstance(own, int) and not isinstance(own, bool):
+            return own
+        src = self.hub.get(trig.get("entity") or "") if trig.get("type") == "event" else None
+        if src and KINDS[src.kind].has_camera and self.house is not None:
+            return self.house.camera_cooldown_minutes()
+        return 0
+
+    def _repeat_wait(self, auto: dict[str, Any], trig: dict[str, Any]) -> str | None:
+        """Why this trigger is skipped as a repeat, or None."""
+        wait = self.cooldown_minutes(auto, trig)
+        if wait <= 0:
+            return None
+        last = next((r for r in self.store.runs(auto["id"], 20) if r.get("status") != "skipped"), None)
+        if not last:
+            return None
+        ago = time.time() - float(last.get("startedAt") or 0)
+        if ago >= wait * 60:
+            return None
+        mins = max(1, int(ago // 60))
+        return (f"Not repeated: it ran {mins} minute{'s' if mins != 1 else ''} ago and waits "
+                f"{wait} minute{'s' if wait != 1 else ''} between runs")
+
     async def trigger(self, auto: dict[str, Any], trig: dict[str, Any], force: bool = False) -> dict[str, Any]:
         auto = d.normalize(auto)
         watched = d.watched_entities(auto)
@@ -448,6 +475,11 @@ class Engine:
                               and d.sun_allows(auto)):
             run["status"] = "skipped"
             note(f"Outside its hours ({d.window_text(auto).replace('only ', '')})")
+            self.store.save_run(run)
+            return run
+        if not force and (waited := self._repeat_wait(auto, trig)):
+            run["status"] = "skipped"
+            note(waited)
             self.store.save_run(run)
             return run
         if t["type"] != "time" and not force and not d.conditions_met(auto, self.hub):
@@ -859,12 +891,24 @@ class Engine:
             kind="automation", title=title, body=body, buttons=run["buttons"], category=category_for(run["buttons"]),
             thread=auto["id"], sound=f"{sound}.caf" if sound else "default",
             time_sensitive=bool(auto["notify"].get("timeSensitive")), collapse_id=auto["id"],
-            snapshot_id=snapshot, action_subject=run["id"],
+            snapshot_id=snapshot, action_subject=run["id"], alert_id=run["id"], topic=self._topic(auto, run),
             data={"run_id": run["id"], "automation_id": auto["id"],
                   # Camera detections: lets the app open that exact event's clip in Optiq.
                   **{k: str(v) for k, v in run["trigger"].items() if k in ("frigate_event_id", "camera", "clip") and v}},
         )
         return await self.notifier.send(n, people=auto["recipients"] if people is None else people)
+
+    def _topic(self, auto: dict[str, Any], run: dict[str, Any]) -> str:
+        """What a notification is about, for quiet hours: "alarm" (a wall-tablet alarm, or set off by
+        something urgent - a leak, smoke - or the house alarm), "people" (someone on a camera), else ""."""
+        trig = run["trigger"]
+        src = self.hub.get(trig.get("entity") or "")
+        k = KINDS[src.kind] if src else None
+        if (auto["wall"].get("enabled") and auto["wall"].get("style") == "alarm") or (k and (k.urgent or k.is_mode)):
+            return "alarm"
+        if k and k.has_camera and trig.get("event") == "person":
+            return "people"
+        return ""
 
     async def _show_on_wall(self, auto: dict[str, Any], run: dict[str, Any], trig: dict[str, Any]) -> None:
         """Send the alert to wall tablets: the same words and buttons as the notification, plus the
@@ -992,7 +1036,7 @@ class Engine:
         msg = d.follow_up_message(auto, self.hub, pending=devices, resolvers=resolvers)
         # The last one replaces the alert on the phone; an earlier one leaves it (other devices still pending).
         await self.notifier.send(Notification(
-            kind="followup", title=auto["name"], body=msg, thread=auto["id"],
+            kind="followup", title=auto["name"], body=msg, thread=auto["id"], alert_id=run["id"],
             collapse_id=auto["id"] if final else None,
             data={"run_id": run["id"], "automation_id": auto["id"]},
         ), people=run["recipients"])
@@ -1083,7 +1127,8 @@ class Engine:
         people = run["recipients"] if run else []
         if people:
             await self.notifier.send(Notification(kind="followup", title=f"Couldn't {label.lower()} {ent.name}",
-                                                  body=msg, time_sensitive=True), people=people)
+                                                  body=msg, time_sensitive=True,
+                                                  alert_id=run["id"] if isinstance(run, dict) else None), people=people)
 
     async def command(self, entity_id: str, command: str, who: str, value: Any = None) -> None:
         """A command from the dashboard / app (not a notification button)."""
@@ -1200,7 +1245,7 @@ class Engine:
         run["log"].append({"ts": time.time(), "text": f"{presser['who']} pressed {verb}, but {text}"})
         self.store.log_event("problem", f"Couldn't {verb} {name}", f"{reason} (pressed by {presser['who']})", eid)
         n = Notification(kind="followup", title=f"Couldn't {verb} {name}", body=text, time_sensitive=True,
-                         thread=run.get("automationId"), data={"run_id": run["id"]})
+                         thread=run.get("automationId"), data={"run_id": run["id"]}, alert_id=run["id"])
         if presser["device"]:
             await self.notifier.send(n, device_ids=[presser["device"]])
         elif presser["person"]:
