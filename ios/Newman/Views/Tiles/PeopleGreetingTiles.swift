@@ -89,9 +89,12 @@ struct PeopleTileView: View {
 
     /// Opens the People tab.
     private func openTab<Content: View>(@ViewBuilder _ label: () -> Content) -> some View {
-        Button { model.selectedTab = "people" } label: { label().contentShape(Rectangle()) }
+        Button {
+            model.selectedTab = "more"
+            model.morePath = [.people]
+        } label: { label().contentShape(Rectangle()) }
             .buttonStyle(.plain)
-            .accessibilityHint("Opens the People tab")
+            .accessibilityHint("Opens People")
     }
 
     private func head(_ note: String?) -> some View {

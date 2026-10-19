@@ -176,10 +176,14 @@ struct Entity: Decodable, Hashable, Identifiable {
     var updatedAt: Double?
     /// A remote's Controls (the lights it controls and what each press does); nil for everything else.
     var controls: RemoteControls?
+    /// The room set in Newman, else the integration's area (newer hubs; `area` below for older ones).
+    var room: String?
+    /// The light or switch group this device belongs to (it shows inside that group's row).
+    var group: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, kind, category, integration, integrationName, state, stateLabel, available, attrs, health
-        case properties, still, alerts, live, usedBy, updatedAt, controls
+        case properties, still, alerts, live, usedBy, updatedAt, controls, room, group
     }
 
     init(id: String, name: String, kind: String, state: String? = nil, attrs: [String: JSONValue]? = nil) {
@@ -213,6 +217,8 @@ struct Entity: Decodable, Hashable, Identifiable {
         usedBy = try? c.decodeIfPresent([String].self, forKey: .usedBy)
         updatedAt = try? c.decodeIfPresent(Double.self, forKey: .updatedAt)
         controls = try? c.decodeIfPresent(RemoteControls.self, forKey: .controls)
+        room = try? c.decodeIfPresent(String.self, forKey: .room)
+        group = try? c.decodeIfPresent(String.self, forKey: .group)
     }
 
     var isAvailable: Bool { available != false && state != "offline" }
@@ -364,8 +370,13 @@ struct CameraAlert: Decodable, Hashable, Identifiable {
 /// An alert's video: the hub's `/api/clips/<integration>/<clip id>` for its `clip`
 /// ("frigate:r:<review id>"), the same address the web dashboard plays (Camera.jsx clipUrl).
 enum AlertClip {
-    /// nil without both halves.
+    /// nil without both halves. Newer hubs already send the signed-in path ("api/clips/…"): kept as it is
+    /// (read through the hub's address with the session, like every other path).
     static func path(_ clip: String?) -> String? {
+        if let clip, clip.hasPrefix("api/clips/") || clip.hasPrefix("/api/clips/") {
+            let p = clip.hasPrefix("/") ? String(clip.dropFirst()) : clip
+            return p.count > "api/clips/".count ? p : nil
+        }
         guard let clip, let colon = clip.firstIndex(of: ":") else { return nil }
         let integration = String(clip[..<colon]), id = String(clip[clip.index(after: colon)...])
         guard !integration.isEmpty, !id.isEmpty else { return nil }
@@ -380,7 +391,8 @@ enum AlertClip {
 
     /// The alert a camera notification is about: the one with its clip, else its review id.
     static func match(_ alerts: [CameraAlert], clip: String, reviewId: String?) -> CameraAlert? {
-        if let a = alerts.first(where: { $0.clip == clip }) { return a }
+        let want = AlertClip.clipId(fromPath: clip) ?? clip
+        if let a = alerts.first(where: { $0.clip == clip || AlertClip.clipId(fromPath: $0.clip) == want }) { return a }
         guard let reviewId, !reviewId.isEmpty else { return nil }
         return alerts.first { $0.id == reviewId }
     }
@@ -467,6 +479,8 @@ struct User: Decodable, Hashable {
     var personId: String?
     var twoFactor: Bool?
     var hasPin: Bool?
+    /// May make and change automations (admins always; others as the admin allows).
+    var canAutomate: Bool?
 }
 
 struct SessionInfo: Decodable, Hashable {

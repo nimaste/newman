@@ -175,6 +175,78 @@ final class APIClient {
         return MuteLogic.health(from: data)
     }
 
+    // MARK: Home (the Home tab, Edit Home, Rooms on Climate) and the account
+
+    func home() async throws -> HomeData { try await get("api/home") }
+
+    /// PUT /api/home/me: this person's cards and favourites (Edit Home).
+    func saveHome(_ body: [String: JSONValue]) async throws { try await call("PUT", "api/home/me", body: body) }
+
+    /// PUT /api/home/climate: the rooms Climate shows, for the whole house.
+    func saveClimateRooms(_ body: [String: JSONValue]) async throws { try await call("PUT", "api/home/climate", body: body) }
+
+    /// POST /api/auth/password: signs out this person's other devices.
+    func changePassword(current: String, new: String) async throws {
+        try await call("POST", "api/auth/password", body: ["current": .string(current), "new": .string(new)])
+    }
+
+    // MARK: The automation editor (writes need canAutomate - 403 otherwise)
+
+    /// The whole automation, as the editor keeps it (AutomationDraft).
+    func automation(_ id: String) async throws -> [String: JSONValue] { try await get("api/automations/\(pathPart(id))") }
+
+    /// POST (new) or PUT: the saved automation back.
+    func saveAutomation(_ draft: AutomationDraft) async throws -> [String: JSONValue] {
+        let data: Data
+        if let id = draft.id {
+            data = try await call("PUT", "api/automations/\(pathPart(id))", body: draft.body)
+        } else {
+            data = try await call("POST", "api/automations", body: draft.body)
+        }
+        return (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? draft.body
+    }
+
+    func deleteAutomation(_ id: String) async throws { try await call("DELETE", "api/automations/\(pathPart(id))") }
+
+    /// POST /api/automations/describe: the hub's summary of an unsaved automation, and what stops a save.
+    func describeAutomation(_ body: [String: JSONValue]) async throws -> AutomationDescription {
+        let data = try await call("POST", "api/automations/describe", body: body)
+        return (try? JSONDecoder().decode(AutomationDescription.self, from: data)) ?? AutomationDescription(summary: nil, errors: nil)
+    }
+
+    // MARK: Phone screens (alerts by camera / category, a notification's run, upkeep, house settings)
+
+    private func queryPart(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))) ?? s
+    }
+
+    /// GET /api/events?runId=: the activity entry of one automation run (a notification's alertId).
+    func events(runId: String) async throws -> [ActivityEvent] {
+        try await get("api/events?runId=\(queryPart(runId))&limit=1")
+    }
+
+    /// GET /api/alerts?entity=<camera>&since=: what one camera saw (404 on older hubs).
+    func detections(entity: String, since: Double, limit: Int = 100) async throws -> [Detection] {
+        try await get("api/alerts?entity=\(queryPart(entity))&since=\(Int(since))&limit=\(limit)")
+    }
+
+    /// GET /api/alerts?category=security&since=: today's activity of the security devices.
+    func securityActivity(since: Double, limit: Int = 100) async throws -> [SecurityEntry] {
+        try await get("api/alerts?category=security&since=\(Int(since))&limit=\(limit)")
+    }
+
+    /// GET /api/upkeep: every upkeep item with its state (Today's Coming up).
+    func upkeepList() async throws -> UpkeepList { try await get("api/upkeep") }
+
+    /// POST /api/upkeep (admins): a new to-do, every so many days / weeks / months, last done `lastDone`.
+    func addUpkeep(name: String, every: Int, unit: String, lastDone: String) async throws {
+        try await call("POST", "api/upkeep", body: ["name": .string(name), "every": .number(Double(every)),
+                                                    "unit": .string(unit), "lastDone": .string(lastDone)])
+    }
+
+    /// PATCH /api/settings/house (admins), e.g. {"cameras": {"mode", "featured"}}.
+    func patchHouseSettings(_ body: [String: JSONValue]) async throws { try await call("PATCH", "api/settings/house", body: body) }
+
     // MARK: People & location
 
     func people() async throws -> [Person] { try await get("api/people") }

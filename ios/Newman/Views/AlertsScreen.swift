@@ -54,8 +54,9 @@ struct AlertsScreen: View {
                     }
                     .padding(.horizontal, 16)
                 }
+                ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
                         if shown.isEmpty {
                             Text("Nothing here yet.").font(AppFont.manrope(14, .bold)).foregroundColor(Theme.muted).padding(.top, 30)
                         }
@@ -72,9 +73,22 @@ struct AlertsScreen: View {
                     .padding(.bottom, 20)
                 }
                 .refreshable { await model.reloadActivity() }
+                .onAppear { scrollToHighlight(proxy) }
+                .onChange(of: model.highlightedAlert) { _, _ in scrollToHighlight(proxy) }
+                }
             }
         }
         .onAppear { model.markAlertsSeen() }
+        .onDisappear { model.highlightedAlert = nil }
+    }
+
+    /// A tapped notification's entry: shown (all kinds) and scrolled to.
+    private func scrollToHighlight(_ proxy: ScrollViewProxy) {
+        guard let id = model.highlightedAlert else { return }
+        filter = "all"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+        }
     }
 
     private func chip(_ id: String, _ label: String) -> some View {
@@ -127,6 +141,9 @@ struct AlertsScreen: View {
         }
         .accessibilityElement(children: .contain)
         .glassCard(radius: 18, padding: 12)
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .stroke(Theme.blue, lineWidth: item.id == model.highlightedAlert ? 2 : 0))
+        .id(item.id)
     }
 
     /// The device's own icon when the entry is about one; otherwise a bell.

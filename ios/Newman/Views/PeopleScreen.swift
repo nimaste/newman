@@ -1,3 +1,4 @@
+import MapKit
 import SwiftUI
 
 /// A person's round avatar, everywhere they appear: their photo (fetched through the mTLS session,
@@ -53,9 +54,9 @@ struct RefreshNote: View {
     }
 }
 
-/// The People tab: everyone the hub returns, "Home" / a named place / how far, and when that was.
-/// Tapping someone asks their phone for ONE fresh location ("Updating…" until it arrives) and, when
-/// they have one, opens them on a map. The list itself re-reads the hub every 30 s while shown (live
+/// People: a map of everyone with a location, then everyone the hub returns, "Home" / a named place /
+/// how far, and when that was. Tapping someone asks their phone for ONE fresh location ("Updating…"
+/// until it arrives) and shows them on the map. The list itself re-reads the hub every 30 s while shown (live
 /// messages between) - that never wakes anyone's phone.
 struct PeopleScreen: View {
     @EnvironmentObject var model: AppModel
@@ -63,14 +64,23 @@ struct PeopleScreen: View {
     @State private var following: Person?
     @State private var showMe = false
     @State private var now = Date().timeIntervalSince1970
+    @State private var camera: MapCameraPosition = .automatic
 
     var body: some View {
         ZStack {
             NightGlassBackground()
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("People").font(AppFont.sora(28)).foregroundColor(Theme.text).padding(.top, 12).padding(.bottom, 4)
-                        .accessibilityAddTraits(.isHeader)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("People").font(AppFont.sora(28)).foregroundColor(Theme.text)
+                            .accessibilityAddTraits(.isHeader)
+                        if !model.people.isEmpty {
+                            Text(model.people.allSatisfy { $0.home } ? "Everyone's home" : MoreLines.people(model.people))
+                                .font(AppFont.manrope(13, .heavy)).foregroundColor(Theme.muted)
+                        }
+                    }
+                    .padding(.top, 12).padding(.bottom, 4)
+                    everyoneMap
                     if needsPermission {
                         Button { showMe = true } label: {
                             VStack(alignment: .leading, spacing: 2) {
@@ -125,7 +135,9 @@ struct PeopleScreen: View {
                 let refresh = model.refreshState(p.id)
                 Button {
                     if p.sharing { model.refreshPerson(p.id) }
-                    if row.located { following = p }
+                    if row.located, let c = PeopleScreen.coordinate(p) {
+                        withAnimation { camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: 900, longitudinalMeters: 900)) }
+                    }
                 } label: {
                     HStack(spacing: 12) {
                         PersonAvatar(person: p, index: i, dimmed: !p.sharing)
@@ -143,7 +155,7 @@ struct PeopleScreen: View {
                             }
                         }
                         Spacer()
-                        if row.located { Image(systemName: "chevron.right").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.dim) }
+                        if row.located { Image(systemName: "mappin.and.ellipse").font(.system(size: 14, weight: .bold)).foregroundColor(Theme.dim) }
                     }
                     .glassCard(radius: 20, padding: 12)
                 }
@@ -151,12 +163,38 @@ struct PeopleScreen: View {
                 .accessibilityLabel(row.name)
                 .accessibilityValue([row.whereText, refresh.phase != .idle ? PersonRefresh.text(refresh, now: now) : row.updated,
                                      p.sharing ? nil : "not sharing"].compactMap { $0 }.joined(separator: ", "))
-                .accessibilityHint(row.located ? "Gets a fresh location and shows them on a map" : (p.sharing ? "Gets a fresh location" : ""))
+                .accessibilityHint(row.located ? "Gets a fresh location and shows them on the map" : (p.sharing ? "Gets a fresh location" : ""))
             }
             if SharingSwitch.state(sharing.settings).visible && sharing.settings?.sharing == false {
                 Button { showMe = true } label: { Label("Share my location too", systemImage: "person.crop.circle").frame(maxWidth: .infinity) }
                     .buttonStyle(PillButtonStyle())
             }
+        }
+    }
+
+    static func coordinate(_ p: Person) -> CLLocationCoordinate2D? {
+        guard let lat = p.lat, let lon = p.lon else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    /// Everyone with a location, on one map (tap a row to go to them).
+    @ViewBuilder private var everyoneMap: some View {
+        let located = model.people.filter { PeopleScreen.coordinate($0) != nil }
+        if !located.isEmpty {
+            Map(position: $camera) {
+                ForEach(located) { p in
+                    Annotation(p.name, coordinate: PeopleScreen.coordinate(p) ?? CLLocationCoordinate2D(), anchor: .center) {
+                        PersonAvatar(person: p, index: model.people.firstIndex(of: p) ?? 0, size: 34)
+                            .overlay(Circle().stroke(Theme.background, lineWidth: 2))
+                    }
+                }
+            }
+            .mapStyle(.standard(pointsOfInterest: .excludingAll))
+            .environment(\.colorScheme, .dark)
+            .frame(height: 220)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.cardBorder))
+            .accessibilityLabel("Map of everyone")
         }
     }
 

@@ -33,6 +33,7 @@ struct MeScreen: View {
                     MyLookSection()
                     statusSection
                     securitySection
+                    ChangePasswordSection()
                     LocationSharingSection()
                     connectionSection
                     notificationsSection
@@ -269,6 +270,84 @@ struct MeScreen: View {
             .padding(.vertical, 4)
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.card))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.cardBorder))
+    }
+}
+
+/// Change password (POST /api/auth/password): the current one, the new one twice.
+struct ChangePasswordSection: View {
+    @EnvironmentObject var model: AppModel
+    @State private var open = false
+    @State private var current = ""
+    @State private var new = ""
+    @State private var confirm = ""
+    @State private var error: String?
+    @State private var saving = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button { withAnimation { open.toggle() } } label: {
+                HStack {
+                    Text("Change password").font(AppFont.manrope(15, .heavy)).foregroundColor(Theme.text)
+                    Spacer()
+                    Image(systemName: open ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .bold)).foregroundColor(Theme.dim)
+                }
+                .frame(minHeight: 56)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+            if open {
+                field("Current password", text: $current, content: .password)
+                field("New password", text: $new, content: .newPassword)
+                field("New password again", text: $confirm, content: .newPassword)
+                if let error {
+                    Text(error).font(AppFont.manrope(13, .bold)).foregroundColor(Theme.coralText)
+                }
+                Button {
+                    guard new == confirm else {
+                        error = "The new passwords don't match."
+                        return
+                    }
+                    saving = true
+                    error = nil
+                    Task {
+                        error = await model.changePassword(current: current, new: new)
+                        saving = false
+                        if error == nil {
+                            current = ""
+                            new = ""
+                            confirm = ""
+                            open = false
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if saving { ProgressView().tint(Theme.background) }
+                        Text("Change password")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PillButtonStyle(height: 46, prominent: true))
+                .disabled(saving || current.isEmpty || new.isEmpty || confirm.isEmpty)
+                .padding(.bottom, 10)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.card))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Theme.cardBorder))
+    }
+
+    private func field(_ title: String, text: Binding<String>, content: UITextContentType) -> some View {
+        SecureField(title, text: text)
+            .textContentType(content)
+            .font(AppFont.manrope(15, .bold))
+            .foregroundColor(Theme.text)
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.control))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.controlBorder))
     }
 }
 

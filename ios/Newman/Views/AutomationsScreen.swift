@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// More › Automations: every automation the house has, most recently run first, with the hub's own
-/// summary, when it last ran and a switch. Building and editing them stays on the web dashboard;
-/// only admin accounts may switch or run them (others see the hub's refusal as a toast).
+/// summary, when it last ran and a switch; a row opens the editor (AutomationEditorScreen). Accounts
+/// that can't change automations (canAutomate) see them read-only.
 struct AutomationsScreen: View {
     @EnvironmentObject var model: AppModel
 
@@ -12,12 +12,21 @@ struct AutomationsScreen: View {
             NightGlassBackground(teal: false)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Automations").font(AppFont.sora(28)).foregroundColor(Theme.text)
-                            .accessibilityAddTraits(.isHeader)
-                        if let all = model.automations {
-                            Text(AutomationList.headerLine(all, now: Date()))
-                                .font(AppFont.manrope(14, .bold)).foregroundColor(Theme.muted)
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Automations").font(AppFont.sora(28)).foregroundColor(Theme.text)
+                                .accessibilityAddTraits(.isHeader)
+                            if let all = model.automations {
+                                Text(AutomationList.headerLine(all, now: Date()))
+                                    .font(AppFont.manrope(14, .bold)).foregroundColor(Theme.muted)
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        if model.canAutomate {
+                            NavigationLink(value: MoreRoute.newAutomation) {
+                                Text("+ New")
+                            }
+                            .buttonStyle(PillButtonStyle(height: 38, prominent: true))
                         }
                     }
                     if model.automations == nil {
@@ -51,6 +60,7 @@ private func automationSwitch(_ model: AppModel, _ a: AutomationSummary) -> some
     )) { EmptyView() }
     .labelsHidden()
     .toggleStyle(SwitchToggleStyle(tint: Theme.blue))
+    .disabled(!model.canAutomate)
     .accessibilityLabel(a.name)
     .accessibilityValue(a.enabled ? "On" : "Off")
 }
@@ -79,7 +89,7 @@ struct AutomationRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityHint("Shows its runs and Run now")
+            .accessibilityHint(model.canAutomate ? "Edit it" : "Shows what it does")
             automationSwitch(model, a)
                 .padding(.top, 2)
         }

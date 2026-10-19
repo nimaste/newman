@@ -216,6 +216,15 @@ enum PushPayload {
         return (clip, rid?.isEmpty == false ? rid : nil)
     }
 
+    /// The alert a notification is about (`alertId`, any age): opened in the app through the signed-in
+    /// API, never the notification's own link (which expires).
+    static func alertId(userInfo: [AnyHashable: Any]) -> String? {
+        if let s = userInfo["alertId"] as? String, !s.isEmpty { return s }
+        if let n = userInfo["alertId"] as? NSNumber { return n.stringValue }
+        if let i = userInfo["alertId"] as? Int { return String(i) }
+        return nil
+    }
+
     /// Buttons handled on the phone without calling the hub.
     static func isLocalButton(_ id: String) -> Bool { id == "open" }
 

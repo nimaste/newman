@@ -105,11 +105,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let action = response.actionIdentifier
         let info = response.notification.request.content.userInfo
         if action == UNNotificationDefaultActionIdentifier || action == "open" {
-            let alert = PushPayload.alertClip(userInfo: info) // a camera alert opens on its video
+            let alertId = PushPayload.alertId(userInfo: info)
+            let alert = PushPayload.alertClip(userInfo: info) // older hubs: a camera alert by its clip
             Task { @MainActor in
-                AppModel.shared.showAlerts()
+                if alertId == nil { AppModel.shared.showAlerts() }
                 completionHandler()
-                if let alert { await AppModel.shared.openAlert(clip: alert.clip, reviewId: alert.reviewId) }
+                if let alertId {
+                    await AppModel.shared.openAlert(id: alertId)
+                } else if let alert {
+                    await AppModel.shared.openAlert(clip: alert.clip, reviewId: alert.reviewId)
+                }
             }
             return
         }

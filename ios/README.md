@@ -4,7 +4,7 @@ Two apps, built from one XcodeGen project (`project.yml`), following `docs/apps.
 
 | Target | Bundle id | What it is |
 |---|---|---|
-| `Newman` | `ca.nimaste.newman` | The phone app: Overview / Security / Lights / People / Alerts, Today, device controls, cameras, push, location sharing |
+| `Newman` | `ca.nimaste.newman` | The phone app: Home / Cameras / Devices / More, Climate, Lights, Security, Today, People, the automation editor, device controls, push, location sharing |
 | `NotificationServiceExtension` | `ca.nimaste.newman.NotificationServiceExtension` | Runs only for snapshot pushes (the only ones with `mutable-content`): attaches the camera snapshot (`snapshot_url`), using the client certificate from the shared Keychain. It never touches notification categories (on iOS 26 an extension registering a push's category stopped every later notification until the phone restarted); buttons-only pushes skip it |
 | `LocationPushExtension` | `ca.nimaste.newman.LocationPushExtension` | Apple's Location Push Service Extension: answers the hub's one-shot location push (someone tapped this person on their map) with ONE fix, even when the app was swiped away |
 | `NewmanWidgets` | `ca.nimaste.newman.NewmanWidgets` | WidgetKit extension (phone): home-screen device widgets (tiles, rows) and Home status, Lock Screen device widgets, Control Center controls, widget push updates, live status Live Activities (iOS 26 only) |
@@ -195,7 +195,50 @@ image and the Android APKs (README → Development → Releases has every secret
 
 ## Phone notes
 
-- Phone layouts (`GET /api/phone-layout`, `PhoneGrid` in Shared/Core, `PlacedGrid.swift`): the hub
+- **Tabs**: Home · Cameras · Devices · More (`MainTabs` in `RootView.swift`).
+  - **Home** (`Views/Home/HomeTab.swift`, `GET /api/home` - `HomeData` in Shared/Core/HomeModel.swift;
+    reloaded on a live `{"type":"home"}`): a red line per danger with its button (the hub's command),
+    amber lines for device problems (tap = the device, **Mute**), else "All good at home" and the hub's
+    summary; the cards the hub words (Cameras opens the Cameras tab; Climate, Lights, Security, Today,
+    People push their screen; Appliances / Cleaning open Devices); up to four favourites (tap = main
+    action, long press = everything). The pencil opens **Edit Home** (cards on/off and order by drag,
+    favourites ≤ 4 with a device search; `PUT /api/home/me`, this person only).
+  - **Climate**: the thermostat's dial (− / +, its modes, humidity), then the rooms with a bar on the
+    house range coloured by its bands (`HomeLogic.barFraction` / `bandColor`, set on the web Settings
+    page); **Edit** = choose and order the rooms (`PUT /api/home/climate`, the whole house's).
+  - **Lights**: every device whose kind's category is lighting and that switches, by `room` (else the
+    integration's area, else "Other"); a group (`group.<slug>`, `attrs.members`) is one row with
+    "Show the N lights", its members hidden elsewhere (`LightRooms`); a switch per room, **All off**.
+  - **Security**: the house mode, locks & garage (kinds with a secure state and commands), sensors,
+    and today's events (`GET /api/alerts?category=security&since=<start of today>`, newest first).
+  - **Today**: CALENDAR (today's events, else "Nothing on the <calendar> calendar today"), TO DO (tap =
+    done, Undo while just done; a device's item opens its sheet; admins **+ Add** a to-do due today that
+    comes back every N days / weeks / months - `POST /api/upkeep`), COMING UP (the next 7 days of each
+    calendar's upcoming events, then upkeep coming due - `GET /api/upkeep`).
+  - **People**: a map of everyone with a location, then the list (tap = fresh location, shown on the map).
+  - **Cameras** (`Views/Cameras/CamerasTab.swift`): the big picture labelled exactly as Settings says
+    ("Latest activity" or "Featured camera" - `home.cameras.mode`; admins **Change** it:
+    `PATCH /api/settings/house {"cameras"}`, and a live `settings-house` reloads Home), then every
+    camera (a zone - attr `camera` - isn't one). One camera: live (tap = full screen) and what it saw
+    (`GET /api/alerts?entity=<camera>&since=`, from today; **Earlier days** adds a day each tap), chips
+    "All N" and one per label; tap one = its clip (the hub's signed-in `api/clips/…` path).
+  - **Devices**: the device directory (below).
+  - **More**: Alerts, People, Automations, Edit Home and the account (My Look, Change password -
+    `POST /api/auth/password`, location sharing, sign out).
+- **Automation editor** (`AutomationEditorScreen.swift`, model `AutomationDraft` in Shared/Core): name,
+  on/off, the hub's summary (`POST /api/automations/describe`), **When** (a time and days; a device
+  changing state; a device event; a reading going above / below, optionally "for N min"), **What
+  happens** (devices, a command they all share, its value; a percent command can "put it back after N
+  min"), **Only if** (devices in a state; times / days / sun / dates set on the web show read-only),
+  **Don't repeat for** (`cooldownMinutes`), Run now, Delete. Back with unsaved changes asks "Discard
+  your changes?". Trigger and action types the phone doesn't know show read-only and are saved back
+  untouched, as is everything else the automation has (notifications, follow-ups). Accounts without
+  `canAutomate` see it all read-only, with no switches, + New, Run now or Delete.
+- **Notification taps** (any age): the push's `alertId` is the automation run (`GET /api/events?runId=`).
+  A camera clip opens that camera's screen and plays it through the signed-in API; anything else opens
+  More › Alerts (all kinds) scrolled to the entry and outlined, added when it's older than the list.
+  Older pushes without `alertId` fall back to the clip.
+- Phone layouts (no longer in the navigation; the code is kept for older hubs' tiles) (`GET /api/phone-layout`, `PhoneGrid` in Shared/Core, `PlacedGrid.swift`): the hub
   sends the signed-in person's layout (their own, or the house default). Pages marked `tab` are the
   tabs, in order, at most three, then **People** and **More**; other pages are links at the bottom
   of the first tab and open from their thermostat tile. Each page is a scrolling grid of 4 columns
@@ -225,19 +268,18 @@ image and the Android APKs (README → Development → Releases has every secret
   lines, and leave out the weather when the page has a weather tile. A To do row about a device with
   problems shows the device's name and every problem the hub reports ("Battery failed · No AC power ·
   Not responding to the hub"), and tints the card.
-- **More** (the fifth tab, `MoreScreen.swift`; its count is the alerts badge): **Alerts** (below),
-  **Devices** and **Automations**, pushed in a navigation stack (`AppModel.morePath`; a tapped
-  notification opens More › Alerts). Devices lists every device the hub has, by category in
+- **More** (the fourth tab, `MoreScreen.swift`; its count is the alerts badge): **Alerts** (below),
+  **People**, **Automations**, **Edit Home** and the account, pushed in a navigation stack
+  (`AppModel.morePath`; a tapped notification opens More › Alerts). The Devices tab lists every device the hub has, by category in
   `/api/meta`'s order (`DeviceDirectory` in Shared/Core): a name search, chips All / Needs attention
   (`health.ok == false` or offline) / On now (the kind's active state, not a secure kind), five rows a
   category with "Show all", each row with its problems or state and its quick control (a switch for an
   on/off pair, else the one action that makes sense now); tap = the device sheet. Automations lists
   `GET /api/automations` most recently run first (`AutomationList`): name, the hub's summary, "Ran today
   2:54 PM" / "Sent …" / "Checked … · nothing to do" / "Hasn't run yet", and a switch (`PATCH
-  /api/automations/{id}` `{"enabled"}`, shown at once and put back if refused); tap = its recent runs
-  (`GET /api/runs?automationId=`) and Run now (`POST /api/automations/{id}/run`). Only admin accounts
-  may switch or run them: the hub's 403 text shows as a toast. Making and editing automations stays
-  on the web dashboard.
+  /api/automations/{id}` `{"enabled"}`, shown at once and put back if refused); tap = the editor
+  (above); **+ New** makes one. Only accounts with `canAutomate` may switch, run or
+  change them.
 - Tabs on older hubs: the dashboard's first three pages (icon + name; Overview, Security, Lights on the starter
   dashboard), **People** and **More** (`PhoneTabs` in Shared/Core). A Today page (greeting / To do /
   calendar / weather) isn't a tab: the first tab shows the Today card (`GET /api/today`: To do with

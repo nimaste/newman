@@ -4,12 +4,15 @@ import SwiftUI
 enum MoreRoute: Hashable {
     case alerts
     case devices
+    case people
     case automations
     case automation(String)
+    case newAutomation
+    case editHome
 }
 
-/// The fifth tab: Alerts (with its count), every device, and the automations, each pushed in a
-/// navigation stack (AppModel.morePath, so a notification can open More › Alerts).
+/// The fourth tab: Alerts (with its count), People, Automations, Edit Home and the account, each
+/// pushed in a navigation stack (AppModel.morePath, so a notification can open More › Alerts).
 struct MoreTab: View {
     @EnvironmentObject var model: AppModel
 
@@ -22,8 +25,11 @@ struct MoreTab: View {
                         switch route {
                         case .alerts: AlertsScreen()
                         case .devices: DevicesScreen()
+                        case .people: PeopleScreen()
                         case .automations: AutomationsScreen()
-                        case .automation(let id): AutomationDetailScreen(automationId: id)
+                        case .automation(let id): AutomationEditorScreen(automationId: id)
+                        case .newAutomation: AutomationEditorScreen(automationId: nil)
+                        case .editHome: EditHomeScreen()
                         }
                     }
                     .navigationTitle("")
@@ -40,9 +46,9 @@ struct MoreTab: View {
 
 struct MoreScreen: View {
     @EnvironmentObject var model: AppModel
+    @State private var showMe = false
 
     var body: some View {
-        let ents = model.allEntities
         ZStack {
             NightGlassBackground(teal: false)
             ScrollView {
@@ -52,15 +58,25 @@ struct MoreScreen: View {
                         .accessibilityAddTraits(.isHeader)
                     VStack(spacing: 0) {
                         row(.alerts, symbol: "bell", tint: Theme.coral, title: "Alerts",
-                            subtitle: "Doorbell, cameras, locks and everything else that happened",
+                            subtitle: "Cameras, doorbell, locks, leaks",
                             badge: model.unseenAlerts)
                         Divider().overlay(Theme.divider)
-                        row(.devices, symbol: "square.grid.2x2", tint: Theme.blue, title: "Devices",
-                            subtitle: DeviceDirectory.countLine(ents),
-                            warn: ents.contains(where: DeviceDirectory.needsAttention))
+                        row(.people, symbol: "person.2", tint: Theme.teal, title: "People",
+                            subtitle: MoreLines.people(model.people))
                         Divider().overlay(Theme.divider)
                         row(.automations, symbol: "bolt", tint: Color(hex: 0xB79CFF), title: "Automations",
-                            subtitle: model.automations.map(AutomationList.countLine) ?? "What the house does by itself")
+                            subtitle: model.automations.map(MoreLines.automations) ?? "What the house does by itself")
+                    }
+                    .glassCard(padding: 14)
+                    VStack(spacing: 0) {
+                        row(.editHome, symbol: "slider.horizontal.3", tint: Theme.blue, title: "Edit Home",
+                            subtitle: "Cards and favourites")
+                        Divider().overlay(Theme.divider)
+                        Button { showMe = true } label: {
+                            rowFace(symbol: nil, tint: Theme.blue, title: model.user?.name ?? "Account",
+                                    subtitle: MoreLines.account)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .glassCard(padding: 14)
                 }
@@ -73,14 +89,30 @@ struct MoreScreen: View {
             }
         }
         .task { await model.reloadAutomations() }
+        .sheet(isPresented: $showMe) {
+            MeScreen().environmentObject(model).environmentObject(PushManager.shared)
+        }
     }
 
     private func row(_ route: MoreRoute, symbol: String, tint: Color, title: String, subtitle: String,
                      badge: Int = 0, warn: Bool = false) -> some View {
         NavigationLink(value: route) {
+            rowFace(symbol: symbol, tint: tint, title: title, subtitle: subtitle, badge: badge, warn: warn)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// A row's look; no symbol = the account's initial.
+    private func rowFace(symbol: String?, tint: Color, title: String, subtitle: String,
+                         badge: Int = 0, warn: Bool = false) -> some View {
             HStack(spacing: 14) {
-                Image(systemName: symbol)
-                    .font(.system(size: 19, weight: .semibold))
+                Group {
+                    if let symbol {
+                        Image(systemName: symbol).font(.system(size: 19, weight: .semibold))
+                    } else {
+                        Text(String(title.prefix(1)).uppercased()).font(AppFont.manrope(18, .heavy))
+                    }
+                }
                     .foregroundColor(tint)
                     .frame(width: 44, height: 44)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(tint.opacity(0.18)))
@@ -105,7 +137,5 @@ struct MoreScreen: View {
             }
             .frame(minHeight: 64)
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }

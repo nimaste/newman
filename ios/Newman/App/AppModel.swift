@@ -24,7 +24,16 @@ final class AppModel: ObservableObject {
     @Published var busy: Set<String> = []
     @Published var personId: String?
     @Published var openCamera: CameraTarget?
-    @Published var selectedTab = "page:0"
+    @Published var selectedTab = "home"
+    /// GET /api/home: the Home tab's cards, status, favourites, the Cameras tab's big picture and Climate's rooms.
+    @Published var home: HomeData?
+    /// More › Alerts scrolls to and marks this entry (a tapped notification's alert).
+    @Published var highlightedAlert: String?
+    /// The Home tab's screens (Climate, Lights, Security…), pushed in order.
+    @Published var homePath: [HomeRoute] = []
+    /// The Cameras tab's screens (one camera).
+    @Published var camerasPath: [CamerasRoute] = []
+    var homeReload: Task<Void, Never>?
     @Published var unseenAlerts = 0
     /// The More tab's screens (Alerts, Devices, Automations), pushed in order.
     @Published var morePath: [MoreRoute] = []
@@ -135,6 +144,7 @@ final class AppModel: ObservableObject {
             if let u = auth.user { user = u }
             loadError = nil
             phase = .ready
+            await reloadHome()
         } catch let e as APIError {
             loadError = e.message
             if e.signInRequired { sessionEnded() }
@@ -232,6 +242,10 @@ final class AppModel: ObservableObject {
         todayDone = [:]
         automations = nil
         morePath = []
+        home = nil
+        homePath = []
+        camerasPath = []
+        selectedTab = "home"
         user = nil
         phase = .onboarding
     }
@@ -262,7 +276,12 @@ final class AppModel: ObservableObject {
             }
         case .settings:
             Task { await reloadAuthState() }
-        case .hello, .event, .pong, .unknown:
+            homeSoon()
+        case .unknown(let type):
+            // {"type": "home"}: something Home shows changed (the hub says so; read it again).
+            // {"type": "settings-house"}: the house settings changed (the Cameras tab's big picture…).
+            if type == "home" || type == "settings-house" { homeSoon() }
+        case .hello, .event, .pong:
             break
         }
     }

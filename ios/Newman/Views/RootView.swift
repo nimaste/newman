@@ -75,25 +75,28 @@ struct LoadingView: View {
     }
 }
 
-/// Five tabs (PhoneTabs): the dashboard's first three pages (icon and name from each page), People
-/// and More (Alerts, Devices, Automations - MoreTab). A Today page becomes the Today card on the first tab; other pages (Climate) open
-/// from their thermostat tile or a link at the bottom of the first tab.
+/// Four tabs: Home (status, cards, favourites - HomeTab), Cameras, Devices and More (Alerts, People,
+/// Automations, Edit Home, the account - MoreTab).
 struct MainTabs: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        let plan = model.tabPlan
         TabView(selection: $model.selectedTab) {
-            ForEach(Array(plan.tabs.enumerated()), id: \.element.id) { index, page in
-                PageScreen(page: page, isFirst: index == 0)
-                    .tabChrome()
-                    .tabItem { Label(page.name, systemImage: Symbols.name(page.icon)) }
-                    .tag("page:\(index)")
-            }
-            PeopleScreen()
+            HomeTab()
                 .tabChrome()
-                .tabItem { Label("People", systemImage: "person.2") }
-                .tag("people")
+                .tabItem { Label("Home", systemImage: "house") }
+                .tag("home")
+            CamerasTab()
+                .tabChrome()
+                .tabItem { Label("Cameras", systemImage: "video") }
+                .tag("cameras")
+            NavigationStack {
+                DevicesScreen()
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+                .tabChrome()
+                .tabItem { Label("Devices", systemImage: "square.grid.2x2") }
+                .tag("devices")
             MoreTab()
                 .tabChrome()
                 .tabItem { Label("More", systemImage: "ellipsis.circle") }
