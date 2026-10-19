@@ -12,7 +12,7 @@ import { useConfirm } from '../components/Feedback.jsx';
 import { Check, Loading, ErrorBox, MoreMenu, Switch } from '../components/Controls.jsx';
 import { DeviceBlanks } from '../components/DevicePicker.jsx';
 import { Icon } from '../icons.jsx';
-import { DAY_LETTERS, DAY_NAMES, fmtClock, fmtHHMM, fmtWhen, initial, platformLabel, plural } from '../format.js';
+import { DAY_LETTERS, DAY_NAMES, fmtClock, fmtHHMM, fmtWhen, initial, joinList, platformLabel, plural } from '../format.js';
 import { actionCommands, activeLabel, automationBody, choiceItems, eventsFor, stateChoices, valueText } from '../model.js';
 import { ChoiceChips } from '../components/ChoiceChips.jsx';
 import {
@@ -1555,6 +1555,14 @@ function RepeatSection({ auto, patch }) {
   );
 }
 
+/** "Live video on Newman Kitchen" / "Card on …" / "Alarm on …" (tablet names, or every wall tablet). */
+function wallLabel(w, list) {
+  const ids = w.tablets || [];
+  const names = ids.map((t) => ((list || []).find((x) => x.id === t) || {}).name).filter(Boolean);
+  const where = !ids.length ? 'every wall tablet' : names.length === ids.length ? joinList(names) : plural(ids.length, 'wall tablet');
+  return (w.style === 'full' ? 'Live video' : w.style === 'alarm' ? 'Alarm' : 'Card') + ' on ' + where;
+}
+
 export default function AutomationEditor({ id, templateId, query }) {
   const hub = useHub();
   const hubRef = useRef(hub);
@@ -1569,6 +1577,7 @@ export default function AutomationEditor({ id, templateId, query }) {
   const isAdmin = !!(user && user.canAutomate);
   const isNew = id === 'new';
   const people = useApi('api/people');
+  const tabletList = useApi('api/tablets');
   const runs = useApi(isNew ? null : 'api/runs?automationId=' + enc(id));
   useLiveRefresh((m) => m.type === 'activity' && !!m.entry && ['automation', 'followup', 'command'].includes(m.entry.kind), () => runs.reload(), 500);
   const sections = { when: useRef(null), if: useRef(null), then: useRef(null) };
@@ -1790,7 +1799,7 @@ export default function AutomationEditor({ id, templateId, query }) {
     { step: 'when', text: summaries.when },
     ...acts.map((x) => ({ step: 'then', text: '→ ' + actionLabel(x, hub) })),
     ...(auto.notify.enabled ? [{ step: 'then', text: '→ Notify ' + (summaries.who || '') }] : []),
-    ...(auto.wall && auto.wall.enabled ? [{ step: 'then', text: '→ Show on ' + ((auto.wall.tablets || []).length ? plural(auto.wall.tablets.length, 'wall tablet') : 'every wall tablet') }] : []),
+    ...(auto.wall && auto.wall.enabled ? [{ step: 'then', text: '→ ' + wallLabel(auto.wall, tabletList.data) }] : []),
     ...(auto.live && auto.live.enabled ? [{ step: 'then', text: '→ Live status of ' + plural((auto.live.entities || []).length, 'device') }] : []),
     ...(summaries.if && summaries.if !== 'Every time' ? [{ step: 'if', text: summaries.if }] : []),
   ].filter((x) => x.text);

@@ -817,14 +817,34 @@ def _command_past(auto: dict[str, Any]) -> str:
 WALL_STYLES = {"card": "", "full": " full screen", "alarm": " as an alarm"}
 
 
-def wall_text(auto: dict[str, Any], tablets: dict[str, str] | None) -> str:
-    """"show it on Hallway tablet full screen" ("" when the automation doesn't use wall tablets)."""
+def wall_camera(auto: dict[str, Any], hub: Hub) -> Entity | None:
+    """The camera a wall tablet alert shows, as the engine picks it: the device that fires when it has a
+    picture (the first of the When devices that does), else the one the snapshot comes from."""
+    for i in auto["trigger"]["items"]:
+        for e in ([i.get("entity")] if i["type"] == "event" else i.get("entities") or []):
+            ent = hub.get(e or "")
+            if ent and hub.has_picture(ent):
+                return ent
+    return snapshot_source(auto, hub)
+
+
+def wall_text(auto: dict[str, Any], tablets: dict[str, str] | None, hub: Hub | None = None) -> str:
+    """"show Front Door's live video full screen on Hallway tablet" - what the tablets show (with `hub`, the
+    camera by name); "show it on Hallway tablet full screen" without a camera. "" when no wall tablets."""
     w = auto["wall"]
     if not w.get("enabled"):
         return ""
     names = [(tablets or {}).get(t, "a removed tablet") for t in w["tablets"]]
     where = join_names(names) if names else "every wall tablet"
-    return f"show it on {where}{WALL_STYLES.get(w.get('style'), '')}"
+    cam = wall_camera(auto, hub) if hub is not None else None
+    style = w.get("style") if w.get("style") in WALL_STYLES else "card"
+    if cam is None:
+        return f"show it on {where}{WALL_STYLES[style]}"
+    if style == "full":
+        return f"show {cam.name}'s live video full screen on {where}"
+    if style == "alarm":
+        return f"show an alarm with a picture from {cam.name} on {where}"
+    return f"show a card with {cam.name}'s camera on {where}"
 
 
 # -- "Show a live status" ---------------------------------------------------------------------------
@@ -969,7 +989,7 @@ def summary(auto: dict[str, Any], hub: Hub, people: list[dict[str, Any]],
         if labels:
             text += f" with {join_names(labels)} buttons"
         actions.append(text)
-    if shown := wall_text(auto, tablets):
+    if shown := wall_text(auto, tablets, hub):
         actions.append(shown)
     if auto["live"].get("enabled"):
         actions.append(live_text(auto, hub, people))

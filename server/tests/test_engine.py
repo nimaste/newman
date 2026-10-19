@@ -706,6 +706,23 @@ class ActionTests(LightTests):
         out = self.engine.describe(dict(bell, notify={"enabled": True, "snapshot": False}))
         self.assertNotIn("snapshot", out["summary"])
 
+    async def test_wall_tablets_say_what_they_show(self):
+        self.hub.upsert("reolink.doorbell", kind="doorbell", name="Front Door", integration="reolink")
+        bell = {"trigger": {"type": "event", "entity": "reolink.doorbell", "event": "pressed"},
+                "notify": {"enabled": True}, "recipients": ["p_chris"],
+                "wall": {"enabled": True, "tablets": [], "style": "full"}}
+        out = self.engine.describe(bell)
+        self.assertIn("with a snapshot from Front Door and show Front Door's live video full screen on every wall tablet.",
+                      out["summary"])
+        out = self.engine.describe(dict(bell, wall={"enabled": True, "tablets": [], "style": "card"}))
+        self.assertIn("show a card with Front Door's camera on every wall tablet", out["summary"])
+        out = self.engine.describe(dict(bell, wall={"enabled": True, "tablets": [], "style": "alarm"}))
+        self.assertIn("show an alarm with a picture from Front Door on every wall tablet", out["summary"])
+        # No camera: what it showed before.
+        remote = dict(bell, trigger={"type": "event", "entity": "lutron.remote_9", "event": "lower"},
+                      wall={"enabled": True, "tablets": [], "style": "alarm"})
+        self.assertIn("show it on every wall tablet as an alarm", self.engine.describe(remote)["summary"])
+
     async def test_brighten_or_dim_needs_a_dimmable_light(self):
         await self.hub.update("lutron.device_5", attrs={"dimmable": False})
         out = self.engine.describe({"trigger": {"type": "event", "entity": "lutron.remote_9", "event": "raise"},
