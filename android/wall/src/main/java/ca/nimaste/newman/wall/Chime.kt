@@ -26,12 +26,13 @@ object Chime {
         return ShortArray(n) { (out[it].coerceIn(-1.0, 1.0) * 32767).toInt().toShort() }
     }
 
-    fun play() {
+    /** [usage]: which volume it plays at - the wake chime's own, or media for the settings' test sound. */
+    fun play(usage: Int = AudioAttributes.USAGE_ASSISTANCE_SONIFICATION) {
         try {
             val track = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setUsage(usage)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build(),
                 )

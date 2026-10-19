@@ -607,6 +607,14 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
   screen wakes* (both on by default; `come_back_after_leaving`, `come_back_minutes`, `come_back_on_wake`
   in `wall_settings`). Same *Display over other apps* need as above. Logged at warning level as
   `NewmanWall` *Come back: …*. The rule is `ComeBack` in `core/wall/` (`ComeBackTest`).
+- **Sound (wall settings):** two sliders for the tablet's own volumes, so a tablet in a case needs no
+  buttons. *Volume* is Android's media stream (Alexa's voice, music, the chime, "Hey Newman" replies -
+  what the volume buttons change); *Alarms & timers* is the alarm stream (Alexa's and Newman's timers and
+  alarms ringing). Both apply live while dragging; *Play a test sound* plays the chime on the media
+  stream and *Test alarm sound* the default alarm tone for 2 s; Cancel or Back puts both back as they were
+  when the screen opened, Save keeps them. Android may refuse while Do Not Disturb is on (a note says so).
+  Percent ↔ step is `WallVolume` in `core/wall/` (`WallVolumeTest`); the sound itself is `WallSound`.
+  The iPad wall app has no equivalent: iOS doesn't let apps set the system volume.
 - **The screen never stays off:** while the wall is in front it holds the screen on (`FLAG_KEEP_SCREEN_ON`;
   dimming only lowers the window brightness, never below `WallBrightness.FLOOR`). Any other app in front
   (Alexa's screen, Silk, Settings) gets Fire OS's own screen timeout instead — and a dark tablet falls into

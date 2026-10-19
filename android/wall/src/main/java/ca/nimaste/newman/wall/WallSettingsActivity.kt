@@ -2,6 +2,7 @@ package ca.nimaste.newman.wall
 
 import android.app.admin.DevicePolicyManager
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -9,6 +10,7 @@ import android.os.Looper
 import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -206,8 +208,26 @@ class WallSettingsActivity : ComponentActivity() {
         val overlay by overlayAllowed
         var message by remember { mutableStateOf<String?>(null) }
         var confirmRelease by remember { mutableStateOf(false) }
+        // Sound: the tablet's own volumes, applied live while dragging; Cancel (or Back) puts them back.
+        val sound = remember { WallSound(this@WallSettingsActivity) }
+        val openMedia = remember { sound.percent(AudioManager.STREAM_MUSIC) }
+        val openAlarm = remember { sound.percent(AudioManager.STREAM_ALARM) }
+        var media by remember { mutableFloatStateOf(openMedia.toFloat()) }
+        var alarm by remember { mutableFloatStateOf(openAlarm.toFloat()) }
+        var soundRefused by remember { mutableStateOf(false) }
+        fun setVolume(stream: Int, percent: Float) {
+            if (!sound.set(stream, percent.roundToInt())) soundRefused = true
+        }
+        fun cancel() {
+            sound.stopAlarm()
+            sound.set(AudioManager.STREAM_MUSIC, openMedia)
+            sound.set(AudioManager.STREAM_ALARM, openAlarm)
+            finishWith(null)
+        }
+        BackHandler { cancel() }
 
         fun save(): Boolean {
+            sound.stopAlarm() // the volumes themselves are already set
             settings.dimMinutes = dimMinutes.roundToInt()
             settings.brightLevel = if (systemBrightness) -1f else bright
             settings.dimLevel = dimLevel
@@ -247,6 +267,18 @@ class WallSettingsActivity : ComponentActivity() {
                 }
                 Text("Dimmed brightness ${(dimLevel * 100).roundToInt()}% (${(WallBrightness.FLOOR * 100).roundToInt()}% at the lowest, so a dimmed screen still looks on)", color = Ink)
                 Slider(dimLevel, { dimLevel = it }, valueRange = WallBrightness.FLOOR..WallBrightness.MAX_DIM, modifier = Modifier.widthIn(max = 640.dp))
+            }
+
+            Section("Sound") {
+                Text("Volume ${media.roundToInt()}%", color = Ink)
+                Text("Alexa's voice, music, the chime and “Hey Newman” replies — the same as the tablet's volume buttons.", color = Muted)
+                Slider(media, { media = it; setVolume(AudioManager.STREAM_MUSIC, it) }, valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
+                OutlinedButton(onClick = { sound.testMedia() }) { Text("Play a test sound") }
+                Text("Alarms & timers ${alarm.roundToInt()}%", color = Ink)
+                Text("Alexa's and Newman's timers and alarms ringing.", color = Muted)
+                Slider(alarm, { alarm = it; setVolume(AudioManager.STREAM_ALARM, it) }, valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
+                OutlinedButton(onClick = { sound.testAlarm() }) { Text("Test alarm sound") }
+                if (soundRefused) Text("Android didn't allow that change - Do Not Disturb may be on.", color = Coral)
             }
 
             Section("Coming back to Newman") {
@@ -325,7 +357,7 @@ class WallSettingsActivity : ComponentActivity() {
                     shape = RoundedCornerShape(14.dp)) { Text("Save and reload") }
                 OutlinedButton(onClick = { if (save()) finishWith(null) }) { Text("Save") }
                 OutlinedButton(onClick = { if (save()) finishWith(ACTION_CLEAR_WEB) }) { Text("Sign the wall out (clear web data)") }
-                TextButton(onClick = { finishWith(null) }) { Text("Cancel", color = Muted) }
+                TextButton(onClick = { cancel() }) { Text("Cancel", color = Muted) }
             }
         }
 
