@@ -28,7 +28,7 @@ struct DeviceCard: View {
                 Group {
                     if wide {
                         HStack(spacing: 12) {
-                            icon(kind, fg: fg, lit: lit, size: 44)
+                            icon(e, kind, fg: fg, lit: lit, size: 44)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(e.name).font(AppFont.manrope(16 * scale, .heavy)).lineLimit(1)
                                 Text([e.area, state].compactMap { $0 }.joined(separator: " · "))
@@ -39,7 +39,7 @@ struct DeviceCard: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
-                            Image(systemName: Symbols.name(DeviceLogic.kindIcon(kind))).font(.system(size: 22, weight: .medium))
+                            Image(systemName: Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds))).font(.system(size: 22, weight: .medium))
                             Spacer(minLength: 0)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(e.name).font(AppFont.manrope(14 * scale, .heavy)).lineLimit(2)
@@ -82,8 +82,8 @@ struct DeviceCard: View {
         }
     }
 
-    private func icon(_ kind: Kind?, fg: Color, lit: Bool, size: CGFloat) -> some View {
-        Image(systemName: Symbols.name(DeviceLogic.kindIcon(kind)))
+    private func icon(_ e: Entity, _ kind: Kind?, fg: Color, lit: Bool, size: CGFloat) -> some View {
+        Image(systemName: Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds)))
             .font(.system(size: size * 0.45, weight: .medium))
             .frame(width: size, height: size)
             .background(Circle().fill(lit ? Color.black.opacity(0.12) : Color.white.opacity(0.08)))
@@ -160,7 +160,7 @@ struct DeviceRow: View {
             let toneColor = tone == .warn ? Theme.coralText : (tone == .calm ? Theme.teal : Theme.muted)
             let extras = DeviceLogic.extraActions(e, kind, main: action)
             HStack(spacing: 12) {
-                Image(systemName: Symbols.name(DeviceLogic.kindIcon(kind)))
+                Image(systemName: Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds)))
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(tone == .warn ? Theme.coralText : (tone == .calm ? Theme.teal : Theme.text))
                     .frame(width: 40, height: 40)

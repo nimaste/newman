@@ -88,6 +88,8 @@ final class APIClient {
     // MARK: endpoints
 
     func meta() async throws -> Meta { try await get("api/meta") }
+    /// GET /api/categories: every category, built in then made in Newman, with its screen and device count.
+    func categories() async throws -> [CategoryInfo] { try await get("api/categories") }
     func entities() async throws -> [Entity] { try await get("api/entities") }
     func currentDashboard() async throws -> Dashboard { try await get("api/dashboards/current") }
 

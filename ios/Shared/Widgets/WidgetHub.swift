@@ -191,7 +191,7 @@ enum WidgetHub {
                     guard let e = byId[id] else { continue }
                     let k = kindMap[e.kind]
                     items.append(CatalogItem(id: e.id, name: e.name, detail: WidgetLogic.detail(e, k),
-                                             icon: DeviceLogic.kindIcon(k), section: s.title, kind: e.kind))
+                                             icon: DeviceLogic.icon(e, k, kinds: kindMap), section: s.title, kind: e.kind))
                 }
             }
             if let data = try? JSONEncoder().encode(items) { defaults?.set(data, forKey: K.catalog) }

@@ -69,9 +69,11 @@ struct MoreScreen: View {
                     }
                     .glassCard(padding: 14)
                     VStack(spacing: 0) {
-                        row(.editHome, symbol: "slider.horizontal.3", tint: Theme.blue, title: "Edit Home",
-                            subtitle: "Cards and favourites")
-                        Divider().overlay(Theme.divider)
+                        if model.canEditHome {
+                            row(.editHome, symbol: "slider.horizontal.3", tint: Theme.blue, title: "Edit Home",
+                                subtitle: "Cards and favourites")
+                            Divider().overlay(Theme.divider)
+                        }
                         Button { showMe = true } label: {
                             rowFace(symbol: nil, tint: Theme.blue, title: model.user?.name ?? "Account",
                                     subtitle: MoreLines.account)

@@ -9,6 +9,8 @@ enum HomeRoute: Hashable {
     case today
     case people
     case editHome
+    /// A category without a purpose-built screen: its devices (CategoryScreen).
+    case category(String)
 }
 
 /// The first tab: Home, and the category screens its cards open, in a navigation stack
@@ -30,6 +32,7 @@ struct HomeTab: View {
                         case .today: TodayScreen()
                         case .people: PeopleScreen()
                         case .editHome: EditHomeScreen()
+                        case .category(let id): CategoryScreen(category: id)
                         }
                     }
                     .navigationTitle("")
@@ -60,7 +63,7 @@ struct HomeScreen: View {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: Theme.gap), GridItem(.flexible(), spacing: Theme.gap)],
                                   spacing: Theme.gap) {
                             ForEach(h.shownCards) { c in
-                                HomeCardView(card: c) { open(c.id) }
+                                HomeCardView(card: c) { open(c) }
                             }
                         }
                         if !h.favourites.isEmpty { favourites(h.favourites) }
@@ -83,13 +86,15 @@ struct HomeScreen: View {
             Text("Home").font(AppFont.sora(30)).foregroundColor(Theme.text)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button { model.homePath.append(.editHome) } label: {
-                Image(systemName: "pencil").font(.system(size: 16, weight: .bold)).foregroundColor(Theme.text)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Theme.control))
-                    .overlay(Circle().stroke(Theme.controlBorder))
+            if model.canEditHome {
+                Button { model.homePath.append(.editHome) } label: {
+                    Image(systemName: "pencil").font(.system(size: 16, weight: .bold)).foregroundColor(Theme.text)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Theme.control))
+                        .overlay(Circle().stroke(Theme.controlBorder))
+                }
+                .accessibilityLabel("Edit Home")
             }
-            .accessibilityLabel("Edit Home")
             Button { showMe = true } label: {
                 Text(String((model.user?.name ?? model.user?.username ?? "?").prefix(1)).uppercased())
                     .font(AppFont.manrope(15, .heavy)).foregroundColor(Theme.text)
@@ -194,15 +199,16 @@ struct HomeScreen: View {
         }
     }
 
-    private func open(_ card: String) {
-        switch card {
+    /// The card's purpose-built screen (the hub's `screen`), else its category's own list.
+    private func open(_ card: HomeData.Card) {
+        switch card.role {
         case "cameras": model.selectedTab = "cameras"
         case "climate": model.homePath.append(.climate)
         case "lights": model.homePath.append(.lights)
         case "security": model.homePath.append(.security)
         case "today": model.homePath.append(.today)
         case "people": model.homePath.append(.people)
-        default: model.selectedTab = "devices"
+        default: model.homePath.append(.category(card.category ?? card.id))
         }
     }
 
@@ -237,8 +243,8 @@ struct HomeCardView: View {
                     HStack {
                         Text(card.title).font(AppFont.manrope(14, .heavy)).foregroundColor(Theme.text)
                         Spacer()
-                        Image(systemName: HomeCards.style(card.id).symbol).font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Color(hex: HomeCards.style(card.id).color))
+                        Image(systemName: style.symbol).font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(hex: style.color))
                             .accessibilityHidden(true)
                     }
                 }
@@ -264,6 +270,13 @@ struct HomeCardView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel([card.title, card.value, card.detail].filter { !$0.isEmpty }.joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// Its screen's icon and colour; a category with no screen: its devices' most common icon, neutral.
+    private var style: HomeCards.Style {
+        if let s = HomeCards.style(role: card.role) { return s }
+        let icon = CategoryLogic.mostCommonIcon(card.category ?? card.id, entities: model.allEntities, kinds: model.kinds)
+        return HomeCards.Style(symbol: Symbols.name(icon), color: HomeCards.neutral)
     }
 
     private var tint: Color {
@@ -293,7 +306,7 @@ struct FavouriteTile: View {
                 if let action { Task { await model.run(e.id, action) } } else { openSheet() }
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Image(systemName: Symbols.name(DeviceLogic.kindIcon(kind))).font(.system(size: 16, weight: .semibold))
+                    Image(systemName: Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds))).font(.system(size: 16, weight: .semibold))
                         .foregroundColor(lit ? Theme.amber : Theme.teal)
                         .accessibilityHidden(true)
                     Spacer(minLength: 0)

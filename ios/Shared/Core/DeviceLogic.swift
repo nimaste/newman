@@ -328,18 +328,29 @@ enum DeviceLogic {
 
     // MARK: icons
 
-    /// The icon name for a kind, from its metadata only: its first command's icon, a camera,
-    /// events, a measurement unit, then its category. (Names match web/src/icons.jsx; the UI
-    /// maps them to SF Symbols.)
+    /// The icon name for a kind, from its metadata only: a camera, its first command's icon, its own id
+    /// when that's an icon name, a secure state, events, a measurement unit - else its id (drawn with the
+    /// neutral symbol). Never by category: a new category or kind needs no change here. (Names match
+    /// web/src/icons.jsx; IconNames maps them to SF Symbols.)
     static func kindIcon(_ kind: Kind?) -> String {
         guard let kind else { return "dot" }
         if kind.hasCamera ?? false { return "camera" }
         if let c = kind.commandList.first(where: { !($0.icon ?? "").isEmpty }), let icon = c.icon { return icon }
+        if IconNames.knows(kind.id) { return kind.id }
+        if kind.secureState != nil { return "shield" }
         if !kind.eventList.isEmpty { return "bell" }
         if !(kind.unit ?? "").isEmpty { return "thermometer" }
-        let byCategory = ["security": "shield", "garage": "garage", "lighting": "bulb", "climate": "thermometer",
-                          "cleaning": "vacuum", "cameras": "camera", "appliances": "power", "servers": "server"]
-        return byCategory[kind.category ?? ""] ?? "dot"
+        return kind.id
+    }
+
+    /// The icon a device is drawn with: the one set on it in Newman (an icon name, or a kind's id - that
+    /// kind's icon), else its kind's.
+    static func icon(_ e: Entity, _ kind: Kind?, kinds: [String: Kind] = [:]) -> String {
+        if let set = e.icon?.trimmingCharacters(in: .whitespaces), !set.isEmpty {
+            if let other = kinds[set] { return kindIcon(other) }
+            return set
+        }
+        return kindIcon(kind)
     }
 
     // MARK: optimistic updates

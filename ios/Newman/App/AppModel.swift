@@ -9,6 +9,8 @@ final class AppModel: ObservableObject {
 
     @Published var phase: Phase = .onboarding
     @Published var meta: Meta?
+    /// GET /api/categories (built-in and made in Newman); empty on an older hub - categoryList then uses meta's.
+    @Published var categories: [CategoryInfo] = []
     @Published var kinds: [String: Kind] = [:]
     @Published var entities: [String: Entity] = [:]
     @Published var dashboard: Dashboard?
@@ -144,6 +146,7 @@ final class AppModel: ObservableObject {
             if let u = auth.user { user = u }
             loadError = nil
             phase = .ready
+            await reloadCategories()
             await reloadHome()
         } catch let e as APIError {
             loadError = e.message
@@ -281,6 +284,10 @@ final class AppModel: ObservableObject {
             // {"type": "home"}: something Home shows changed (the hub says so; read it again).
             // {"type": "settings-house"}: the house settings changed (the Cameras tab's big picture…).
             if type == "home" || type == "settings-house" { homeSoon() }
+            if type == "categories" {
+                Task { await reloadCategories() }
+                homeSoon()
+            }
         case .hello, .event, .pong:
             break
         }

@@ -9,6 +9,8 @@ struct Meta: Decodable {
     var version: String?
     var categories: [MetaCategory]?
     var kinds: [Kind]?
+    /// Every icon name a device can be given (kinds' ids first, then generic ones).
+    var icons: [String]?
 
     var kindsById: [String: Kind] {
         var out: [String: Kind] = [:]
@@ -20,6 +22,8 @@ struct Meta: Decodable {
 struct MetaCategory: Decodable, Hashable {
     var id: String
     var name: String
+    /// The purpose-built phone screen that shows this category ("lights", "security"…), nil for none.
+    var screen: String?
 }
 
 struct KindState: Decodable, Hashable {
@@ -180,10 +184,12 @@ struct Entity: Decodable, Hashable, Identifiable {
     var room: String?
     /// The light or switch group this device belongs to (it shows inside that group's row).
     var group: String?
+    /// The icon set on it in Newman (nil: its kind's) - see DeviceLogic.icon.
+    var icon: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, kind, category, integration, integrationName, state, stateLabel, available, attrs, health
-        case properties, still, alerts, live, usedBy, updatedAt, controls, room, group
+        case properties, still, alerts, live, usedBy, updatedAt, controls, room, group, icon
     }
 
     init(id: String, name: String, kind: String, state: String? = nil, attrs: [String: JSONValue]? = nil) {
@@ -219,6 +225,7 @@ struct Entity: Decodable, Hashable, Identifiable {
         controls = try? c.decodeIfPresent(RemoteControls.self, forKey: .controls)
         room = try? c.decodeIfPresent(String.self, forKey: .room)
         group = try? c.decodeIfPresent(String.self, forKey: .group)
+        icon = try? c.decodeIfPresent(String.self, forKey: .icon)
     }
 
     var isAvailable: Bool { available != false && state != "offline" }

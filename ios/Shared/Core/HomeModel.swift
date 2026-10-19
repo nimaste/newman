@@ -8,7 +8,10 @@ import Foundation
 // MARK: - GET /api/home
 
 struct HomeData: Decodable, Hashable {
-    /// A category card ("Climate", "21.8°", "Heat · set to 22°"); `camera` is the cameras card's little picture.
+    /// A card ("Climate", "21.8°", "Heat · set to 22°"): one per category the house has (any category -
+    /// built in or made in Newman), plus Today and People. `screen` says which purpose-built screen it
+    /// opens (nil: the category's own list); `new` marks a category nobody has switched on yet; `camera`
+    /// is the cameras card's little picture.
     struct Card: Decodable, Hashable, Identifiable {
         var id: String
         var on: Bool
@@ -17,11 +20,14 @@ struct HomeData: Decodable, Hashable {
         var detail: String
         var tone: String
         var camera: String?
+        var new: Bool
+        var category: String?
+        var screen: String?
 
-        enum CodingKeys: String, CodingKey { case id, on, title, value, detail, tone, camera }
+        enum CodingKeys: String, CodingKey { case id, on, title, value, detail, tone, camera, new, category, screen }
 
         init(id: String, on: Bool = true, title: String = "", value: String = "", detail: String = "", tone: String = "normal",
-             camera: String? = nil) {
+             camera: String? = nil, new: Bool = false, category: String? = nil, screen: String? = nil) {
             self.id = id
             self.on = on
             self.title = title
@@ -29,6 +35,17 @@ struct HomeData: Decodable, Hashable {
             self.detail = detail
             self.tone = tone
             self.camera = camera
+            self.new = new
+            self.category = category
+            self.screen = screen
+        }
+
+        /// The purpose-built screen it opens: the hub's `screen`; an older hub sent none, and its card ids
+        /// were the screens themselves.
+        var role: String? {
+            if let s = screen?.trimmingCharacters(in: .whitespaces), !s.isEmpty { return s }
+            if category == nil && HomeCards.roles.contains(id) { return id }
+            return nil
         }
 
         init(from decoder: Decoder) throws {
@@ -40,6 +57,9 @@ struct HomeData: Decodable, Hashable {
             detail = (try? c.decodeIfPresent(String.self, forKey: .detail)) ?? ""
             tone = (try? c.decodeIfPresent(String.self, forKey: .tone)) ?? "normal"
             camera = try? c.decodeIfPresent(String.self, forKey: .camera)
+            new = (try? c.decodeIfPresent(Bool.self, forKey: .new)) ?? false
+            category = try? c.decodeIfPresent(String.self, forKey: .category)
+            screen = try? c.decodeIfPresent(String.self, forKey: .screen)
         }
     }
 
@@ -184,8 +204,12 @@ struct HomeData: Decodable, Hashable {
     var cameras: Cameras
     var climate: Climate
     var canAutomate: Bool
+    /// May change their own Home (Edit Home); an admin can switch it off. Older hubs: yes.
+    var canEditHome: Bool
+    /// "household" or "own": which layout this Home is.
+    var layout: String
 
-    enum CodingKeys: String, CodingKey { case cards, favourites, status, cameras, climate, canAutomate }
+    enum CodingKeys: String, CodingKey { case cards, favourites, status, cameras, climate, canAutomate, canEditHome, layout }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -195,6 +219,8 @@ struct HomeData: Decodable, Hashable {
         cameras = (try? c.decodeIfPresent(Cameras.self, forKey: .cameras)) ?? Cameras()
         climate = (try? c.decodeIfPresent(Climate.self, forKey: .climate)) ?? Climate()
         canAutomate = (try? c.decodeIfPresent(Bool.self, forKey: .canAutomate)) ?? false
+        canEditHome = (try? c.decodeIfPresent(Bool.self, forKey: .canEditHome)) ?? true
+        layout = (try? c.decodeIfPresent(String.self, forKey: .layout)) ?? "household"
     }
 
     /// The cards Home shows, in order.
@@ -283,9 +309,10 @@ enum LightRooms {
 
     static func members(_ e: Entity) -> [String] { (e.attr("members")?.arrayValue ?? []).compactMap { $0.stringValue } }
 
-    /// On the Lights screen: lighting devices (the kind's category) that switch on and off.
-    static func isLight(_ e: Entity, _ kind: Kind?) -> Bool {
-        DeviceDirectory.category(e, kind) == "lighting" && DeviceDirectory.switchPair(kind) != nil
+    /// On the Lights screen: devices whose category the hub shows on it (screen "lights") that switch on
+    /// and off.
+    static func isLight(_ e: Entity, _ kind: Kind?, screens: [String: String]) -> Bool {
+        CategoryLogic.screen(e, kind, screens: screens) == "lights" && DeviceDirectory.switchPair(kind) != nil
     }
 
     /// The room a device is in: the one set in Newman, else its integration's area.
@@ -296,8 +323,8 @@ enum LightRooms {
 
     /// Rooms by name ("Other" last); in each, groups and lights by name. A light that's in a group shows
     /// only inside it.
-    static func rooms(_ entities: [Entity], kinds: [String: Kind]) -> [Room] {
-        let lights = entities.filter { isLight($0, kinds[$0.kind]) }
+    static func rooms(_ entities: [Entity], kinds: [String: Kind], screens: [String: String]) -> [Room] {
+        let lights = entities.filter { isLight($0, kinds[$0.kind], screens: screens) }
         let ids = Set(lights.map { $0.id })
         var inGroup = Set<String>()
         for g in lights { for m in members(g) { inGroup.insert(m) } }

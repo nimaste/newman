@@ -48,7 +48,7 @@ struct DeviceSheet: View {
     private func header(_ e: Entity, _ kind: Kind?) -> some View {
         let tone = DeviceLogic.tone(e, kind, problem: DeviceLogic.vitals(e).problem)
         return HStack(spacing: 14) {
-            Image(systemName: Symbols.name(DeviceLogic.kindIcon(kind)))
+            Image(systemName: Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds)))
                 .font(.system(size: 24, weight: .medium))
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(Color.white.opacity(0.08)))

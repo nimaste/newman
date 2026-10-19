@@ -18,8 +18,11 @@ enum HomeCards {
     static let amber: UInt32 = 0xF5C451
     static let green: UInt32 = 0x4FD1A5
     static let purple: UInt32 = 0xB79CFF
+    /// A card for a category without a purpose-built screen.
+    static let neutral: UInt32 = 0xA3AED0
 
-    /// Each card's icon and colour, by card id (Home's own fixed set of cards, not device kinds).
+    /// The purpose-built screens' icons and colours, by screen role (the app's own screens - not
+    /// categories or kinds; any category the hub points at one of them gets its look).
     static let styles: [String: Style] = [
         "cameras": Style(symbol: "video.fill", color: blue),
         "climate": Style(symbol: "thermometer.medium", color: orange),
@@ -27,11 +30,14 @@ enum HomeCards {
         "security": Style(symbol: "shield.lefthalf.filled", color: green),
         "today": Style(symbol: "calendar", color: blue),
         "people": Style(symbol: "person.fill", color: purple),
-        "appliances": Style(symbol: "washer.fill", color: blue),
-        "cleaning": Style(symbol: "sparkles", color: blue),
     ]
 
-    static func style(_ id: String) -> Style { styles[id] ?? Style(symbol: "square.grid.2x2", color: blue) }
+    /// The screens the app has.
+    static var roles: Set<String> { Set(styles.keys) }
+
+    /// A card's look by its screen role; nil for a category with no screen (it's drawn with its devices'
+    /// most common icon in the neutral colour - CategoryLogic.mostCommonIcon).
+    static func style(role: String?) -> Style? { role.flatMap { styles[$0] } }
 
     /// The value's text size: a number (≤ 5 characters) 30, a word or two ("All locked", ≤ 12) 22, else 18.
     static func valueSize(_ value: String) -> Int {

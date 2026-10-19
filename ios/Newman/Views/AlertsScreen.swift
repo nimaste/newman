@@ -148,7 +148,7 @@ struct AlertsScreen: View {
 
     /// The device's own icon when the entry is about one; otherwise a bell.
     private func icon(for item: Item) -> String {
-        if let id = item.entityId, let e = model.entities[id] { return Symbols.name(DeviceLogic.kindIcon(model.kinds[e.kind])) }
+        if let id = item.entityId, let e = model.entities[id] { return Symbols.name(DeviceLogic.icon(e, model.kinds[e.kind], kinds: model.kinds)) }
         return "bell"
     }
 }

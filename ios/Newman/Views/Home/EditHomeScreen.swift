@@ -26,12 +26,19 @@ struct EditHomeScreen: View {
                 Section {
                     ForEach($cards) { $card in
                         Toggle(isOn: $card.on) {
-                            Text(card.title).font(AppFont.manrope(15, .heavy)).foregroundColor(card.on ? Theme.text : Theme.muted)
+                            HStack(spacing: 8) {
+                                Text(card.title).font(AppFont.manrope(15, .heavy)).foregroundColor(card.on ? Theme.text : Theme.muted)
+                                if card.new {
+                                    Text("NEW").font(AppFont.manrope(11, .heavy)).foregroundColor(Theme.blue)
+                                        .padding(.horizontal, 7).frame(height: 20)
+                                        .background(Capsule().fill(Theme.blue.opacity(0.16)))
+                                }
+                            }
                         }
                         .tint(Theme.blue)
                         .frame(minHeight: 44)
                         .listRowBackground(Theme.card)
-                        .accessibilityValue(card.on ? "Shown" : "Hidden")
+                        .accessibilityValue((card.on ? "Shown" : "Hidden") + (card.new ? ", new" : ""))
                     }
                     .onMove { cards.move(fromOffsets: $0, toOffset: $1) }
                 } header: {
@@ -140,7 +147,7 @@ struct FavouritePicker: View {
                     dismiss()
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: Symbols.name(DeviceLogic.kindIcon(model.kind(of: e))))
+                        Image(systemName: Symbols.name(DeviceLogic.icon(e, model.kind(of: e), kinds: model.kinds)))
                             .font(.system(size: 16, weight: .semibold)).foregroundColor(Theme.muted).frame(width: 26)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {

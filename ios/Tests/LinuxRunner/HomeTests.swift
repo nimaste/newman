@@ -78,7 +78,8 @@ func runHomeTests() {
     var kinds: [String: Kind] = [:]
     if let lightKind { kinds["light"] = lightKind }
     if let remoteKind { kinds["remote"] = remoteKind }
-    let rooms = LightRooms.rooms(ents, kinds: kinds)
+    let rooms = LightRooms.rooms(ents, kinds: kinds, screens: ["lighting": "lights"])
+    eq(LightRooms.rooms(ents, kinds: kinds, screens: ["lighting": "security"]).count, 0, "only categories the hub shows on Lights")
     eq(rooms.map { $0.name }, ["Kitchen", "Powder Room", "Other"], "rooms by name, Other last")
     eq(rooms.first?.rows.map { $0.id } ?? [], ["group.kuc", "l.kitchen"], "the group first, its lights hidden, remotes left out")
     eq(rooms.first?.rows.first?.members ?? [], ["z.1", "z.2", "z.3"], "the group's lights behind it")

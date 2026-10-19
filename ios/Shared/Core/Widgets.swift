@@ -266,7 +266,7 @@ enum WidgetLogic {
             reading = WidgetReading(value: .number(v), unit: unit.isEmpty ? nil : unit)
         }
         return WidgetDevice(id: e.id, name: e.name, kind: e.kind, state: e.state, stateLabel: DeviceLogic.stateText(e, kind),
-                            available: e.isAvailable, icon: DeviceLogic.kindIcon(kind), area: e.area, actions: actions,
+                            available: e.isAvailable, icon: DeviceLogic.icon(e, kind), area: e.area, actions: actions,
                             reading: reading)
     }
 

@@ -9,7 +9,7 @@ struct LightsScreen: View {
     @State private var sheetFor: HomeSheet?
 
     var body: some View {
-        let rooms = LightRooms.rooms(model.allEntities, kinds: model.kinds)
+        let rooms = LightRooms.rooms(model.allEntities, kinds: model.kinds, screens: model.categoryScreens)
         let on = LightRooms.onCount(rooms, entities: model.entities, kinds: model.kinds)
         ZStack {
             NightGlassBackground(teal: false)

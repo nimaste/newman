@@ -3,11 +3,12 @@ import Foundation
 // The phone screens' shared wording (Shared/Core/PhoneScreens.swift). Called from main.swift.
 
 func runScreensTests() {
-    // Home cards: one table of icons and colours, and the value's size by its length.
-    eq(HomeCards.style("climate").color, HomeCards.orange, "climate: orange")
-    eq(HomeCards.style("security").symbol, "shield.lefthalf.filled", "security: shield")
-    eq(HomeCards.style("people").color, HomeCards.purple, "people: purple")
-    eq(HomeCards.style("cleaning").color, HomeCards.blue, "cleaning: blue")
+    // Home cards: one table of icons and colours by screen role, and the value's size by its length.
+    eq(HomeCards.style(role: "climate")?.color, HomeCards.orange, "climate: orange")
+    eq(HomeCards.style(role: "security")?.symbol, "shield.lefthalf.filled", "security: shield")
+    eq(HomeCards.style(role: "people")?.color, HomeCards.purple, "people: purple")
+    check(HomeCards.style(role: "cleaning") == nil, "a category without a screen: no fixed style")
+    check(HomeCards.style(role: nil) == nil, "no role: no fixed style")
     eq(HomeCards.valueSize("21.8°"), 30, "a number: 30")
     eq(HomeCards.valueSize("All locked"), 22, "a word or two: 22")
     eq(HomeCards.valueSize("Garage door open"), 18, "longer: 18")

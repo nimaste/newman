@@ -22,6 +22,20 @@ extension AppModel {
     /// May make and change automations: what Home says, else the account (admins always).
     var canAutomate: Bool { home?.canAutomate ?? user?.canAutomate ?? (user?.role == "admin") }
 
+    /// May change their own Home (an admin can switch it off): Edit Home is hidden when not.
+    var canEditHome: Bool { home?.canEditHome ?? true }
+
+    /// Every category in the hub's order (GET /api/categories, else /api/meta's).
+    var categoryList: [MetaCategory] { CategoryLogic.list(categories, meta: meta?.categories ?? []) }
+
+    /// Category id → the purpose-built screen that shows it ("lights", "security"…).
+    var categoryScreens: [String: String] { CategoryLogic.screens(categoryList) }
+
+    /// GET /api/categories; an older hub without it keeps meta's categories.
+    func reloadCategories() async {
+        if let list = try? await APIClient.shared.categories() { categories = list }
+    }
+
     /// An admin account (house settings such as the Cameras tab's big picture).
     var isAdmin: Bool { user?.role == "admin" }
 

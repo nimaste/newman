@@ -156,7 +156,7 @@ struct DeviceButton: View {
                 if model.busy.contains(e.id) {
                     ProgressView().tint(fg).frame(width: 22)
                 } else {
-                    Image(systemName: Symbols.name(DeviceLogic.kindIcon(kind))).font(.system(size: 18, weight: .medium)).frame(width: 22)
+                    Image(systemName: Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds))).font(.system(size: 18, weight: .medium)).frame(width: 22)
                         .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 1) {

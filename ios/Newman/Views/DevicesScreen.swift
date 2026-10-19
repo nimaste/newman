@@ -16,7 +16,7 @@ struct DevicesScreen: View {
     var body: some View {
         let all = model.allEntities
         let shown = DeviceDirectory.matching(all, kinds: model.kinds, query: query, filter: filter)
-        let sections = DeviceDirectory.sections(shown, kinds: model.kinds, categories: model.meta?.categories ?? [])
+        let sections = DeviceDirectory.sections(shown, kinds: model.kinds, categories: model.categoryList)
         let attention = all.filter(DeviceDirectory.needsAttention).count
         let on = all.filter { DeviceDirectory.isOn($0, model.kinds[$0.kind]) }.count
         let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty
@@ -118,7 +118,7 @@ struct DirectoryRow: View {
             let status = DeviceDirectory.statusLine(e, kind)
             let tint: Color = bad || tone == .warn ? Theme.coralText : (lit ? Theme.amber : (tone == .calm ? Theme.teal : Theme.text))
             HStack(spacing: 12) {
-                Image(systemName: bad ? "exclamationmark.triangle" : Symbols.name(DeviceLogic.kindIcon(kind)))
+                Image(systemName: bad ? "exclamationmark.triangle" : Symbols.name(DeviceLogic.icon(e, kind, kinds: model.kinds)))
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(lit ? Theme.amberInk : tint)
                     .frame(width: 38, height: 38)

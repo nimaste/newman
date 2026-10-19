@@ -6,9 +6,13 @@ enum CamerasRoute: Hashable {
 }
 
 enum CameraList {
-    /// Every camera of the house; a zone (part of another camera's picture, attr "camera") isn't one.
-    static func all(_ entities: [Entity], kinds: [String: Kind]) -> [Entity] {
-        entities.filter { kinds[$0.kind]?.hasCamera == true && $0.attr("camera") == nil }
+    /// Every camera the hub shows on the Cameras tab (its category's screen is "cameras"); a zone (part of
+    /// another camera's picture, attr "camera") isn't one.
+    static func all(_ entities: [Entity], kinds: [String: Kind], screens: [String: String]) -> [Entity] {
+        entities.filter { e in
+            let k = kinds[e.kind]
+            return k?.hasCamera == true && e.attr("camera") == nil && CategoryLogic.screen(e, k, screens: screens) == "cameras"
+        }
     }
 }
 
@@ -41,7 +45,7 @@ struct CamerasScreen: View {
     @State private var choosing = false
 
     var body: some View {
-        let cams = CameraList.all(model.allEntities, kinds: model.kinds)
+        let cams = CameraList.all(model.allEntities, kinds: model.kinds, screens: model.categoryScreens)
         let setting = model.home?.cameras ?? HomeData.Cameras()
         let big = setting.bigCamera.flatMap { model.entity($0) }
         ZStack {

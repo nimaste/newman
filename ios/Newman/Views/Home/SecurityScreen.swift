@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Security: the alarm's modes, the locks and garage doors with their buttons (and batteries), the
-/// sensors (doors, water…) as tiles by kind, and today's security activity. Built from what each kind
-/// says about itself (secure state, commands, mode), never from a list of kinds.
+/// Security: the alarm's modes, then a section per kind of device the hub shows here (every category whose
+/// screen is "security" - SecuritySections), titled with the kind's plural name: kinds with buttons (lock,
+/// open…) as rows with their button and battery, the rest as tiles; then today's security activity.
+/// Never a list of kinds or headings.
 struct SecurityScreen: View {
     @EnvironmentObject var model: AppModel
     @State private var sheetFor: HomeSheet?
@@ -10,16 +11,9 @@ struct SecurityScreen: View {
     var body: some View {
         let all = model.allEntities
         let mode = HouseStatus.modeDevice(all, kinds: model.kinds)
-        let secure = all.filter { e in
-            let k = model.kind(of: e)
-            return k?.secureState != nil && !DeviceLogic.isMode(k) && k?.hasCamera != true
-        }
-        let actionable = secure.filter { !DeviceLogic.plainCommands(model.kind(of: $0)).isEmpty }
-        let sensors = secure.filter { DeviceLogic.plainCommands(model.kind(of: $0)).isEmpty }
-        let sensorGroups = Dictionary(grouping: sensors) { $0.kind }
-        let groupOrder = sensorGroups.keys.sorted { a, b in
-            groupTitle(a).localizedCaseInsensitiveCompare(groupTitle(b)) == .orderedAscending
-        }
+        let screens = model.categoryScreens
+        let secure = SecuritySections.members(all, kinds: model.kinds, screens: screens)
+        let sections = SecuritySections.sections(all, kinds: model.kinds, screens: screens)
         let bad = secure.filter { DeviceLogic.notSecure($0, model.kind(of: $0)) }
         ZStack {
             NightGlassBackground(teal: false)
@@ -33,27 +27,7 @@ struct SecurityScreen: View {
                             .font(AppFont.manrope(13, .heavy)).foregroundColor(bad.isEmpty ? Theme.teal : Theme.coralText)
                     }
                     if let mode { modeCard(mode) }
-                    if !actionable.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            CardHeader(text: "Locks & garage").padding(.bottom, 4)
-                            ForEach(Array(actionable.enumerated()), id: \.element.id) { i, e in
-                                actionRow(e)
-                                if i < actionable.count - 1 { Divider().overlay(Theme.divider) }
-                            }
-                        }
-                        .glassCard(padding: 14)
-                    }
-                    if !sensors.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(groupOrder, id: \.self) { k in
-                                CardHeader(text: groupTitle(k))
-                                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-                                    ForEach(sensorGroups[k] ?? []) { e in sensorTile(e) }
-                                }
-                            }
-                        }
-                        .glassCard(padding: 14)
-                    }
+                    ForEach(sections) { s in section(s) }
                     SecurityTodayCard(ids: Set(secure.map { $0.id } + (mode.map { [$0.id] } ?? [])))
                 }
                 .padding(.horizontal, 16)
@@ -64,9 +38,27 @@ struct SecurityScreen: View {
         .sheet(item: $sheetFor) { s in DeviceSheet(entityId: s.id).environmentObject(model) }
     }
 
-    private func groupTitle(_ kindId: String) -> String {
-        let k = model.kinds[kindId]
-        return k?.plural ?? k?.name ?? DeviceLogic.humanize(kindId)
+    /// One kind's devices: rows with their button, or tiles.
+    @ViewBuilder private func section(_ s: SecuritySections.Section) -> some View {
+        let devices = s.ids.compactMap { model.entity($0) }
+        if s.actionable {
+            VStack(alignment: .leading, spacing: 0) {
+                CardHeader(text: s.title).padding(.bottom, 4)
+                ForEach(Array(devices.enumerated()), id: \.element.id) { i, e in
+                    actionRow(e)
+                    if i < devices.count - 1 { Divider().overlay(Theme.divider) }
+                }
+            }
+            .glassCard(padding: 14)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                CardHeader(text: s.title)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                    ForEach(devices) { e in sensorTile(e) }
+                }
+            }
+            .glassCard(padding: 14)
+        }
     }
 
     /// The alarm: one button per mode it can be set to.
