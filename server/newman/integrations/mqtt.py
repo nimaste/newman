@@ -17,6 +17,7 @@ from typing import Any
 
 import aiomqtt
 
+from ._common import level_from_pct, pct_from_level
 from .base import CommandError, Field, Integration
 
 log = logging.getLogger(__name__)
@@ -245,14 +246,14 @@ class MqttIntegration(Integration):
             scale = float(cfg.get("brightness_scale") or 255)
             body: dict[str, Any] = {"state": "OFF" if command == "turn_off" else "ON"}
             if command == "set_brightness":
-                body["brightness"] = round(max(1, min(100, float(value))) / 100 * scale)
+                body["brightness"] = level_from_pct(value, scale)
             if transition:
                 body["transition"] = transition
             return cmd_t, json.dumps(body)
         if command == "set_brightness":
             topic = cfg.get("brightness_command_topic") or cmd_t
             scale = float(cfg.get("brightness_scale") or 255)
-            return topic, str(round(max(1, min(100, float(value))) / 100 * scale))
+            return topic, str(level_from_pct(value, scale))
         if command == "set_position":
             lo, hi = float(cfg.get("position_closed", 0)), float(cfg.get("position_open", 100))
             return cfg.get("set_position_topic") or cmd_t, str(round(lo + (hi - lo) * float(value) / 100))
@@ -296,7 +297,10 @@ class MqttIntegration(Integration):
                 await self._release_state(eid)
             elif role == "brightness":
                 v = render(spec["cfg"].get("brightness_value_template"), payload)
-                await self._set_pct(eid, "brightness", v, float(spec["cfg"].get("brightness_scale") or 255))
+                try:
+                    await self.hub.update(eid, attrs={"brightness": pct_from_level(v, float(spec["cfg"].get("brightness_scale") or 255))})
+                except (TypeError, ValueError):
+                    pass
             elif role == "position":
                 v = render(spec["cfg"].get("position_template"), payload)
                 await self._set_pct(eid, "position", v, float(spec["cfg"].get("position_open", 100)))
@@ -388,7 +392,7 @@ class MqttIntegration(Integration):
                 return None, attrs
             if "brightness" in data:
                 try:
-                    attrs["brightness"] = round(float(data["brightness"]) / float(cfg.get("brightness_scale") or 255) * 100)
+                    attrs["brightness"] = pct_from_level(data["brightness"], float(cfg.get("brightness_scale") or 255))
                 except (TypeError, ValueError):
                     pass
             st = data.get("state")

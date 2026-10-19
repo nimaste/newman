@@ -26,6 +26,22 @@ def device_summary(kinds: Iterable[str]) -> str:
     return join_names([plural(n, noun) for noun, n in counts.most_common()]) or "no devices yet"
 
 
+def level_from_pct(pct: Any, top: float) -> int:
+    """A brightness % as a light's own level (1..top, e.g. Zigbee's 254): 1% is the light's lowest level (1),
+    not 1% of the range - which on a 254-step light is level 3, visibly brighter than the light can go."""
+    p = max(1.0, min(100.0, float(pct)))
+    return int(1 + round((p - 1) * (top - 1) / 99))
+
+
+def pct_from_level(level: Any, top: float) -> int:
+    """A light's level (0..top) as a brightness %: any level above 0 is at least 1% (a light on at its
+    lowest level never reads "0%"), the top is 100%. The reverse of level_from_pct."""
+    lv = float(level)
+    if lv <= 0:
+        return 0
+    return int(max(1, min(100, 1 + round((lv - 1) * 99 / max(1.0, top - 1)))))
+
+
 def clean_id(value: Any) -> str:
     """A MAC / serial / unique id as a safe, stable piece of an entity id ("A8:03:2A" -> "a8032a")."""
     return re.sub(r"[^a-z0-9_]", "", str(value or "").lower().replace("-", "_"))

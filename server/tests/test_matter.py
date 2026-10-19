@@ -387,7 +387,7 @@ class MappingTests(MatterBase):
         sent = [a for c, a in self.server.calls if c == "device_command"]
         self.assertEqual([(a["node_id"], a["endpoint_id"], a["cluster_id"], a["command_name"]) for a in sent],
                          [(1, 1, 6, "Off"), (1, 1, 6, "On"), (2, 1, 8, "MoveToLevelWithOnOff"), (10, 1, 257, "UnlockDoor")])
-        self.assertEqual(sent[2]["payload"]["level"], 127)
+        self.assertEqual(sent[2]["payload"]["level"], 126)  # 50 %: 1 + 49 steps of 253/99
         self.assertEqual(sent[3]["timed_request_timeout_ms"], 1000)
         # Hold to brighten / dim: the light's own Level Control move - up with on/off, down without, stop.
         self.assertTrue(m.can_move(bulb, "brightness"))

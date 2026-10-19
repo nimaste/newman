@@ -1197,7 +1197,7 @@ class HoldToDimTests(Base):
         await self.settle()
         t = engine_mod.RAMP_EVERY_S
         self.assertEqual([json.loads(p) for p in self.sent()],
-                         [{"state": "ON", "brightness": b, "transition": t} for b in (64, 38, 13, 3)])  # 25/15/5/1 %
+                         [{"state": "ON", "brightness": b, "transition": t} for b in (62, 37, 11, 1)])  # 25/15/5/1 % (1 % = the lowest level)
 
     async def test_lights_that_cant_fade_step_plainly(self):
         await self.msg("homeassistant/light/tasmota_1/light/config", json.dumps({

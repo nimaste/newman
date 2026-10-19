@@ -96,7 +96,7 @@ class MqttDeviceTests(unittest.IsolatedAsyncioTestCase):
         await self.m.command(plug.id, "turn_off")
         await self.m.command(bulb.id, "set_brightness", 50)
         self.assertEqual(self.m._client.published[-2:], [("zigbee2mqtt/Coffee Plug/set", "OFF"),
-                                                         ("zigbee2mqtt/Hall Bulb/set", '{"state": "ON", "brightness": 127}')])
+                                                         ("zigbee2mqtt/Hall Bulb/set", '{"state": "ON", "brightness": 126}')])
         await self.msg("zigbee2mqtt/bridge/state", '{"state":"offline"}')
         self.assertFalse(self.hub.get(plug.id).available)
 

@@ -39,7 +39,7 @@ from typing import Any, Awaitable, Callable
 import aiohttp
 
 from ..kinds import KINDS
-from ._common import TaskKeeper, clean_id, device_summary, plural
+from ._common import TaskKeeper, clean_id, device_summary, level_from_pct, pct_from_level, plural
 from .base import CommandError, Field, Integration, check_every_field
 
 log = logging.getLogger(__name__)
@@ -796,7 +796,7 @@ class MatterIntegration(Integration):
             state = None if on is None else ("on" if on else "off")
             level = g(LEVEL, 0)
             if spec.get("dimmable") and spec["kind"] == "light" and isinstance(level, (int, float)):
-                attrs["brightness"] = max(1, round(level / 254 * 100))  # a slider position, 1-100
+                attrs["brightness"] = pct_from_level(level, 254)  # a slider position, 1-100
         elif role == "lock":
             ls = g(DOOR_LOCK, 0)
             state = LOCK_STATES.get(ls) if isinstance(ls, int) else None
@@ -1092,7 +1092,7 @@ class MatterIntegration(Integration):
             if role == "onoff" and command in ("turn_on", "turn_off"):
                 await send(ON_OFF, "On" if command == "turn_on" else "Off")
             elif role == "onoff" and command == "set_brightness" and spec.get("dimmable"):
-                await send(LEVEL, "MoveToLevelWithOnOff", {"level": max(1, round(pct(value) / 100 * 254)),
+                await send(LEVEL, "MoveToLevelWithOnOff", {"level": level_from_pct(pct(value), 254),
                                                            "transitionTime": 0, "optionsMask": 0, "optionsOverride": 0})
             elif role == "lock" and command in ("lock", "unlock"):
                 await send(DOOR_LOCK, "LockDoor" if command == "lock" else "UnlockDoor", timed=1000)
