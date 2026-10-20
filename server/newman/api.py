@@ -2718,29 +2718,61 @@ def build_app(h: "Newman") -> web.Application:
         if not cached.is_file():
             try:
                 finished = await inst.event_finished(ev)
-                up = await inst.open_clip(ev, None)
             except Exception as e:
                 return _err(502, f"Frigate unreachable: {e}")
-            try:
-                if up.status_code >= 400:
-                    return _err(up.status_code, "clip not available (yet)")
-                if not finished:
+            if not finished:
+                try:
+                    up = await inst.open_clip(ev, None)
+                except Exception as e:
+                    return _err(502, f"Frigate unreachable: {e}")
+                try:
+                    if up.status_code >= 400:
+                        return _err(up.status_code, "clip not available (yet)")
                     resp = web.StreamResponse(headers={"Content-Type": "video/mp4", "Cache-Control": "no-store"})
                     await resp.prepare(req)
                     async for chunk in up.aiter_bytes(64 * 1024):
                         await resp.write(chunk)
                     await resp.write_eof()
                     return resp
-                h.clip_dir.mkdir(parents=True, exist_ok=True)
-                tmp = cached.with_suffix(".part")
-                with tmp.open("wb") as fh:
-                    async for chunk in up.aiter_bytes(256 * 1024):
-                        fh.write(chunk)
-                tmp.replace(cached)
-                prune_clips()
-            finally:
-                await up.aclose()
+                finally:
+                    await up.aclose()
+            # One copy from Frigate per clip, however many players ask at once (a player trying again,
+            # two tablets): the others wait for it, then all are served the copy.
+            job = clip_copies.get(cached.name)
+            if job is None:
+                job = clip_copies[cached.name] = asyncio.ensure_future(copy_clip(inst, ev, cached))
+                job.add_done_callback(lambda _, k=cached.name: clip_copies.pop(k, None))
+            status, error = await asyncio.shield(job)
+            if not cached.is_file():
+                return _err(status, error or "clip not available (yet)")
         return web.FileResponse(cached, headers={"Content-Type": "video/mp4", "Cache-Control": "private, max-age=86400"})
+
+    clip_copies: dict[str, asyncio.Future] = {}
+
+    async def copy_clip(inst: FrigateIntegration, ev: str, cached: Path) -> tuple[int, str]:
+        """A finished clip fetched from Frigate into the cache, through a .part file of its own (so two copies
+        can never write the same file): (status, error) - 200 when it's there."""
+        try:
+            up = await inst.open_clip(ev, None)
+        except Exception as e:
+            return 502, f"Frigate unreachable: {e}"
+        tmp = cached.with_name(f"{cached.stem}.{secrets.token_hex(6)}.part")
+        try:
+            if up.status_code >= 400:
+                return up.status_code, "clip not available (yet)"
+            h.clip_dir.mkdir(parents=True, exist_ok=True)
+            with tmp.open("wb") as fh:
+                async for chunk in up.aiter_bytes(256 * 1024):
+                    fh.write(chunk)
+            tmp.replace(cached)
+            prune_clips()
+            return 200, ""
+        except Exception as e:
+            log.warning("Couldn't copy clip %s from %s: %s", ev, inst.display_name, e)
+            return 502, f"Couldn't copy the clip from Frigate: {e}"
+        finally:
+            tmp.unlink(missing_ok=True)
+            await up.aclose()
 
     def prune_clips(days: int | None = None) -> None:
         """Copies of watched clips older than Settings > Cameras says go."""

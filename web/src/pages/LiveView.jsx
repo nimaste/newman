@@ -19,14 +19,24 @@ function whatOf(a) {
   return a.title || 'Alert';
 }
 
+const CLIP_TRIES = 3;
+const CLIP_WAITS = [2000, 5000]; // before the 2nd and 3rd tries
+
+/** An alert's clip. Until it can play, its snapshot under a veil ("Loading the clip…"); a player that fails
+ *  tries again by itself (CLIP_TRIES in all, a fresh request each time), and only then says so, with Try again. */
 function Clip({ alert }) {
-  const [failed, setFailed] = useState(false);
   const src = clipUrl(alert.clip);
+  const [go, setGo] = useState({ n: 1, tries: 1, state: 'loading' }); // n: requests so far; state: loading | waiting | ready | failed
   const begun = useRef(false);
   useEffect(() => {
-    setFailed(false);
+    setGo({ n: 1, tries: 1, state: 'loading' });
     begun.current = false;
   }, [alert.id]);
+  useEffect(() => {
+    if (go.state !== 'waiting') return undefined;
+    const t = setTimeout(() => setGo((g) => ({ n: g.n + 1, tries: g.tries + 1, state: 'loading' })), CLIP_WAITS[go.tries - 1] || 5000);
+    return () => clearTimeout(t);
+  }, [go]);
   // Start it ourselves once it can play: some tablets' web views ignore autoplay (React doesn't put
   // `muted` on the element itself), which left the clip waiting for a second tap on ▶.
   const start = (ev) => {
@@ -36,15 +46,59 @@ function Clip({ alert }) {
     v.muted = true;
     if (v.paused) v.play().catch(() => {});
   };
-  if (!src || failed) {
+  const ready = () => setGo((g) => (g.state === 'loading' ? { ...g, state: 'ready' } : g));
+  const failed = () => setGo((g) => ({ ...g, state: g.tries < CLIP_TRIES ? 'waiting' : 'failed' }));
+  const snapshot = alert.snapshotUrl ? <img src={alert.snapshotUrl} alt={`Snapshot: ${alert.title || whatOf(alert)}`} /> : null;
+  if (!src) {
     return (
       <div className="lv-clip lv-clip--none">
-        {alert.snapshotUrl ? <img src={alert.snapshotUrl} alt={`Snapshot: ${alert.title || whatOf(alert)}`} /> : null}
-        <span className="lv-note">{src ? "This clip isn't available — the camera system may not have kept a recording." : 'No video for this alert.'}</span>
+        {snapshot}
+        <span className="lv-note">No video for this alert.</span>
       </div>
     );
   }
-  return <video key={alert.id} className="lv-clip" src={src} controls autoPlay playsInline muted onLoadedMetadata={start} onCanPlay={start} onError={() => setFailed(true)} aria-label={`Recording: ${alert.title || whatOf(alert)}`} />;
+  const playing = go.state === 'loading' || go.state === 'ready';
+  return (
+    <>
+      {playing ? (
+        <video
+          key={alert.id + ':' + go.n}
+          className="lv-clip"
+          src={go.n > 1 ? src + (src.includes('?') ? '&' : '?') + 'try=' + go.n : src}
+          controls
+          autoPlay
+          playsInline
+          muted
+          onLoadedMetadata={start}
+          onCanPlay={(ev) => {
+            start(ev);
+            ready();
+          }}
+          onLoadedData={ready}
+          onError={failed}
+          aria-label={`Recording: ${alert.title || whatOf(alert)}`}
+        />
+      ) : null}
+      {go.state !== 'ready' ? (
+        <div className="lv-clip lv-clip--none" aria-live="polite">
+          {snapshot}
+          {go.state === 'failed' ? (
+            <span className="lv-clip-msg">
+              <span className="lv-note">This clip couldn't be played.</span>
+              <button type="button" className="lv-clip-again" onClick={() => setGo((g) => ({ n: g.n + 1, tries: 1, state: 'loading' }))}>
+                Try again
+              </button>
+            </span>
+          ) : (
+            <span className="lv-clip-msg">
+              <span className="lv-clip-spin" aria-hidden="true" />
+              <span className="lv-note">Loading the clip…</span>
+            </span>
+          )}
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 /** The alert to replay when the view opens (the wall's alerts tile sets it before navigating). */
