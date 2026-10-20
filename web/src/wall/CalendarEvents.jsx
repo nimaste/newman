@@ -1,6 +1,7 @@
 // Calendar events on the wall (approved WallEvent / WallAdd / WallReminder boards): tapping an event
 // opens its card (when, where, notes, a QR code for its link; Edit on calendars Newman may change);
-// + on the calendar tile opens the new-event form - What (required), Calendar, All day, Starts / Ends as
+// + New event on the full calendar opens the new-event form (starting on the day chosen there) - What
+// (required), Calendar, All day, Starts / Ends as
 // big date and time buttons (a month calendar; hour and minute wheels with AM / PM), Repeats (incl.
 // Custom…) - which won't save without a name or with the end before the start, moves the end with the
 // start, and closes on Save. Writes go through the hub (POST/PUT api/calendars/{id}/events) to the
@@ -69,7 +70,11 @@ export function useCalendarSheets() {
         document.body,
       )
     : null;
-  return { openEvent: (ev) => setSheet({ kind: 'event', ev }), newEvent: () => setSheet({ kind: 'form' }), ui };
+  return {
+    openEvent: (ev) => setSheet({ kind: 'event', ev }),
+    newEvent: (day) => setSheet({ kind: 'form', day: day instanceof Date ? day : null }), // day: the one it starts on
+    ui,
+  };
 }
 
 function Sheets({ sheet, setSheet }) {
@@ -104,7 +109,7 @@ function Sheets({ sheet, setSheet }) {
       </div>
     );
   }
-  return <EventForm ev={sheet.ev} scope={sheet.scope || 'all'} onClose={close} />;
+  return <EventForm ev={sheet.ev} day={sheet.day} scope={sheet.scope || 'all'} onClose={close} />;
 }
 
 /* ---------------- the card ---------------- */
@@ -165,7 +170,14 @@ function nextHour() {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1, 0);
 }
 
-export function EventForm({ ev, scope, onClose }) {
+/** A new event's start: the next hour, on `day` when one is given (that hour of it; today: the next hour). */
+function firstStart(day) {
+  const n = nextHour();
+  if (!day || sameDay(day, new Date())) return n;
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), n.getHours(), 0);
+}
+
+export function EventForm({ ev, day, scope, onClose }) {
   const { entities } = useHub();
   const cals = writableCalendars(entities);
   const editing = !!(ev && ev.href);
@@ -173,8 +185,8 @@ export function EventForm({ ev, scope, onClose }) {
   const [title, setTitle] = useState('');
   const [calId, setCalId] = useState((ev && ev.calId) || (cals[0] && cals[0].id) || '');
   const [allDay, setAllDay] = useState(false);
-  const [start, setStart] = useState(nextHour);
-  const [end, setEnd] = useState(() => new Date(nextHour().getTime() + 3600e3));
+  const [start, setStart] = useState(() => firstStart(day));
+  const [end, setEnd] = useState(() => new Date(firstStart(day).getTime() + 3600e3));
   const [rule, setRule] = useState('');
   const [extra, setExtra] = useState({ location: '', url: '', notes: '' });
   const [tried, setTried] = useState(false);

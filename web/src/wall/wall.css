@@ -1839,11 +1839,24 @@ button.wt-chip {
 }
 
 /* ---- calendar tile ---- */
+.wt-tile--calendar {
+  position: relative;
+}
 .cal {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.cal-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  cursor: pointer;
+}
+.cal-ev.is-cut {
+  visibility: hidden;
 }
 .cal-head {
   display: flex;
@@ -2833,6 +2846,7 @@ button.wt-chip {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
+  touch-action: pan-y; /* sideways swipes are the grid's: a month back / on */
 }
 .wall .wcal-day {
   position: relative;
@@ -2858,9 +2872,8 @@ button.wt-chip {
   border-color: var(--wt-ink);
   background: rgba(var(--wt-ink-rgb, 238, 242, 255), 0.16);
 }
-.wall .wcal-day.is-off {
-  opacity: 0.32;
-  cursor: default;
+.wall .wcal-day.is-out {
+  opacity: 0.4;
 }
 .wcal-num {
   display: flex;
@@ -3036,10 +3049,42 @@ button.wt-chip {
 .wcal-head .wt-cams-title {
   white-space: nowrap;
 }
-@container wall (max-width: 1100px) {
-  .wcal-head .wt-dim-text {
-    display: none;
-  }
+.wcal-month {
+  min-width: 190px;
+  text-align: center;
+}
+.wall .wcal-round,
+.wall .wcal-today,
+.wall .wcal-add {
+  flex: none;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.16);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  color: var(--wt-ink);
+  font: inherit;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.wall .wcal-round {
+  width: 52px;
+  padding: 0;
+}
+.wall .wcal-today {
+  padding: 0 18px;
+  font-size: 15px;
+}
+.wall .wcal-add {
+  gap: 8px;
+  padding: 0 22px;
+  border-color: transparent;
+  background: var(--wt-teal);
+  color: var(--wt-on-teal, #062a24);
+  font-size: 16px;
+  white-space: nowrap;
 }
 /* ---- Today tile (TabletToday board) ---- */
 .td {
@@ -4259,29 +4304,6 @@ button.wt-chip {
 }
 
 /* ---- calendar events: the card, the add / edit form, its pickers, reminder cards (CalendarEvents.jsx) ---- */
-.cal-headrow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.cal-head-link {
-  color: inherit;
-  text-decoration: none;
-}
-.cal-add {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 22px;
-  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.16);
-  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
-  color: var(--wt-ink);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
-button.cal-ev,
 button.wcal-ev {
   width: 100%;
   border: 0;

@@ -1,18 +1,24 @@
-// The wall's full-screen calendar (#/wall/calendar, approved TabletCalendar board): the next 31 days
-// as a grid from this week's Monday, the chosen day's events on the right, or everything coming up.
-// Data as the Calendar tile: calendar devices' attrs.upcoming / attrs.colour (only `cals` if given).
+// The wall's full-screen calendar (#/wall/calendar, approved TabletCalendar board): a month, Sunday to
+// Saturday (‹ › or a swipe for the month before / after, Today back to this one; days of the months either
+// side dimmed), the chosen day's events on the right, or everything coming up; + New event on calendars
+// Newman may change. Data as the Calendar tile: calendar devices' attrs.upcoming / attrs.colour (only `cals`
+// if given) while the month is inside what upcoming holds (attrs.upcomingUntil), else the hub's
+// GET api/calendars/{id}/events?from=&to= for the weeks shown - asked again when the calendar was read
+// again (attrs.fetchedAt); a calendar that can't answer it shows what upcoming has.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api, enc } from '../api.js';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
-import { useCalendarSheets } from './CalendarEvents.jsx';
+import { useCalendarSheets, writableCalendars } from './CalendarEvents.jsx';
 
-const DAYS_AHEAD = 31;
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const SWIPE_PX = 60; // further than this sideways (and more sideways than down) moves a month
 
 const pad = (n) => String(n).padStart(2, '0');
 export const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const monthOf = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 const parseKey = (k) => {
   const [y, m, d] = String(k).split('-').map(Number);
   return y && m && d ? new Date(y, m - 1, d) : null;
@@ -36,24 +42,67 @@ function whenText(ev) {
   return ev.e - ev.s > 60e3 ? `${clock(ev.s)} – ${clock(ev.e)}` : clock(ev.s);
 }
 
-/** Calendar devices → their events in the window, each with colour and calendar name. */
-function useEvents(cals, from, until) {
+/** A calendar's events (the hub's shape) → the screen's, with colour and calendar name, in [from, until). */
+function shape(c, list, tag, from, until) {
+  const out = [];
+  list.forEach((ev, i) => {
+    const s = new Date(ev.start);
+    const e = new Date(ev.end || ev.start);
+    if (Number.isNaN(s.getTime()) || e <= from || s >= until) return;
+    out.push({ ...ev, key: c.id + tag + i, s, e, colour: c.attrs.colour || '#3CCFB4', cal: c.name, calId: c.id, writable: c.attrs.readOnly === false });
+  });
+  return out;
+}
+
+const order = (a, b) => (a.allDay === b.allDay ? a.s - b.s : a.allDay ? -1 : 1);
+
+/** The calendars, everything coming up (from `today`), and the events of the weeks shown [from, until). */
+function useEvents(cals, today, from, until, now) {
   const { entities } = useHub();
-  return useMemo(() => {
+  const calendars = useMemo(() => {
     const ids = cals || [];
-    const list = (entities || []).filter((e) => e.attrs && Array.isArray(e.attrs.upcoming)).filter((e) => !ids.length || ids.includes(e.id));
-    const events = [];
-    list.forEach((c) =>
-      c.attrs.upcoming.forEach((ev, i) => {
-        const s = new Date(ev.start);
-        const e = new Date(ev.end || ev.start);
-        if (Number.isNaN(s.getTime()) || e <= from || s >= until) return;
-        events.push({ ...ev, key: c.id + ':' + i, s, e, colour: c.attrs.colour || '#3CCFB4', cal: c.name, calId: c.id, writable: c.attrs.readOnly === false });
-      }),
-    );
-    events.sort((a, b) => (a.allDay === b.allDay ? a.s - b.s : a.allDay ? -1 : 1));
-    return { calendars: list, events };
-  }, [entities, cals, from, until]);
+    return (entities || []).filter((e) => e.attrs && Array.isArray(e.attrs.upcoming)).filter((e) => !ids.length || ids.includes(e.id));
+  }, [entities, cals]);
+  const [fetched, setFetched] = useState({}); // calendar id -> {sig, events} for the weeks shown
+  const cannot = useRef(new Set()); // calendars whose connection can't show other days
+  // Inside what upcoming holds: after now (it has nothing that's over), before upcomingUntil.
+  const inside = (c) => from.getTime() > now && !!c.attrs.upcomingUntil && until <= new Date(c.attrs.upcomingUntil);
+  const span = `${dayKey(from)}|${dayKey(until)}`;
+  const sigOf = (c) => `${span}|${c.attrs.fetchedAt || ''}|${c.attrs.upcoming.length}`;
+  const wanted = calendars.filter((c) => !inside(c) && !cannot.current.has(c.id));
+  const want = wanted.map((c) => c.id + '=' + sigOf(c)).join(',');
+
+  useEffect(() => {
+    let gone = false;
+    wanted.forEach((c) => {
+      const sig = sigOf(c);
+      if (fetched[c.id] && fetched[c.id].sig === sig) return;
+      api
+        .get(`api/calendars/${enc(c.id)}/events?from=${dayKey(from)}&to=${dayKey(until)}`, { quiet: true })
+        .then((r) => !gone && setFetched((f) => ({ ...f, [c.id]: { sig, events: Array.isArray(r.events) ? r.events : [] } })))
+        .catch((e) => {
+          if (e && e.status === 404) cannot.current.add(c.id);
+        });
+    });
+    return () => {
+      gone = true;
+    };
+  }, [want]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return useMemo(() => {
+    const upcoming = [];
+    const shown = [];
+    calendars.forEach((c) => {
+      upcoming.push(...shape(c, c.attrs.upcoming, ':', today, new Date(8.64e15)));
+      const got = fetched[c.id];
+      // Until the hub answers (or when it can't): what upcoming has for these weeks.
+      const list = !inside(c) && got && got.sig === sigOf(c) ? got.events : c.attrs.upcoming;
+      shown.push(...shape(c, list, list === c.attrs.upcoming ? ':' : ':m', from, until));
+    });
+    upcoming.sort(order);
+    shown.sort(order);
+    return { calendars, upcoming, events: shown };
+  }, [calendars, fetched, today, from, until]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** The events covering a day (multi-day ones show on each day they cover), all-day first. */
@@ -89,29 +138,68 @@ export default function CalendarView({ day, cals, onBack }) {
     const d = new Date(now);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   }, [Math.floor(now / 3600e3)]); // eslint-disable-line react-hooks/exhaustive-deps
-  const last = addDays(today, DAYS_AHEAD - 1);
-  const until = addDays(today, DAYS_AHEAD);
-  const start = addDays(today, -((today.getDay() + 6) % 7)); // this week's Monday
-  const rows = Math.ceil((Math.round((until - start) / 86400e3)) / 7); // 5, or 6 when today is a Sunday
-  const { calendars, events } = useEvents(cals, today, until);
-
-  // Opening without ?day: today, or the first day with events if today is empty.
-  const firstBusy = () => {
-    for (let i = 0; i < DAYS_AHEAD; i += 1) if (eventsOn(events, addDays(today, i)).length) return dayKey(addDays(today, i));
-    return dayKey(today);
-  };
   const asked = parseKey(day);
-  const initial = asked && asked >= today && asked <= last ? dayKey(asked) : eventsOn(events, today).length ? dayKey(today) : firstBusy();
-  const [sel, setSel] = useState(initial);
+  const [sel, setSel] = useState(() => dayKey(asked || today));
+  const [view, setView] = useState(() => monthOf(asked || today));
   const [all, setAll] = useState(false);
+
+  const start = addDays(view, -view.getDay()); // the Sunday on or before the 1st
+  const inMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
+  const rows = Math.ceil((view.getDay() + inMonth) / 7); // 5 or 6 (4 for a February from a Sunday)
+  const until = addDays(start, rows * 7);
+  const range = useMemo(() => [start, until], [dayKey(start), rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { calendars, upcoming: coming, events } = useEvents(cals, today, range[0], range[1], now);
+  const canAdd = writableCalendars(calendars).length > 0;
+
+  // Opening without ?day on a month with nothing today: the first day this month with events coming up.
+  const looked = useRef(!!asked);
+  useEffect(() => {
+    if (looked.current || !calendars.length) return;
+    looked.current = true;
+    if (eventsOn(coming, today).length) return;
+    const next = coming.find((ev) => ev.s > today && ev.s.getMonth() === today.getMonth() && ev.s.getFullYear() === today.getFullYear());
+    if (next) setSel(dayKey(new Date(next.s.getFullYear(), next.s.getMonth(), next.s.getDate())));
+  }, [calendars.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Another month: today when it's this month, else its 1st.
+  const toMonth = (m) => {
+    setView(m);
+    setSel(dayKey(m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth() ? today : m));
+    setAll(false);
+  };
+  const step = (n) => toMonth(new Date(view.getFullYear(), view.getMonth() + n, 1));
+  const pick = (d) => {
+    setSel(dayKey(d));
+    setAll(false);
+    if (d.getMonth() !== view.getMonth()) setView(monthOf(d));
+  };
+
+  // Swiping the grid left / right: the next / previous month (the tap that ends a swipe picks no day).
+  const swipe = useRef(null);
+  const swiped = useRef(false);
+  const onPointerDown = (e) => {
+    swipe.current = { x: e.clientX, y: e.clientY };
+    swiped.current = false;
+  };
+  const onPointerUp = (e) => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swiped.current = true;
+      step(dx < 0 ? 1 : -1);
+    }
+  };
 
   const cells = Array.from({ length: rows * 7 }, (_, i) => addDays(start, i));
   const selDate = parseKey(sel) || today;
   const dayEvents = eventsOn(events, selDate);
   // Everything: each event once, under the day it starts (or today, if it started before).
-  const upcoming = events.map((ev) => ({ ev, on: ev.s < today ? today : new Date(ev.s.getFullYear(), ev.s.getMonth(), ev.s.getDate()) })).sort((a, b) => a.on - b.on || (a.ev.allDay === b.ev.allDay ? a.ev.s - b.ev.s : a.ev.allDay ? -1 : 1));
+  const upcoming = coming.map((ev) => ({ ev, on: ev.s < today ? today : new Date(ev.s.getFullYear(), ev.s.getMonth(), ev.s.getDate()) })).sort((a, b) => a.on - b.on || order(a.ev, b.ev));
   const n = Math.round((selDate - today) / 86400e3);
-  const rel = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : `In ${n} days`;
+  const rel = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n === -1 ? 'Yesterday' : n < 0 ? `${-n} days ago` : `In ${n} days`;
   let lastHeading = null;
 
   return (
@@ -121,44 +209,66 @@ export default function CalendarView({ day, cals, onBack }) {
           <button type="button" className="wt-back" onClick={onBack}>
             <Icon name="chevronLeft" size={26} strokeWidth={2.4} /> Back
           </button>
-          <span className="wt-cams-title">Next 31 days</span>
-          <span className="wt-dim-text">Tap a day to see it</span>
           <span className="wcal-gap" />
-          {calendars.length > 1 ? (
-            <span className="wcal-key">
-              {calendars.map((c) => (
-                <span key={c.id} className="wcal-key-item">
-                  <span className="wcal-key-sq" style={{ background: c.attrs.colour || '#3CCFB4' }} />
-                  {c.name}
-                </span>
-              ))}
-            </span>
+          <button type="button" className="wcal-round" aria-label="Previous month" onClick={() => step(-1)}>
+            <Icon name="chevronLeft" size={28} strokeWidth={2.6} />
+          </button>
+          <span className="wt-cams-title wcal-month">{view.toLocaleDateString([], { month: 'long', year: 'numeric' })}</span>
+          <button type="button" className="wcal-round" aria-label="Next month" onClick={() => step(1)}>
+            <Icon name="chevronRight" size={28} strokeWidth={2.6} />
+          </button>
+          <button type="button" className="wcal-today" onClick={() => toMonth(monthOf(today))}>
+            Today
+          </button>
+          <span className="wcal-gap" />
+          {canAdd ? (
+            <button type="button" className="wcal-add" onClick={() => sheets.newEvent(selDate)}>
+              <Icon name="plus" size={22} strokeWidth={2.6} /> New event
+            </button>
           ) : null}
         </div>
+        {calendars.length > 1 ? (
+          <span className="wcal-key">
+            {calendars.map((c) => (
+              <span key={c.id} className="wcal-key-item">
+                <span className="wcal-key-sq" style={{ background: c.attrs.colour || '#3CCFB4' }} />
+                {c.name}
+              </span>
+            ))}
+          </span>
+        ) : null}
         <div className="wcal-week">
           {WEEKDAYS.map((w) => (
             <span key={w}>{w}</span>
           ))}
         </div>
-        <div className="wcal-grid" style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}>
+        <div
+          className="wcal-grid"
+          style={{ gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` }}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => (swipe.current = null)}
+          onClickCapture={(e) => {
+            if (swiped.current) {
+              swiped.current = false;
+              e.stopPropagation();
+            }
+          }}
+        >
           {cells.map((d) => {
             const k = dayKey(d);
-            const off = d < today || d > last;
-            const evs = off ? [] : eventsOn(events, d);
+            const out = d.getMonth() !== view.getMonth();
+            const evs = eventsOn(events, d);
             const isToday = k === dayKey(today);
             const selected = !all && k === sel;
             return (
               <button
                 key={k}
                 type="button"
-                className={'wcal-day' + (off ? ' is-off' : '') + (isToday ? ' is-today' : '') + (selected ? ' is-sel' : '') + (evs.length > 2 ? ' has-more' : '')}
-                disabled={off}
-                aria-pressed={off ? undefined : selected}
-                aria-label={`${longDay(d)}${off ? '' : evs.length ? `, ${evs.length} ${evs.length === 1 ? 'event' : 'events'}` : ', nothing on'}`}
-                onClick={() => {
-                  setSel(k);
-                  setAll(false);
-                }}
+                className={'wcal-day' + (out ? ' is-out' : '') + (isToday ? ' is-today' : '') + (selected ? ' is-sel' : '') + (evs.length > 2 ? ' has-more' : '')}
+                aria-pressed={selected}
+                aria-label={`${longDay(d)}${evs.length ? `, ${evs.length} ${evs.length === 1 ? 'event' : 'events'}` : ', nothing on'}`}
+                onClick={() => pick(d)}
               >
                 <span className="wcal-num">
                   <span className="wcal-n">{d.getDate()}</span>

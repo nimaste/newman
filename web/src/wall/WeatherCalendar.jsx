@@ -9,7 +9,6 @@ import { Icon } from '../icons.jsx';
 import { entityLabel } from '../model.js';
 import { WeatherIcon } from './WeatherIcon.jsx';
 import { DaySheet } from './WeatherDay.jsx';
-import { useCalendarSheets, writableCalendars } from './CalendarEvents.jsx';
 
 export { WeatherIcon };
 
@@ -348,11 +347,48 @@ function dayLabel(key, now) {
   return [date.toLocaleDateString([], { weekday: 'short' }), date.toLocaleDateString([], { month: 'short', day: 'numeric' })];
 }
 
+/** How many of `ref`'s rows (children matching `rows`) fit whole in its height, as drawn; null while it
+ *  has no height (screen off, tab hidden), so a list measured then hides nothing. */
+function useWholeRows(ref, rows, count) {
+  const [n, setN] = useState(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = () => {
+      if (!el.clientHeight) {
+        setN(null);
+        return;
+      }
+      const bottom = el.getBoundingClientRect().bottom + 0.5;
+      let fit = 0;
+      for (const row of el.querySelectorAll(rows)) {
+        if (row.getBoundingClientRect().bottom > bottom) break;
+        fit += 1;
+      }
+      setN(fit);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // A sleeping WebView can miss the resize when the screen comes back, so measure again then too.
+    const again = () => requestAnimationFrame(measure);
+    document.addEventListener('visibilitychange', again);
+    window.addEventListener('focus', again);
+    window.addEventListener('resize', again);
+    return () => {
+      ro.disconnect();
+      document.removeEventListener('visibilitychange', again);
+      window.removeEventListener('focus', again);
+      window.removeEventListener('resize', again);
+    };
+  }, [ref, rows, count]);
+  return n;
+}
+
 export function CalendarTile({ tile }) {
   const { entities } = useHub();
   const now = useNow(30000);
   const listRef = useRef(null);
-  const fit = useRows(listRef, 54, 4);
   const ids = tile.config.entities || [];
   const cals = (entities || []).filter(hasAgenda).filter((e) => !ids.length || ids.includes(e.id));
   const days = Math.max(1, Math.min(31, Number(tile.config.days) || 31));
@@ -369,33 +405,19 @@ export function CalendarTile({ tile }) {
     }),
   );
   events.sort((a, b) => (a.day === b.day ? (a.allDay === b.allDay ? a.s - b.s : a.allDay ? -1 : 1) : a.day < b.day ? -1 : 1));
-  const shown = fit != null && events.length > fit ? events.slice(0, Math.max(0, fit - 1)) : events;
+  // Every event is drawn; those that don't fit whole are hidden (measured as drawn, so any text size works).
+  const fit = useWholeRows(listRef, '.cal-ev', events.length);
   let lastDay = null;
-  // A tap on an event opens its card; + adds one (calendars Newman may change); a tap anywhere else
-  // (the "+N more" line too) opens the full-screen calendar, with this tile's calendars.
+  // A tap anywhere on the tile - an event, the title, the space between - opens the full-screen calendar,
+  // with this tile's calendars (events are opened and added there).
   const href = '#/wall/calendar' + (ids.length ? '?cals=' + ids.map(encodeURIComponent).join(',') : '');
-  const sheets = useCalendarSheets();
-  const canAdd = writableCalendars(cals).length > 0;
-  const open = (e) => {
-    if (cals.length && !(e.target.closest && e.target.closest('button, a'))) window.location.hash = href;
-  };
   return (
-    <div className={'cal' + (cals.length ? ' cal--link' : '')} onClick={open}>
-      <div className="wt-tile-head cal-headrow">
-        {cals.length ? (
-          <a className="cal-head cal-head-link" href={href} title="Open the calendar">
-            <Icon name="calendar" size={20} /> Coming up
-          </a>
-        ) : (
-          <span className="cal-head">
-            <Icon name="calendar" size={20} /> Coming up
-          </span>
-        )}
-        {canAdd ? (
-          <button type="button" className="cal-add" aria-label="New event" onClick={sheets.newEvent}>
-            <Icon name="plus" size={22} strokeWidth={2.4} />
-          </button>
-        ) : null}
+    <div className="cal">
+      {cals.length ? <a className="cal-cover" href={href} aria-label="Open the calendar" data-tile-surface="" /> : null}
+      <div className="wt-tile-head">
+        <span className="cal-head">
+          <Icon name="calendar" size={20} /> Coming up
+        </span>
       </div>
       <div className="cal-list" ref={listRef}>
         {!(entities || []).some(hasAgenda) ? (
@@ -403,12 +425,13 @@ export function CalendarTile({ tile }) {
         ) : !cals.length ? (
           <div className="wt-empty">The calendars chosen for this tile are gone.</div>
         ) : !events.length ? <div className="wt-muted">Nothing coming up.</div> : null}
-        {shown.map((ev) => {
+        {events.map((ev, i) => {
           const first = ev.day !== lastDay;
           lastDay = ev.day;
           const [l1, l2] = dayLabel(ev.day, now);
+          const cut = fit != null && i >= fit;
           return (
-            <button type="button" key={ev.key} className={'cal-ev' + (ev.on ? ' is-now' : '')} onClick={() => sheets.openEvent(ev)}>
+            <div key={ev.key} className={'cal-ev' + (ev.on ? ' is-now' : '') + (cut ? ' is-cut' : '')} aria-hidden={cut || undefined}>
               <span className="cal-when">
                 {first ? (
                   <>
@@ -428,12 +451,10 @@ export function CalendarTile({ tile }) {
                   {ev.location ? ' · ' + ev.location : ''}
                 </span>
               </span>
-            </button>
+            </div>
           );
         })}
-        {events.length > shown.length ? <div className="wt-more">+{events.length - shown.length} more</div> : null}
       </div>
-      {sheets.ui}
     </div>
   );
 }
