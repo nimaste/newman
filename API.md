@@ -242,9 +242,27 @@ Each change is logged in Activity and sent live as `entity` updates plus `{"type
 
 ## Dashboards and wall tablets
 
-A dashboard: `{"id", "userId", "isDefault", "name", "theme", "christmas", "pages": [{"id", "name", "icon", "tiles": [Tile]}], "names": {entityId: "Show as"}, "home": Home, "tabNames": "current"}`
-on a 12 × 8 grid (`GET /api/dashboards/tiles` lists tile types and their settings; `greeting` and `todo`
-are the Today page's tiles). The `people` tile ("Family map", min 3 × 2, default 6 × 5) shows name chips
+A dashboard: `{"id", "userId", "isDefault", "name", "theme", "christmas", "pages": [{"id", "name", "icon", "tiles": [Tile]}], "names": {entityId: "Show as"}, "home": Home, "tabNames": "current", "grid": [24, 16]}`
+on a 24 × 16 grid (`GET /api/dashboards/tiles` → `{"cols": 24, "rows": 16, "themes", "types", "screens"}` lists
+tile types and their settings; `greeting` and `todo` are the Today page's tiles). Send `"grid": [24, 16]`
+with a `PUT` / `POST`: a dashboard without it is taken to be on the old 12 × 8 grid and every tile's
+`x`, `y`, `w`, `h` doubles (stored dashboards were upgraded once the same way; the climate tile's old
+`page` became `tap`, a devices tile's `style` its `look`).
+
+Settings every tile has (in each type's `fields`): `tap` and `hold` (field type `"action"`, options
+in the field): `{"do": "own"}` (taps only, the default: what the tile does itself) · `{"do": "none"}`
+(the default for `hold`) · `{"do": "page", "page": pageId}` · `{"do": "screen", "screen": id}` (one of
+`screens`: `cameras`, `calendar`, `weather`, `todo` - the wall opens `#/wall/<id>`) ·
+`{"do": "automation", "automation": id}` · `{"do": "device", "entity": id, "command": id}`. Defaults
+aren't stored; a missing page / screen / automation / device is a 400 ("When tapped - choose a page").
+Types with `"lists": true` (climate, devices, values) also have `look` (field type `"look"`): `"auto"`
+(the default: cards when the tile is wide, rows when it's narrow), `"tiles"` or `"list"`; a devices tile's
+`style` follows it (`"list"` / `"tiles"`) for the phone apps.
+`POST /api/dashboards/{id}/tiles/{tileId}/run` `{"which": "tap" | "hold"}` → the automation run - only
+when that tile's `tap` / `hold` is `{"do": "automation"}`; the dashboard's owner (a wall tablet too),
+the tablet it's chosen for, or an admin (404 otherwise).
+
+The `people` tile ("Family map", min 6 × 4, default 12 × 10) shows name chips
 over a map of the home area (people at one place share a bubble; anyone over ~50 km from Home gets an
 edge label instead); its settings: `people` (field type `"people"`: person ids, `[]` = everyone) limits
 who it shows, and `mapLook` (`"light"`, the default, or `"dark"`) is the map's look (Apple Maps' colour
@@ -291,11 +309,11 @@ kept with its transparency as a PNG under `data/wall-pictures/` (and in backups)
 admin; `?token=` works for `<img>`; cached for good, the id is a hash of the picture). Each change sends
 `{"type": "dashboard"}`; removing the dashboard removes its pictures.
 
-The `climate` tile ("Climate glance", min 3 × 4, default 5 × 8, `wallOnly`: not offered for phone
+The `climate` tile ("Climate glance", min 6 × 8, default 10 × 16, `wallOnly`: not offered for phone
 layouts) has `entity` (field filter `"temperature-setting"`: a number command in °C / °F), `rooms`
 (filter `"temperature"`: a °C / °F reading that is the device's own state, or any temperature a
 `climate`-category device reports - not a server's CPU or a disk), `outside` (filter `"forecast"`) and
-`page` (field type `"page"`: one of the dashboard's page ids, or none = the thermostat's dial).
+`look`; a tap opens the thermostat's dial unless `tap` says otherwise.
 
 `GET /api/dashboards[?all=1]` · `GET /api/dashboards/current` (what this device shows) ·
 `POST /api/dashboards` (no `pages` = a starter laid out from the house's devices; `{"copyFrom": id, "name"?,

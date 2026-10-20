@@ -1,8 +1,8 @@
 """Dashboards: each person's pages of tiles, for the wall tablet and the browser. (The phone apps
 use the same tiles on their own 4-column layouts - see phone_layouts.py.)
 
-A dashboard is {"name", "theme", "christmas", "tabNames", "pages": [{"id", "name", "icon", "tiles": [tile]}]} and a tile is
-{"id", "type", "x", "y", "w", "h", "config"} on a GRID_COLS x GRID_ROWS grid. Tile types are
+A dashboard is {"name", "theme", "christmas", "tabNames", "grid", "pages": [{"id", "name", "icon", "tiles": [tile]}]}
+and a tile is {"id", "type", "x", "y", "w", "h", "config"} on a GRID_COLS x GRID_ROWS grid. Tile types are
 listed in TILE_TYPES with the settings each takes, so the editor builds its forms from this list
 and every client draws a tile by its type - nothing here or there knows about device kinds; tiles
 pick devices by what they can do (a camera picture, a number you can set, a secure state…).
@@ -18,7 +18,11 @@ from .automations.describe import clean_dates, dates_errors, dates_ok
 from .categories import screen_of
 from .kinds import KINDS, properties_for
 
-GRID_COLS, GRID_ROWS = 12, 8
+GRID_COLS, GRID_ROWS = 24, 16
+GRID = [GRID_COLS, GRID_ROWS]
+# Dashboards saved before the grid was made finer (12 x 8 - they have no "grid") are drawn at twice the
+# size each way: the same layout, now with half-steps to size and place tiles by (upgrade()).
+OLD_SCALE = 2
 # The wall's look (web/src/wall/theme.css): "midnight" (deep blue, the original look - dashboards saved
 # as "night-glass" are this one), "glass" (light frosted panels) or "christmas" (winter blue, snow).
 THEMES = ("midnight", "glass", "christmas")
@@ -55,18 +59,16 @@ TILE_TYPES: list[dict[str, Any]] = [
                 {"key": "command", "label": "What the dial sets", "type": "command", "filter": "number", "required": True},
                 {"key": "modeCommand", "label": "Mode buttons", "type": "command", "filter": "state"}]},
     {"type": "devices", "name": "Devices", "description": "Buttons for devices: tap to switch, lock, open…",
-     "min": [2, 2], "default": [4, 3],
+     "min": [2, 2], "default": [4, 3], "lists": True,
      "fields": [{"key": "title", "label": "Title", "type": "text"},
                 {"key": "entities", "label": "Devices", "type": "entities", "filter": "any", "required": True},
-                {"key": "style", "label": "Look", "type": "select", "default": "tiles",
-                 "options": [{"value": "tiles", "label": "Big tiles"}, {"value": "list", "label": "List"}]},
                 {"key": "groupBy", "label": "Group by", "type": "select", "default": "none",
                  "options": [{"value": "none", "label": "Nothing"}, {"value": "area", "label": "Room / area"}]}]},
     {"type": "mode", "name": "House mode", "description": "An alarm or other house-mode device with its buttons.",
      "min": [4, 1], "default": [8, 1],
      "fields": [{"key": "entity", "label": "Device", "type": "entity", "filter": "mode", "required": True}]},
     {"type": "values", "name": "Readings", "description": "Numbers and states devices report (temperature, humidity…).",
-     "min": [2, 1], "default": [4, 3],
+     "min": [2, 1], "default": [4, 3], "lists": True,
      "fields": [{"key": "title", "label": "Title", "type": "text"},
                 {"key": "items", "label": "Readings", "type": "readings", "required": True}]},
     {"type": "attention", "name": "Needs attention", "description": "Devices that are offline, low on battery or tampered.",
@@ -104,19 +106,43 @@ TILE_TYPES: list[dict[str, Any]] = [
      "from it full screen (ingredients, steps, servings). (Needs the Forkast connection.)", "min": [3, 3],
      "default": [4, 4], "wallOnly": True, "fields": []},  # the phone apps don't draw it
     {"type": "climate", "name": "Climate glance", "description": "The thermostat and every room's temperature at a "
-     "glance, with a cool-to-warm bar per room. Look only: a tap opens the page you pick (or the thermostat).",
-     "min": [3, 4], "default": [5, 8], "wallOnly": True,  # the phone apps don't draw it (yet)
+     "glance, with a cool-to-warm mark per room. Look only: a tap opens the thermostat's dial, unless When tapped "
+     "says otherwise.",
+     "min": [3, 4], "default": [5, 8], "wallOnly": True, "lists": True,  # the phone apps don't draw it (yet)
      "fields": [{"key": "entity", "label": "Thermostat", "type": "entity", "filter": "temperature-setting"},
                 {"key": "rooms", "label": "Rooms", "type": "entities", "filter": "temperature"},
-                {"key": "outside", "label": "Outside", "type": "entity", "filter": "forecast"},
-                {"key": "page", "label": "Opens page", "type": "page"}]},
+                {"key": "outside", "label": "Outside", "type": "entity", "filter": "forecast"}]},
 ]
 # Every tile can scale its text (names, values) as a group - so one long name can fit without that
 # single line looking different from its neighbours.
 TEXT_SIZE = {"key": "textSize", "label": "Text size", "type": "number", "slider": True, "min": 70, "max": 140,
              "step": 5, "unit": "%", "default": 100}
+# Tiles that show a list of things (rooms, devices, readings): as small cards or as rows, or "auto" -
+# cards when there's room, rows when the tile is narrow (the wall decides by the tile's width).
+LOOKS = ("auto", "tiles", "list")
+LOOK = {"key": "look", "label": "Look", "type": "look", "default": "auto",
+        "options": [{"value": "auto", "label": "Auto", "help": "Tiles when there's room, a list when it's narrow."},
+                    {"value": "tiles", "label": "Tiles", "help": "Each one as a small card."},
+                    {"value": "list", "label": "List", "help": "One row each, with its full name."}]}
+# What a tap or a hold on a tile does - the same choices on every tile (the tile's own buttons, dial
+# and the like keep working): its own thing (taps only: a camera goes full screen, the climate glance
+# opens the thermostat…), a page of this dashboard, one of the wall's screens (WALL_SCREENS), an
+# automation (run as if by hand - its Only if still applies), a device's command, or nothing.
+# Saved as {"do": …} plus "page" | "screen" | "automation" | "entity" and "command".
+ACTIONS = [{"value": "own", "label": "Do what this tile does"}, {"value": "page", "label": "Open a page"},
+           {"value": "screen", "label": "Open a screen"}, {"value": "automation", "label": "Run an automation"},
+           {"value": "device", "label": "Control a device"}, {"value": "none", "label": "Nothing"}]
+# The wall's own full-screen views a tile can open (the wall shows them at #/wall/<id>).
+WALL_SCREENS = [{"id": "cameras", "name": "Cameras"}, {"id": "calendar", "name": "Calendar"},
+                {"id": "weather", "name": "Weather"}, {"id": "todo", "name": "To do"}]
+TAP = {"key": "tap", "label": "When tapped", "type": "action", "default": {"do": "own"}, "options": ACTIONS}
+HOLD = {"key": "hold", "label": "When held", "type": "action", "default": {"do": "none"},
+        "options": [a for a in ACTIONS if a["value"] != "own"]}
 for _t in TILE_TYPES:
-    _t["fields"] = [*_t["fields"], TEXT_SIZE]
+    # Sizes above are in the old grid's cells (12 x 8); the grid is twice as fine now.
+    _t["min"] = [v * OLD_SCALE for v in _t["min"]]
+    _t["default"] = [v * OLD_SCALE for v in _t["default"]]
+    _t["fields"] = [*_t["fields"], *([LOOK] if _t.get("lists") else []), TAP, HOLD, TEXT_SIZE]
 # Each tile's starting size on a phone layout's 4-column grid of square cells ([w, h]): what the
 # phone layout editor uses when a tile is added. `wallOnly` tiles have none: the phone apps don't
 # draw them, so phone layouts never hold them (phone_layouts.py drops any an older layout has).
@@ -226,8 +252,9 @@ def clean_home(raw: Any, pages: list[dict[str, Any]], errors: list[str] | None =
 
 
 def with_home(body: dict[str, Any]) -> dict[str, Any]:
-    """A saved dashboard as clients get it: `home`, `tabNames`, `theme` and `christmas` always there (older
-    ones saved before them get the defaults)."""
+    """A saved dashboard as clients get it: on today's grid, with `home`, `tabNames`, `theme` and `christmas`
+    always there (older ones saved before them get the defaults)."""
+    body = upgrade(body)
     tab_names = body.get("tabNames") if body.get("tabNames") in TAB_NAMES else TAB_NAMES[0]
     return {**body, "home": clean_home(body.get("home"), body.get("pages") or []), "tabNames": tab_names,
             "theme": clean_theme(body.get("theme")), "christmas": clean_christmas(body.get("christmas"))}
@@ -287,11 +314,94 @@ def theme_now(dash: dict[str, Any], today: date | None = None) -> str:
     return "christmas" if season_active(xmas["season"], today) else clean_theme(dash.get("theme"))
 
 
+# -- older dashboards -----------------------------------------------------------------------------
+
+def upgrade(body: dict[str, Any]) -> dict[str, Any]:
+    """A dashboard as an older Newman saved it, brought up to date (nothing changes on one that already is):
+    on the old 12 x 8 grid (no "grid"), every tile's place and size doubles; tile settings that moved
+    (upgrade_config)."""
+    old = body.get("grid") != GRID
+    ids = {p.get("id") for p in body.get("pages") or [] if isinstance(p, dict)}
+    pages = []
+    for p in body.get("pages") or []:
+        if not isinstance(p, dict):
+            continue
+        tiles = []
+        for t in p.get("tiles") or []:
+            if not isinstance(t, dict):
+                continue
+            t = dict(t)
+            if old:
+                for k in ("x", "y", "w", "h"):
+                    try:
+                        t[k] = int(t.get(k, 0)) * OLD_SCALE
+                    except (TypeError, ValueError):
+                        pass  # clean() says it's a bad position
+            t["config"] = upgrade_config(t.get("type"), tile_config(t), ids)
+            tiles.append(t)
+        pages.append({**p, "tiles": tiles})
+    return {**body, "pages": pages, "grid": list(GRID)}
+
+
+def upgrade_config(typ: Any, c: dict[str, Any], pages: set[Any]) -> dict[str, Any]:
+    """A tile's settings from before Look and When tapped: the climate glance's "Opens page" becomes When
+    tapped: open that page (one of this dashboard's `pages` - a page since removed is dropped, as before);
+    a devices tile's "style" (big tiles / list) becomes its Look."""
+    c = dict(c)
+    if typ == "climate" and "page" in c:
+        page = c.pop("page")
+        if page in pages and not isinstance(c.get("tap"), dict):
+            c["tap"] = {"do": "page", "page": page}
+    if typ == "devices" and c.get("look") not in LOOKS:
+        c["look"] = "list" if c.get("style") == "list" else "tiles"
+    return c
+
+
+def clean_action(raw: Any, pages: set[str], tap: bool) -> tuple[dict[str, Any] | None, str]:
+    """A tile's When tapped (`tap`) or When held: (the action to keep - None for the default: its own thing
+    / nothing -, what's missing or "")."""
+    if not isinstance(raw, dict):
+        return None, ""
+    do = raw.get("do")
+    if do in (None, "", "own" if tap else "none") or (do == "own" and not tap):
+        return None, ""
+    if do == "none":
+        return {"do": "none"}, ""
+    if do == "page":
+        page = raw.get("page")
+        return {"do": "page", "page": page if page in pages else None}, "" if page in pages else "choose a page"
+    if do == "screen":
+        screen = raw.get("screen")
+        ok = screen in {s["id"] for s in WALL_SCREENS}
+        return {"do": "screen", "screen": screen if ok else None}, "" if ok else "choose a screen"
+    if do == "automation":
+        aid = raw.get("automation")
+        ok = isinstance(aid, str) and bool(aid)
+        return {"do": "automation", "automation": aid if ok else None}, "" if ok else "choose an automation"
+    if do == "device":
+        eid, cmd = raw.get("entity"), raw.get("command")
+        ok = isinstance(eid, str) and bool(eid) and isinstance(cmd, str) and bool(cmd)
+        return ({"do": "device", "entity": eid if isinstance(eid, str) else None, "command": cmd if isinstance(cmd, str) else None},
+                "" if ok else "choose a device and what to do")
+    return None, f"unknown choice “{do}”"
+
+
+def tile_action(dash: dict[str, Any], tile_id: str, which: str) -> dict[str, Any] | None:
+    """The When tapped / When held action of one of this dashboard's tiles, or None."""
+    for p in dash.get("pages") or []:
+        for t in p.get("tiles") or []:
+            if t.get("id") == tile_id:
+                act = tile_config(t).get(which)
+                return act if isinstance(act, dict) else None
+    return None
+
+
 # -- validation -------------------------------------------------------------------------------
 
 def clean(body: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """Normalise a dashboard sent by a client; return it plus problems (empty = fine to save)."""
     errors: list[str] = []
+    body = upgrade(body)  # sent by a page from before the finer grid: its tiles are on the old one
     pages = []
     for p in (body.get("pages") or [])[:12]:
         tiles = []
@@ -318,6 +428,22 @@ def clean(body: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
                       "tiles": tiles})
     if not pages:
         errors.append("A dashboard needs at least one page")
+    page_ids = {p["id"] for p in pages}
+    for p in pages:
+        for t in p["tiles"]:
+            spec, c = TYPES[t["type"]], t["config"]
+            if not spec.get("lists") or c.get("look") not in LOOKS:
+                c.pop("look", None)
+            if t["type"] == "devices":
+                c["style"] = "list" if c.get("look") == "list" else "tiles"  # what the phone apps go by
+            for f in (TAP, HOLD):
+                act, missing = clean_action(c.get(f["key"]), page_ids, f is TAP)
+                if missing:
+                    errors.append(f"{spec['name']} tile on “{p['name']}”: {f['label']} - {missing}")
+                if act is None:
+                    c.pop(f["key"], None)
+                else:
+                    c[f["key"]] = act
     name = str(body.get("name") or "Dashboard").strip()[:40]
     theme = OLD_THEMES.get(body.get("theme"), body.get("theme"))
     if theme not in THEMES:
@@ -332,12 +458,14 @@ def clean(body: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     home = clean_home(body.get("home"), pages, errors)
     tab_names = body.get("tabNames") if body.get("tabNames") in TAB_NAMES else TAB_NAMES[0]
     return {"name": name, "theme": theme, "christmas": christmas, "pages": pages, "names": names, "home": home,
-            "tabNames": tab_names}, errors
+            "tabNames": tab_names, "grid": list(GRID)}, errors
 
 
 # -- a first dashboard, laid out from the house's own devices ------------------------------------
 
 def _tile(t: str, x: int, y: int, w: int, h: int, **config: Any) -> dict[str, Any]:
+    """A tile placed in the old grid's cells (12 x 8, easier to read), on today's grid."""
+    x, y, w, h = (v * OLD_SCALE for v in (x, y, w, h))
     return {"id": new_tile_id(), "type": t, "x": x, "y": y, "w": w, "h": h, "config": config}
 
 
@@ -366,9 +494,7 @@ def starter(hub: Any, name: str = "Wall tablet") -> dict[str, Any]:
     readings = [{"entity": e.id, "property": p["id"]} for e in ents if screen_of(e.category) == "climate"
                 for p in properties_for(e)[:1] if p["type"] == "number"]
 
-    def tile(t: str, x: int, y: int, w: int, h: int, **config: Any) -> dict[str, Any]:
-        return {"id": new_tile_id(), "type": t, "x": x, "y": y, "w": w, "h": h, "config": config}
-
+    tile = _tile
     dial = dials[0] if dials else None
     dial_cfg = {"entity": dial.id, "command": number_command(dial), "modeCommand": state_command(dial)} if dial else None
     weather = next((e.id for e in ents if matches(e, "forecast")), None)
@@ -378,19 +504,21 @@ def starter(hub: Any, name: str = "Wall tablet") -> dict[str, Any]:
         overview += [tile("camera", 4, 0, 5, 5, entities=cameras[:4]), tile("alerts", 4, 5, 5, 3, limit=4)]
     if dial_cfg:
         overview.append(tile("dial", 9, 0, 3, 4, **dial_cfg))
-    overview.append(tile("devices", 9, 4, 3, 4, title="Shortcuts", entities=(secure_cmd + lights)[:4], style="tiles"))
+    overview.append(tile("devices", 9, 4, 3, 4, title="Shortcuts", entities=(secure_cmd + lights)[:4], style="tiles",
+                         look="auto"))
     security = []
     if modes:
         security.append(tile("mode", 0, 0, 7, 1, entity=modes[0]))
-    security.append(tile("devices", 0, 1, 7, 3, title="Locks & doors", entities=secure_cmd, style="list"))
-    security += [tile("devices", 0, 4, 4, 4, title="Doors & windows", entities=secure_ro, style="list"),
+    security.append(tile("devices", 0, 1, 7, 3, title="Locks & doors", entities=secure_cmd, style="list", look="list"))
+    security += [tile("devices", 0, 4, 4, 4, title="Doors & windows", entities=secure_ro, style="list", look="list"),
                  tile("attention", 4, 4, 3, 4)]
     if cameras:
         security += [tile("camera", 7, 0, 5, 5, entities=cameras), tile("alerts", 7, 5, 5, 3, limit=4)]
     pages = [today_page(hub), {"id": "overview", "name": "Overview", "icon": "home", "tiles": overview},
              {"id": "security", "name": "Security", "icon": "shield", "tiles": security},
              {"id": "lights", "name": "Lights", "icon": "bulb",
-              "tiles": [tile("devices", 0, 0, 12, 8, title="Lights", entities=lights, style="tiles", groupBy="area")]}]
+              "tiles": [tile("devices", 0, 0, 12, 8, title="Lights", entities=lights, style="tiles", look="tiles",
+                                 groupBy="area")]}]
     climate = []
     if dial_cfg:
         climate.append(tile("dial", 0, 0, 8, 8, **dial_cfg))
@@ -401,4 +529,4 @@ def starter(hub: Any, name: str = "Wall tablet") -> dict[str, Any]:
     # Overview is home; mornings start on Today.
     home = clean_home({"page": "overview", "morning": {"page": "today"}}, pages)
     return {"name": name, "theme": THEMES[0], "christmas": clean_christmas(None), "pages": pages, "home": home,
-            "tabNames": TAB_NAMES[0]}
+            "tabNames": TAB_NAMES[0], "grid": list(GRID)}

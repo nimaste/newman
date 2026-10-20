@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .dashboards import with_home
+from .dashboards import GRID, upgrade, with_home
 
 
 def new_id(prefix: str) -> str:
@@ -149,6 +149,11 @@ class Store:
         for col, decl in PEOPLE_COLUMNS.items():
             if col not in have:
                 self._db.execute(f"ALTER TABLE people ADD COLUMN {col} {decl}")
+        # Dashboards from before the wall's finer grid: saved once on the new one (dashboards.upgrade).
+        for r in self._db.execute("SELECT id, body FROM dashboards").fetchall():
+            saved = json.loads(r["body"])
+            if saved.get("grid") != GRID:
+                self._db.execute("UPDATE dashboards SET body = ? WHERE id = ?", (json.dumps(upgrade(saved)), r["id"]))
         self._db.commit()
 
     def _exec(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:

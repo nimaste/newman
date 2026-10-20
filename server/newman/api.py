@@ -284,6 +284,7 @@ def build_app(h: "Newman") -> web.Application:
         command = (p.startswith("/api/entities/") and (p.endswith("/command") or "/mute" in p)) or \
             (p.startswith("/api/runs/") and p.endswith("/press")) or \
             (p.startswith("/api/upkeep/") and p.rsplit("/", 1)[-1] in ("done", "undo", "snooze")) or \
+            (p.startswith("/api/dashboards/") and p.endswith("/run")) or \
             p in ("/api/today/dismiss", "/api/tablet/battery", "/api/music/report", "/api/music/play", "/api/cook") or \
             (p.startswith("/api/voice/") and not p.startswith("/api/voice/settings"))  # talking to Newman, its timers
         # Asking for someone's fresh location (a wall tablet's Family map too; checked inside).
@@ -830,7 +831,7 @@ def build_app(h: "Newman") -> web.Application:
     @r.get("/api/dashboards/tiles")
     async def dashboard_tiles(_: web.Request) -> web.Response:
         return web.json_response({"cols": D.GRID_COLS, "rows": D.GRID_ROWS, "themes": list(D.THEMES),
-                                  "types": D.TILE_TYPES})
+                                  "types": D.TILE_TYPES, "screens": D.WALL_SCREENS})
 
     @r.get("/api/dashboards/today-page")
     async def dashboard_today_page(_: web.Request) -> web.Response:
@@ -889,6 +890,27 @@ def build_app(h: "Newman") -> web.Application:
                                                                      saved["id"], pictures)
             saved = h.store.save_dashboard(owner, clean, saved["id"])
         return web.json_response(saved)
+
+    @r.post("/api/dashboards/{did}/tiles/{tid}/run")
+    async def dashboard_tile_run(req: web.Request) -> web.Response:
+        """{"which": "tap" | "hold"} - a tile's When tapped / When held is "Run an automation": run it as if by
+        hand (its Only if still applies). Only the automation the dashboard's owner (or an admin) set on that
+        tile - so a wall tablet can run what its own tiles say, and nothing else."""
+        d = h.store.dashboard(req.match_info["did"])
+        mine = d and (d["userId"] == req["user"]["id"] or req["user"]["role"] == "admin"
+                      or d["id"] == req["session"].get("dashboard_id"))  # the one chosen for this tablet
+        if not mine:
+            return _err(404, "Unknown dashboard")
+        which = (await body(req)).get("which")
+        if which not in ("tap", "hold"):
+            return _err(400, 'Send {"which": "tap"} or {"which": "hold"}')
+        act = D.tile_action(d, req.match_info["tid"], which)
+        if not act or act.get("do") != "automation":
+            return _err(404, "That tile doesn't run an automation")
+        auto = h.engine.autos.get(str(act.get("automation")))
+        if not auto:
+            return _err(404, "That automation is gone")
+        return web.json_response(await h.engine.trigger(auto, {"type": auto["trigger"]["type"], "manual": True}))
 
     @r.get("/api/dashboards/{did}")
     async def dashboard_get(req: web.Request) -> web.Response:

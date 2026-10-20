@@ -103,7 +103,7 @@ class ThemeSettingsTest(unittest.TestCase):
         self.assertFalse(D.matches(ent("disk", "ok", temperature=41), "temperature"))
         self.assertFalse(D.matches(ent("sun", "above_horizon", elevation=30), "temperature"))  # degrees of angle
         spec = D.TYPES["climate"]
-        self.assertEqual([f["key"] for f in spec["fields"]], ["entity", "rooms", "outside", "page", "textSize"])
+        self.assertEqual([f["key"] for f in spec["fields"]], ["entity", "rooms", "outside", "look", "tap", "hold", "textSize"])
         clean, errors = D.clean({"pages": [{"id": "a", "name": "A", "tiles": [
             {"type": "climate", "x": 7, "y": 0, "w": 5, "h": 8, "config": {"entity": "x", "rooms": ["y"], "page": "b"}}]}]})
         self.assertEqual(errors, [])

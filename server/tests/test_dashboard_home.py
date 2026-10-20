@@ -41,5 +41,5 @@ class DashboardHomeTests(unittest.TestCase):
     def test_today_page_fits_the_grid(self):
         page = D.today_page(Hub())
         self.assertEqual([t["type"] for t in page["tiles"]], ["greeting", "todo", "calendar", "weather"])
-        clean, errors = D.clean({"pages": [page]})
+        clean, errors = D.clean({"pages": [page], "grid": D.GRID})
         self.assertEqual(errors, [])

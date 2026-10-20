@@ -768,7 +768,8 @@ class SwapTests(unittest.IsolatedAsyncioTestCase):
 
         d = h.store.dashboard(dash["id"])
         tiles = d["pages"][0]["tiles"]
-        self.assertEqual(tiles[0]["config"], {"title": "Locks", "entities": ["ring.z_side", "mqtt.garage"], "style": "list"})
+        self.assertEqual(tiles[0]["config"], {"title": "Locks", "entities": ["ring.z_side", "mqtt.garage"], "style": "list",
+                                              "look": "list"})  # its "style" read as the Look too (dashboards.upgrade)
         self.assertEqual(tiles[1]["config"], {"entity": "ring.z_panel"})
         self.assertEqual(tiles[2]["config"], {"items": [{"entity": "ring.z_front", "property": "battery"}]})
         self.assertEqual(d["names"], {"ring.z_side": "Side", "mqtt.garage": "Big door"})

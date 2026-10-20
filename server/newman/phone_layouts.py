@@ -176,6 +176,17 @@ def phone_height(tile: dict[str, Any], wide: bool) -> int:
     return 3
 
 
+def _span(t: dict[str, Any]) -> tuple[float, float]:
+    """A wall tile's width and height in the old wall grid's cells (12 x 8): the rules below were written
+    for it, before the wall's grid was made twice as fine."""
+    def cells(k: str) -> float:
+        try:
+            return int(t.get(k) or 0) / D.OLD_SCALE
+        except (TypeError, ValueError):
+            return 0
+    return cells("w"), cells("h")
+
+
 def flow(page: dict[str, Any]) -> list[dict[str, Any]]:
     """A wall page's tiles as phone cells, in dashboard order: {"tile", "span", "h", "header"}.
     Wide tiles span 4 columns, small ones 2; a devices tile in the big-tiles look becomes one card
@@ -192,17 +203,17 @@ def flow(page: dict[str, Any]) -> list[dict[str, Any]]:
             title = str(c.get("title") or "").strip()
             if several and title and title.lower() != str(page.get("name") or "").lower():
                 out.append({"header": True, "span": COLS, "h": 0, "tile": None})
-            wide = int(t.get("w") or 0) >= 6
+            wide = _span(t)[0] >= 6
             keep = {k: c[k] for k in ("textSize",) if k in c}
             for i, eid in enumerate(c.get("entities") or []):
                 card = {"id": (str(t.get("id") or "t") + "_" + str(i))[:24], "type": "devices",
                         "config": {"entities": [eid], "style": "tiles", **keep}}
                 out.append({"tile": card, "span": COLS if wide else 2, "h": 1})
         elif typ == "dial":
-            big = int(t.get("w") or 0) >= 5 and int(t.get("h") or 0) >= 5
+            big = _span(t)[0] >= 5 and _span(t)[1] >= 5
             out.append({"tile": t, "span": COLS if big else 2, "h": phone_height(t, big)})
         elif typ == "weather":
-            big = int(t.get("w") or 0) >= 6 or c.get("show") == "hours"
+            big = _span(t)[0] >= 6 or c.get("show") == "hours"
             out.append({"tile": t, "span": COLS if big else 2, "h": phone_height(t, big)})
         elif typ == "greeting" or not phone_tile(t):
             continue
@@ -254,7 +265,7 @@ def place(cells: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def from_dashboard(dash: dict[str, Any]) -> dict[str, Any]:
     """The phone layout the apps drew from this dashboard automatically: the Today page (if any)
     becomes the Today card, the first three other pages are tabs, the rest open from links."""
-    pages = dash.get("pages") or []
+    pages = D.upgrade(dash).get("pages") or []  # on today's wall grid, whenever it was saved
     today = next((p for p in pages if is_today_page(p)), None)
     rest = [p for p in pages if p is not today][:MAX_PAGES]
     out = [{"id": str(p.get("id") or "p_" + secrets.token_hex(3))[:24], "name": str(p.get("name") or "Page")[:24],
