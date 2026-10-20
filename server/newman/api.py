@@ -286,7 +286,9 @@ def build_app(h: "Newman") -> web.Application:
             (p.startswith("/api/upkeep/") and p.rsplit("/", 1)[-1] in ("done", "undo", "snooze")) or \
             (p.startswith("/api/dashboards/") and p.endswith("/run")) or \
             p in ("/api/today/dismiss", "/api/tablet/battery", "/api/music/report", "/api/music/play", "/api/cook") or \
-            (p.startswith("/api/voice/") and not p.startswith("/api/voice/settings"))  # talking to Newman, its timers
+            (p.startswith("/api/voice/") and not p.startswith("/api/voice/settings")) or \
+            (p.startswith("/api/calendars/") and p.endswith(("/events", "/events/delete"))) or \
+            (p.startswith("/api/calendar-reminders/") and p.endswith("/done"))  # talking to Newman, its timers; calendar events
         # Asking for someone's fresh location (a wall tablet's Family map too; checked inside).
         follow = p.startswith("/api/people/") and p.endswith(("/refresh", "/follow"))
         if p.startswith("/api/auth/"):
@@ -2544,6 +2546,112 @@ def build_app(h: "Newman") -> web.Application:
         {"now", "timers": [{"id", "name", "where", "endsAt", "seconds", "source": "alexa"}]}."""
         msg = alexa_timers_message(h.integrations.instances)
         return web.json_response({"now": msg["now"], "timers": msg["timers"]})
+
+    # -- calendar servers (CalDAV): the wall's add / edit / delete, and reminders -----------------
+
+    def calendar_server(eid: str) -> Any:
+        ent = h.hub.get(eid)
+        inst = h.integrations.instances.get(ent.integration) if ent else None
+        return inst if inst is not None and hasattr(inst, "add_event") else None
+
+    @r.get("/api/calendars/{eid}/event")
+    async def calendar_event_form(req: web.Request) -> web.Response:
+        """One event as the add / edit form fills in: ?href=…&occurrence=…&scope=all|this →
+        {title, allDay, start, end, rrule, location, url, notes}."""
+        inst = calendar_server(req.match_info["eid"])
+        if not inst:
+            return _err(404, "That calendar can't be changed from Newman")
+        q = req.query
+        try:
+            return web.json_response(await inst.event_form(req.match_info["eid"], q.get("href", ""),
+                                                           q.get("occurrence") or None, q.get("scope", "all")))
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+
+    @r.post("/api/calendars/{eid}/events")
+    async def calendar_event_add(req: web.Request) -> web.Response:
+        """{"event": {title, allDay, start, end, rrule, location, url, notes}} → added to that calendar."""
+        eid = req.match_info["eid"]
+        inst = calendar_server(eid)
+        if not inst:
+            return _err(404, "That calendar can't be changed from Newman")
+        data = await body(req)
+        try:
+            out = await inst.add_event(eid, data.get("event") or {})
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+        title = str((data.get("event") or {}).get("title") or "").strip()
+        h.store.log_event("command", f"Added “{title}” to {out['calendar']}", f"By {req['user']['name']}", eid)
+        return web.json_response({"ok": True, **out})
+
+    @r.put("/api/calendars/{eid}/events")
+    async def calendar_event_change(req: web.Request) -> web.Response:
+        """{"href", "scope": "all"|"this", "occurrence"?, "event", "calendar"?: another calendar's id to move it to}."""
+        eid = req.match_info["eid"]
+        inst = calendar_server(eid)
+        if not inst:
+            return _err(404, "That calendar can't be changed from Newman")
+        data = await body(req)
+        scope = "this" if data.get("scope") == "this" else "all"
+        move_to = str(data.get("calendar") or "") or None
+        if move_to and calendar_server(move_to) is not inst:
+            return _err(400, "It can only move to another calendar on the same server")
+        try:
+            out = await inst.change_event(eid, str(data.get("href") or ""), data.get("event") or {}, scope,
+                                          str(data.get("occurrence") or "") or None, move_to)
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+        title = str((data.get("event") or {}).get("title") or "").strip()
+        h.store.log_event("command", f"Changed “{title}” on {out['calendar']}", f"By {req['user']['name']}", eid)
+        return web.json_response({"ok": True, **out})
+
+    @r.post("/api/calendars/{eid}/events/delete")
+    async def calendar_event_delete(req: web.Request) -> web.Response:
+        """{"href", "scope": "all"|"this", "occurrence"?, "title"?} → deleted (one time of a repeating event with "this")."""
+        eid = req.match_info["eid"]
+        inst = calendar_server(eid)
+        if not inst:
+            return _err(404, "That calendar can't be changed from Newman")
+        data = await body(req)
+        scope = "this" if data.get("scope") == "this" else "all"
+        try:
+            out = await inst.delete_event(eid, str(data.get("href") or ""), scope, str(data.get("occurrence") or "") or None)
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+        title = str(data.get("title") or "an event").strip()
+        h.store.log_event("command", f"Deleted “{title}” from {out['calendar']}", f"By {req['user']['name']}", eid)
+        return web.json_response({"ok": True, **out})
+
+    @r.get("/api/calendar-reminders")
+    async def calendar_reminders(req: web.Request) -> web.Response:
+        """Calendar reminder cards up now (for a wall tablet that just connected): {"reminders": [...]}."""
+        out = []
+        for inst in h.integrations.instances.values():
+            if hasattr(inst, "reminders"):
+                out.extend(inst.reminders())
+        return web.json_response({"reminders": out})
+
+    @r.post("/api/calendar-reminders/{rid}/done")
+    async def calendar_reminder_done(req: web.Request) -> web.Response:
+        """OK on one wall tablet: the card goes on every tablet."""
+        rid = req.match_info["rid"]
+        for inst in h.integrations.instances.values():
+            if hasattr(inst, "dismiss_reminder") and await inst.dismiss_reminder(rid):
+                return web.json_response({"ok": True})
+        return web.json_response({"ok": True})
+
+    @r.post("/api/public/calendars/{iid}/{secret}")
+    async def calendar_changed(req: web.Request) -> web.Response:
+        """A calendar server telling Newman a calendar changed ({"calendar": id}): the secret in the address is the key."""
+        inst = h.integrations.instances.get(req.match_info["iid"])
+        try:
+            data = json.loads((await req.read()) or b"{}")
+        except ValueError:
+            data = {}
+        if not inst or not hasattr(inst, "receive_change") or not await inst.receive_change(
+                req.match_info["secret"], data if isinstance(data, dict) else {}):
+            return _err(404, "not found")
+        return web.json_response({"ok": True})
 
     @r.delete("/api/integrations/{iid}/devices/{did}")
     async def remove_integration_device(req: web.Request) -> web.Response:

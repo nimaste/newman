@@ -6,6 +6,7 @@ from .adguard import AdGuardIntegration
 from .pihole import PiholeIntegration
 from .technitium import TechnitiumIntegration
 from .calendar_ics import CalendarIntegration
+from .caldav import CalDavIntegration
 from .docker import DockerIntegration
 from .linux_host import LinuxHostIntegration
 from .proxmox import ProxmoxIntegration
@@ -48,7 +49,7 @@ from .webos_tv import WebOsTvIntegration
 REGISTRY: dict[str, type[Integration]] = {cls.type: cls for cls in [
     MqttIntegration, RingIntegration, ReolinkIntegration, FrigateIntegration, LutronIntegration, HueIntegration, ShellyIntegration,
     KasaIntegration, EsphomeIntegration, MerossIntegration, HomeKitIntegration, WeatherIntegration,
-    CalendarIntegration, RoborockIntegration, HomeConnectIntegration, ThinQIntegration, DockerIntegration, UnraidIntegration, LinuxHostIntegration, ProxmoxIntegration, PrinterIntegration, UpkeepIntegration, MatterIntegration, SonosIntegration, NavidromeIntegration, ForkastIntegration, WebhooksIntegration, TabletsIntegration,
+    CalendarIntegration, CalDavIntegration, RoborockIntegration, HomeConnectIntegration, ThinQIntegration, DockerIntegration, UnraidIntegration, LinuxHostIntegration, ProxmoxIntegration, PrinterIntegration, UpkeepIntegration, MatterIntegration, SonosIntegration, NavidromeIntegration, ForkastIntegration, WebhooksIntegration, TabletsIntegration,
     AdGuardIntegration, PiholeIntegration, TechnitiumIntegration,
     HydrawiseIntegration, RainBirdIntegration, RachioIntegration,
     NetCheckIntegration, SunIntegration, AlexaIntegration,
