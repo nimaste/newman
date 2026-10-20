@@ -1348,9 +1348,9 @@ calendar's device id; a calendar the account may only view answers 400). Times a
 - `GET /api/calendar-reminders` → `{"reminders": [{"id", "title", "start", "end", "allDay", "location", "calendar",
   "colour", "minutes", "startsAt"}]}` (cards up now); `POST /api/calendar-reminders/{id}/done` clears one on every
   tablet. Live: `{"type": "calendarReminder", "reminder"}` and `{"type": "calendarReminderDone", "id"}`.
-- `POST /api/public/calendars/{integrationId}/{key}` `{"calendar": id}` (no sign-in; the key is in the
-  address) — the server says a calendar changed, and Newman fetches it at once. The address is in the
-  connection's `adminDetails.addresses`.
+- `POST /api/public/calendars/changed` `{"calendar": id}` (no sign-in) — a calendar server says a calendar
+  changed, and every calendar server connection fetches it at once with its own sign-in (nudges less than 5 s
+  apart become one fetch). 404 when there's no calendar server connection.
 
 ## Alerts
 

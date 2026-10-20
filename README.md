@@ -381,10 +381,10 @@ Every calendar shows as a calendar device, in its own colour, on the calendar ti
 automations ("event starts"), the same as iCal-link calendars. Calendars the account may only view show
 without **+** or **Edit**.
 
-**Changes show at once.** The connection's *Settings* show its change address (*When a calendar changes*).
-Copy it into GCloud's *Admin → Calendars → Newman address* (or any server that can call an address when a
-calendar changes), and an event added on a phone is on the wall within seconds. Without it, Newman checks
-every 15 minutes (*Check every*, under *More settings*).
+**Changes show at once.** Put Newman's address (e.g. `10.1.1.2:8093`) in GCloud's *Admin → Calendars →
+Newman address*, and an event added on a phone is on the wall within seconds. Any other server can do the
+same by POSTing to `/api/public/calendars/changed`. Without it, Newman checks every 15 minutes (*Check
+every*, under *More settings*).
 
 **On the wall tablet:**
 

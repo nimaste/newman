@@ -2640,17 +2640,19 @@ def build_app(h: "Newman") -> web.Application:
                 return web.json_response({"ok": True})
         return web.json_response({"ok": True})
 
-    @r.post("/api/public/calendars/{iid}/{secret}")
+    @r.post("/api/public/calendars/changed")
     async def calendar_changed(req: web.Request) -> web.Response:
-        """A calendar server telling Newman a calendar changed ({"calendar": id}): the secret in the address is the key."""
-        inst = h.integrations.instances.get(req.match_info["iid"])
+        """A calendar server saying a calendar changed ({"calendar": id}). Only a nudge: each calendar server
+        connection fetches it with its own sign-in, so no key is needed."""
         try:
             data = json.loads((await req.read()) or b"{}")
         except ValueError:
             data = {}
-        if not inst or not hasattr(inst, "receive_change") or not await inst.receive_change(
-                req.match_info["secret"], data if isinstance(data, dict) else {}):
-            return _err(404, "not found")
+        targets = [i for i in h.integrations.instances.values() if hasattr(i, "receive_change")]
+        if not targets:
+            return _err(404, "Newman has no calendar server connection yet")
+        for inst in targets:
+            inst.receive_change(data if isinstance(data, dict) else {})
         return web.json_response({"ok": True})
 
     @r.delete("/api/integrations/{iid}/devices/{did}")

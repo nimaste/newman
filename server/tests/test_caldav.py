@@ -126,7 +126,7 @@ class CalDavTests(unittest.TestCase):
         hub = Hub()
         ctx = Context(hub=hub, data_dir=Path(self.tmp.name), snapshot_dir=Path(self.tmp.name))
         ctx.broadcast = broadcast
-        cfg = {"url": "https://cal.example.com", "username": "newman", "password": "app-pw", "secret": "s3cret"}
+        cfg = {"url": "https://cal.example.com", "username": "newman", "password": "app-pw"}
         inst = CD.CalDavIntegration("caldav", "GCloud", {**cfg, **(config or {})}, ctx)
         inst.save_config = lambda c: None
         return hub, inst
@@ -275,14 +275,20 @@ class CalDavTests(unittest.TestCase):
         hub, inst = self.make()
         async def go():
             await inst.refresh()
-            self.assertFalse(await inst.receive_change("wrong", {"calendar": FAM}))
-            self.assertTrue(await inst.receive_change("s3cret", {"calendar": FAM}))
+            inst.receive_change({"calendar": FAM})
             self.assertEqual(inst._wanted, {FAM})
             self.assertTrue(inst._wake.is_set())
-            self.assertTrue(await inst.receive_change("s3cret", {"calendar": "someone-new"}))
+            inst._wake.clear()
+            inst.receive_change({"calendar": "someone-new"})   # within NUDGE_GAP_S: put off, not dropped
             self.assertIn("*", inst._wanted)
+            self.assertFalse(inst._wake.is_set())
+            self.assertIsNotNone(inst._nudge_later)
+            inst.receive_change({"calendar": FAM})              # still just the one wake waiting
+            inst._nudge_later.cancel()
+            inst._wake_now()
+            self.assertTrue(inst._wake.is_set())
+            self.assertIsNone(inst._nudge_later)
         self.run_(go())
-        self.assertEqual(inst.admin_details()["addresses"][0]["path"], "/api/public/calendars/caldav/s3cret")
 
     def test_reminder_cards(self):
         hub, inst = self.make({"remind": [FAM]})
@@ -320,3 +326,41 @@ class CalDavTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChangedAddressTests(unittest.IsolatedAsyncioTestCase):
+    """POST /api/public/calendars/changed: no sign-in, no key - only a nudge to fetch again."""
+
+    async def asyncSetUp(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        from newman.api import build_app
+        from newman.config import config
+        from test_auth import H
+        self.tmp = tempfile.TemporaryDirectory()
+        object.__setattr__(config, "data_dir", Path(self.tmp.name))
+        self.h = H(Path(self.tmp.name))
+        self.client = TestClient(TestServer(build_app(self.h)))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+        self.tmp.cleanup()
+
+    async def test_nudge(self):
+        r = await self.client.post("/api/public/calendars/changed", json={"calendar": FAM})
+        self.assertEqual(r.status, 404)
+        self.assertEqual((await r.json())["error"], "Newman has no calendar server connection yet")
+        ctx = Context(hub=Hub(), data_dir=Path(self.tmp.name), snapshot_dir=Path(self.tmp.name))
+        inst = CD.CalDavIntegration("caldav", "GCloud", {"url": "https://cal.example.com", "username": "n", "password": "p"}, ctx)
+        self.h.integrations.instances["caldav"] = inst
+        try:
+            r = await self.client.post("/api/public/calendars/changed", json={"calendar": FAM})
+            self.assertEqual(r.status, 200, await r.text())
+            self.assertTrue(inst._wake.is_set())
+            self.assertEqual(inst._wanted, {"*"})   # not fetched yet, so not one it knows: all of them
+            r = await self.client.post("/api/public/calendars/changed", data=b"not json")
+            self.assertEqual(r.status, 200)
+        finally:
+            del self.h.integrations.instances["caldav"]
+            if inst._nudge_later:
+                inst._nudge_later.cancel()

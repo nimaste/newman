@@ -11,8 +11,10 @@ which occurrence of a repeating one, notes, link, reminders, its repeat rule).
 
 Events come from a calendar-query for the window shown (yesterday … `days` ahead); a calendar whose
 getctag hasn't changed isn't fetched again (except once a few hours, as the window moves on). The server
-can say "this calendar changed" by POSTing {"calendar": <its id>} to the connection's change address
-(admin_details: GCloud's Admin › Calendars › Newman address); that calendar is fetched at once.
+can say "this calendar changed" by POSTing {"calendar": <its id>} to /api/public/calendars/changed (GCloud
+does when its Admin › Calendars › Newman address is the hub's address). The message is only a nudge - the
+calendar is fetched with the connection's own sign-in - so it needs no key; nudges closer together than
+NUDGE_GAP_S are put together into one fetch.
 
 Writing (the wall's add / edit / delete): an event is one VCALENDAR resource; new ones are PUT with
 If-None-Match: *, changes with If-Match on the etag fetched with it (someone else changed it meanwhile:
@@ -30,7 +32,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import secrets
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -53,6 +54,7 @@ D, C, CS, IC = "DAV:", "urn:ietf:params:xml:ns:caldav", "http://calendarserver.o
 DEFAULT_COLOUR = "#3CCFB4"
 REFETCH_S = 6 * 3600       # an unchanged calendar is still fetched this often (the window moves on)
 TICK_S = 30.0
+NUDGE_GAP_S = 5.0          # "a calendar changed" nudges closer together than this become one fetch
 REMINDER_KEEP_S = 2 * 3600  # a reminder nobody dismissed goes this long after its event starts
 MAX_NOTES = 2000
 
@@ -409,10 +411,8 @@ class CalDavIntegration(Integration):
         Field("remind", "Remind on the wall tablets", "multiselect", dynamic=True, default=[],
               help="Each event's reminders show as a card on every wall tablet."),
         Field("days", "Show events this many days ahead", "number", default=31, advanced=True, minimum=1),
-        check_every_field(15, 5, help="The server can also tell Newman about a change as it happens (its change "
-                                      "address, below); this checks every calendar again now and then."),
-        Field("secret", "Change address key", "password", advanced=True,
-              help="Part of the address the server calls when a calendar changes. Leave empty and Newman makes one."),
+        check_every_field(15, 5, help="The server can also tell Newman about a change as it happens; "
+                                      "this checks every calendar again now and then."),
     ]
 
     @classmethod
@@ -433,6 +433,8 @@ class CalDavIntegration(Integration):
         self._errors: dict[str, str] = {}
         self._wake = asyncio.Event()
         self._wanted: set[str] = set()   # calendar ids the server said changed ("*" = all / unknown)
+        self._nudged_at = 0.0
+        self._nudge_later: asyncio.TimerHandle | None = None
         self._last_tick = time.time()
         self._reminders: dict[str, dict[str, Any]] = {}  # id -> the card, while it's up
         self._done: set[str] = set()
@@ -568,10 +570,6 @@ class CalDavIntegration(Integration):
         await self._publish()
 
     async def run(self) -> None:
-        if not self.config.get("secret"):
-            self.config = {**self.config, "secret": secrets.token_urlsafe(24)}
-            if self.save_config:
-                self.save_config(self.config)
         attempt = 0
         every = self.seconds_every("check_minutes")
         while True:
@@ -667,22 +665,20 @@ class CalDavIntegration(Integration):
 
     # -- the server telling us about a change --------------------------------------------------------
 
-    def change_path(self) -> str:
-        return f"/api/public/calendars/{self.id}/{self.config.get('secret') or ''}"
-
-    def admin_details(self) -> dict[str, Any]:
-        if not self.config.get("secret"):
-            return {}
-        return {"addresses": [{"name": "When a calendar changes", "path": self.change_path()}]}
-
-    async def receive_change(self, secret: str, body: dict[str, Any]) -> bool:
-        mine = str(self.config.get("secret") or "")
-        if not mine or not secrets.compare_digest(mine.encode(), str(secret).encode()):
-            return False
+    def receive_change(self, body: dict[str, Any]) -> None:
+        """A nudge: fetch that calendar (all of them when it's not one of ours) - at most once per NUDGE_GAP_S."""
         cid = str((body or {}).get("calendar") or "").strip()
         self._wanted.add(cid if cid and any(c["id"] == cid for c in self._cals.values()) else "*")
+        wait = NUDGE_GAP_S - (time.time() - self._nudged_at)
+        if wait <= 0:
+            self._wake_now()
+        elif self._nudge_later is None:
+            self._nudge_later = asyncio.get_running_loop().call_later(wait, self._wake_now)
+
+    def _wake_now(self) -> None:
+        self._nudge_later = None
+        self._nudged_at = time.time()
         self._wake.set()
-        return True
 
     async def dynamic_options(self) -> dict[str, list[dict[str, Any]]]:
         return {"remind": [{"value": c["id"], "label": c["name"]} for c in self._cals.values()]}
