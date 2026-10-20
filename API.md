@@ -1331,6 +1331,21 @@ app answers `{type: "clip", pcm (base64 PCM16), rate: 16000, ms}` · `{type: "cl
 `GET /api/events?limit=&before=&kind=&since=&runId=` → `[{"id", "ts", "kind", "title", "body", "entityId", "data"}]`
 (`runId`: the entries of one automation run - a push's `alertId`).
 
+## Calendars: other days
+
+`GET /api/calendars/{eid}/events?from=YYYY-MM-DD&to=YYYY-MM-DD` (any signed-in account, wall tablets
+included) → `{"events": [...]}`: one calendar's events from `from` up to (not including) `to`, at most 45
+days, a past month too — shaped like its `attrs.upcoming` (`title`, `start`, `end`, `allDay`, `location`,
+and from a calendar server also `uid`, `href`, `occurrence`, `recurring`, `rrule`, `url`, `notes`, `alarms`,
+so the event opens and can be edited like one coming up). Repeating events are expanded. From any
+connection whose calendars can (*Calendar server (CalDAV)*: a calendar-query for those days; *Calendars*
+(iCal links): from the link as last fetched); kept a few minutes, and asked again once the calendar was read
+again. 404 for a calendar that can't; 400 for bad dates, `to` not after `from`, more than 45 days, or the
+calendar server not answering. The wall's month screen uses it for the weeks it shows unless they're all
+inside what `attrs.upcoming` holds: calendar devices also have `attrs.upcomingUntil` (everything starting
+before it is in `upcoming`) and `attrs.fetchedAt` (when the calendar was last read; the wall asks again
+when it changes).
+
 ## Calendar servers (CalDAV)
 
 The wall's add / edit / delete for calendars from a *Calendar server (CalDAV)* connection (`{eid}` = the
@@ -1465,8 +1480,10 @@ backup without `voice/`, `matter/` or `zigbee/` leaves those folders as they are
 first `:`, each part URL-encoded) · public: `GET /api/public/clips/{integration}/{clip id}?device=&exp=&token=`
 (the push's `clip_url`). Once the alert ended more than 30 s ago the clip is fetched from Frigate once,
 kept for 3 days and served with byte ranges; before that it is streamed as Frigate builds it (no
-length, no ranges, not kept). 404/502 while Frigate has no video yet. The phone apps download it
-through their own connection and play the file.
+length, no ranges, not kept). 404/502 while Frigate has no video yet. Asked for by several players at
+once (a player trying again, two tablets), a finished clip is fetched from Frigate once and the others
+wait for that copy. The phone apps download it through their own connection and play the file; the web
+and wall player tries up to 3 times (after about 2 s and 5 s) before saying it couldn't be played.
 
 ## Notification buttons (public)
 

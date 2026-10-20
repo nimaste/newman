@@ -379,7 +379,7 @@ events.
 
 Every calendar shows as a calendar device, in its own colour, on the calendar tile, the Today page and in
 automations ("event starts"), the same as iCal-link calendars. Calendars the account may only view show
-without **+** or **Edit**.
+without **Edit**, and with only those, the calendar screen has no **+ New event**.
 
 **Changes show at once.** Put Newman's address (e.g. `10.1.1.2:8093`) in GCloud's *Admin → Calendars →
 Newman address*, and an event added on a phone is on the wall within seconds. Any other server can do the
@@ -388,10 +388,11 @@ every*, under *More settings*).
 
 **On the wall tablet:**
 
-- Tap an event for its card: when, where, notes, and a QR code for its link (scan it with your phone).
-  **Edit** opens the form filled in; for a repeating event it asks *This event* or *All events*.
-- **+** on the calendar tile adds an event: what (needed), which calendar, all day, starts and ends (a big
-  month calendar for dates; hour and minute wheels with AM / PM for times), and repeats (including
+- On the calendar screen, tap an event for its card: when, where, notes, and a QR code for its link (scan
+  it with your phone). **Edit** opens the form filled in; for a repeating event it asks *This event* or
+  *All events*. Events of past and later months open and edit the same way.
+- **+ New event** on the calendar screen adds an event, starting on the day picked there: what (needed),
+  which calendar, all day, starts and ends (a big month calendar for dates; hour and minute wheels with AM / PM for times), and repeats (including
   *Custom…*: every few days, weeks, months or years, on chosen days, until a date or a number of times).
   Moving the start moves the end with it; an end before the start can't be saved. Save closes the form and
   shows *Added to <calendar>*. Notes and location are added on a phone or in GCloud.
@@ -1259,6 +1260,18 @@ same). Every tile also has, in the dashboard editor:
   *Control a device* (a device and something it does without a value, like Lock), or *Nothing*. The
   tile's own buttons, dial and the like keep working; it's tapping the tile itself.
 - **When held** — the same choices (holding the tile for about ¾ of a second); *Nothing* by default.
+
+**Calendar.** The *Coming up* tile shows as many whole events as fit (never a cut-off one, no "+N more");
+tapping anywhere on it opens the calendar screen with the tile's calendars. That screen is a month,
+Sunday to Saturday (days of the months either side dimmed; tap one to go there): **‹ ›** or a swipe go a
+month back or on — past months too — **Today** comes back, and the chosen day's events are on the right
+(*This day* / *Everything* coming up). **+ New event** (calendars Newman may change) adds one on the chosen
+day. Months outside what a calendar keeps ready (yesterday to *days ahead*) are fetched from the calendar
+when shown (`GET /api/calendars/{id}/events`, see API.md) — a calendar server, or an iCal link's feed.
+
+**Camera replays.** Until an alert's clip can play, its snapshot shows under a veil with *Loading the
+clip…*; a player that fails tries again by itself (3 tries) and only then says *This clip couldn't be
+played.* with **Try again**.
 
 **Family map tile** (tile type `people`). A row of name chips — photo or coloured initial, first name,
 and where they are with how old that is (*Home · 4 min*, *School · 9 min*, *6.4 km · 1 min*); anyone
