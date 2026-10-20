@@ -564,7 +564,7 @@ export function MusicTile({ tile }) {
   const found = useApi(available && dq ? 'api/music/search?q=' + enc(dq) : null);
   const [picker, setPicker] = useState(null); // null, or what MusicPicker opens on: {} | {open} | {query}
   const body = useRef(null);
-  const [fitCols, fitRows] = useCardFit(body, tile.w >= 6 ? 4 : 3);
+  const [fitCols, fitRows] = useCardFit(body, tile.w >= 12 ? 4 : 3);
   // Outside the wall (the dashboard editor's preview) there's no engine to ask the hub.
   useEffect(() => {
     if (loaded) return;

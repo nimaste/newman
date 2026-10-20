@@ -1,6 +1,7 @@
 // The Climate glance tile (look only): the thermostat as an arc (where it's set) with the room's
-// temperature as the big number, its humidity and the outside; then a box per chosen room with a
-// cool-to-warm bar. A tap opens the page picked for it, or the thermostat's own dial.
+// temperature as the big number, its humidity and the outside; then the chosen rooms - a box each with a
+// cool-to-warm bar, or (its Look, look.js) a row each: a cool-to-warm dot, the full name, humidity and
+// temperature. A tap opens the thermostat's own dial (When tapped can say otherwise: tileActions.js).
 // Colours come from the wall theme (theme.css); values are shown exactly as the devices report them.
 
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -9,6 +10,7 @@ import { enc } from '../api.js';
 import { navigate, useHub } from '../hooks.js';
 import Dial, { arc, pol, KNOB, TRACK } from './Dial.jsx';
 import { deg, mix, pct, roomColumns, roomOf, tempCommand, thermostatOf, warmth } from './climate.js';
+import { lookOf } from './look.js';
 
 // The arc's colour by the thermostat's mode (its state), as on the Dial; anything else: the accent.
 const MODE_TONE = { heat: 'var(--wt-heat, #ff8a5b)', cool: 'var(--wt-cool, #5aa9ff)' };
@@ -62,7 +64,8 @@ export default function ClimateTile({ tile }) {
   const grid = useRef(null);
   const box = useBox(root);
   const area = useBox(grid);
-  const cols = roomColumns(box.w / (Number(c.textSize) > 0 ? Number(c.textSize) / 100 : 1), rooms.length);
+  const asList = lookOf(c, box.w) === 'list';
+  const cols = asList ? 1 : roomColumns(box.w / (Number(c.textSize) > 0 ? Number(c.textSize) / 100 : 1), rooms.length);
   // As many rows of rooms as fit (measured from a drawn box); the rest as "+N more".
   const [rowH, setRowH] = useState(0);
   useLayoutEffect(() => {
@@ -79,7 +82,7 @@ export default function ClimateTile({ tile }) {
   const more = rooms.length - shown.length;
   const tone = (t && MODE_TONE[t.modeId]) || 'var(--wt-teal, #3ccfb4)';
   const open = () => {
-    if (c.page) navigate('wall/' + enc(c.page));
+    if (c.page) navigate('wall/' + enc(c.page)); // saved before When tapped (the hub moves it there)
     else if (t) setSheet(true);
   };
   const status = t ? [t.mode, t.action].filter(Boolean).join(' · ') : '';
@@ -87,7 +90,7 @@ export default function ClimateTile({ tile }) {
   const label = ['Climate', t && t.now !== null ? `${deg(t.now)} now` : null, t && t.target !== null ? `set to ${deg(t.target)}` : null].filter(Boolean).join(', ');
   return (
     <div className="cg" ref={root}>
-      <button type="button" className="cg-btn" onClick={open} aria-label={label}>
+      <button type="button" className="cg-btn" data-tile-surface onClick={open} aria-label={label}>
         <span className="cg-top">
           <span className="cg-title">Climate</span>
           {status ? (
@@ -121,10 +124,20 @@ export default function ClimateTile({ tile }) {
             <span className="cg-sm">Outside {outLine}</span>
           </span>
         ) : null}
-        <span className="cg-rooms" ref={grid} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        <span className={'cg-rooms' + (asList ? ' cg-rooms--list' : '')} ref={grid} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {!t && !rooms.length ? <span className="wt-muted">No thermostat or rooms chosen.</span> : null}
           {shown.map((r) => {
             const f = warmth(r.temp, r.unit);
+            if (asList) {
+              return (
+                <span key={r.id} className={'cg-row' + (r.off ? ' is-off' : '')}>
+                  <i className="cg-dot" style={f !== null && !r.off ? { background: tint(f) } : undefined} />
+                  <span className="cg-row-name">{r.name}</span>
+                  <span className="cg-room-h">{r.humidity !== null && !r.off ? pct(r.humidity) : ''}</span>
+                  <span className="cg-room-t">{r.off ? 'Offline' : deg(r.temp)}</span>
+                </span>
+              );
+            }
             return (
               <span key={r.id} className={'cg-room' + (r.off ? ' is-off' : '')}>
                 <span className="cg-room-name">{r.name}</span>

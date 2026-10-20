@@ -25,6 +25,8 @@ import { MusicTile, NowPlayingChip } from './Music.jsx';
 import { RecipesTile } from './CookMode.jsx';
 import ClimateTile from './ClimateTile.jsx';
 import { roomOf } from '../model.js';
+import { lookOf, useWidth } from './look.js';
+import { useTileActions } from './tileActions.js';
 
 
 function useEnts(ids) {
@@ -103,7 +105,7 @@ function CameraTile({ tile }) {
   if (!cam) return <div className="wt-empty">No cameras chosen for this tile.</div>;
   return (
     <div className="wt-cam">
-      <a className="wt-cam-pic" href={'#/wall/camera/' + enc(cam.id)} aria-label={`Watch ${cam.name} full screen`}>
+      <a className="wt-cam-pic" data-tile-surface href={'#/wall/camera/' + enc(cam.id)} aria-label={`Watch ${cam.name} full screen`}>
         <LiveVideo key={cam.id} entity={cam} quality="sub" stillHeight={480} showNote={false} className="wt-cam-video" />
         <span className="wt-cam-name">
           <span className="wt-live-dot" aria-hidden="true" />
@@ -287,7 +289,7 @@ function DeviceCard({ e, kind, showArea }) {
   );
 }
 
-function DeviceRow({ e, kind, last, showArea }) {
+function DeviceRow({ e, kind, last, showArea, compact }) {
   const { run, busy, mode } = useWallCommand();
   const action = nextAction(e, kind);
   const { battery, problem } = deviceVitals(e);
@@ -297,9 +299,9 @@ function DeviceRow({ e, kind, last, showArea }) {
   const extras = extraActions(e, kind, action);
   const [sheet, setSheet] = useState(false);
   return (
-    <div className={'wt-row' + (last ? ' is-last' : '')}>
+    <div className={'wt-row' + (compact ? ' wt-row--compact' : '') + (last ? ' is-last' : '')}>
       <span className={'wt-row-icon' + (warn ? ' is-warn' : calm ? ' is-calm' : '')}>
-        <Icon name={deviceIcon(e, kind)} size={22} />
+        <Icon name={deviceIcon(e, kind)} size={compact ? 16 : 22} />
       </span>
       <span className="wt-row-text">
         <span className="wt-row-name">{e.name}</span>
@@ -326,7 +328,7 @@ function DeviceRow({ e, kind, last, showArea }) {
   );
 }
 
-function DevicesTile({ tile }) {
+function DevicesTile({ tile, width }) {
   const { kindsById } = useHub();
   const c = tile.config;
   let ents = useEnts(c.entities);
@@ -334,7 +336,7 @@ function DevicesTile({ tile }) {
   if (byArea) ents = ents.slice().sort((a, b) => (roomOf(a) || '~').localeCompare(roomOf(b) || '~'));
   const listRef = useRef(null);
   const fitRows = useFit(listRef, 52, ents.length);
-  if (c.style === 'list') {
+  if (lookOf(c, width) === 'list') {
     const shown = ents.slice(0, fitRows);
     return (
       <div className="wt-list">
@@ -342,7 +344,7 @@ function DevicesTile({ tile }) {
         <div className="wt-list-body" ref={listRef}>
           {!ents.length ? <div className="wt-muted">No devices chosen.</div> : null}
           {shown.map((e, i) => (
-            <DeviceRow key={e.id} e={e} kind={kindsById[e.kind]} last={i === shown.length - 1} showArea={byArea} />
+            <DeviceRow key={e.id} e={e} kind={kindsById[e.kind]} last={i === shown.length - 1} showArea={byArea} compact />
           ))}
           {ents.length > shown.length ? <div className="wt-more">+{ents.length - shown.length} more</div> : null}
         </div>
@@ -353,7 +355,7 @@ function DevicesTile({ tile }) {
   const n = Math.max(1, ents.length);
   const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt((n * tile.w * 1.6) / tile.h))));
   // At least a card per half-tile of height, like the Lights board (big, easy targets).
-  const rows = Math.max(Math.ceil(n / cols), Math.floor(tile.h / 4));
+  const rows = Math.max(Math.ceil(n / cols), Math.floor(tile.h / 8));
   const summary = (() => {
     const lit = ents.filter((e) => isActive(e, kindsById[e.kind]) && !(kindsById[e.kind] || {}).secureState).length;
     return lit ? `${lit} on` : '';
@@ -404,7 +406,7 @@ function ModeTile({ tile }) {
 
 /* ---------------- values ---------------- */
 
-function ValuesTile({ tile }) {
+function ValuesTile({ tile, width }) {
   const { entitiesById } = useHub();
   const items = (tile.config.items || [])
     .map((it) => {
@@ -414,8 +416,27 @@ function ValuesTile({ tile }) {
     })
     .filter(Boolean);
   const listRef = useRef(null);
-  const fit = useFit(listRef, 52, items.length);
+  const asCards = lookOf(tile.config, width) === 'tiles';
+  const cols = asCards ? Math.max(1, Math.min(items.length, Math.floor(width / 170))) : 1;
+  const fit = useFit(listRef, asCards ? 88 : 52, items.length) * cols;
   const shown = items.slice(0, fit);
+  if (asCards) {
+    return (
+      <div className="wt-list">
+        {tile.config.title ? <Title>{tile.config.title}</Title> : null}
+        <div className="wt-list-body wt-vals" ref={listRef} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+          {!items.length ? <div className="wt-muted">No readings chosen.</div> : null}
+          {shown.map(({ key, e, p }) => (
+            <div key={key} className="wt-val">
+              <span className="wt-row-name">{e.name}</span>
+              <span className="wt-row-state">{p ? p.label : 'Not reported'}</span>
+              <span className="wt-reading">{p ? formatPropValue(p, p.value) : '—'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="wt-list">
       {tile.config.title ? <Title>{tile.config.title}</Title> : null}
@@ -496,8 +517,11 @@ function textScale(tile) {
  * One tile in its grid cell. `phone` ({ w, h }: its cell rectangle in px) draws it the phone apps' way
  * instead, fitted to that rectangle (the phone layout editor's preview); without it, the wall's own.
  */
-export function Tile({ tile, phone }) {
+export function Tile({ tile, phone, dash }) {
   const { entitiesById, kindsById } = useHub();
+  const sec = useRef(null);
+  const width = useWidth(sec);
+  const acts = useTileActions(tile, phone ? null : dash);
   if (phone) {
     return (
       <section
@@ -519,17 +543,17 @@ export function Tile({ tile, phone }) {
       break;
     case 'dial': {
       const e = entitiesById[tile.config.entity];
-      body = <Dial entity={e} kind={e && kindsById[e.kind]} config={tile.config} compact={tile.w < 4 || tile.h < 4} tall={tile.h >= 4} />;
+      body = <Dial entity={e} kind={e && kindsById[e.kind]} config={tile.config} compact={tile.w < 8 || tile.h < 8} tall={tile.h >= 8} />;
       break;
     }
     case 'devices':
-      body = <DevicesTile tile={tile} />;
+      body = <DevicesTile tile={tile} width={width} />;
       break;
     case 'mode':
       body = <ModeTile tile={tile} />;
       break;
     case 'values':
-      body = <ValuesTile tile={tile} />;
+      body = <ValuesTile tile={tile} width={width} />;
       break;
     case 'attention':
       body = <AttentionTile />;
@@ -564,12 +588,15 @@ export function Tile({ tile, phone }) {
     default:
       body = <SoonTile tile={tile} />;
   }
-  const plain = tile.type === 'devices' && tile.config.style !== 'list' && !tile.config.title;
+  const plain = tile.type === 'devices' && lookOf(tile.config, width) !== 'list' && !tile.config.title;
+  const { className: tapClass, ...handlers } = acts;
   return (
     <section
-      className={'wt-tile wt-tile--' + tile.type + (plain ? ' wt-tile--bare' : '') + (tile.type === 'attention' ? '' : '')}
+      ref={sec}
+      className={'wt-tile wt-tile--' + tile.type + (plain ? ' wt-tile--bare' : '') + (tapClass ? ' ' + tapClass : '')}
       style={{ gridColumn: `${tile.x + 1} / span ${tile.w}`, gridRow: `${tile.y + 1} / span ${tile.h}`, ...textScale(tile) }}
       aria-label={tile.config.title || tile.type}
+      {...handlers}
     >
       {body}
     </section>

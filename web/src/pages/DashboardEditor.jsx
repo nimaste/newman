@@ -1,4 +1,4 @@
-// The dashboard layout editor: the real wall tiles (round 18) on the tablet's 12 × 8 grid, at the
+// The dashboard layout editor: the real wall tiles (round 18) on the tablet's 24 × 16 grid, at the
 // tablet's shape. Drag to move, drag the corner to resize, keys for both; settings on the right are
 // drawn from the hub's tile catalogue (GET api/dashboards/tiles). Nothing is ever sent to a device.
 
@@ -24,14 +24,16 @@ import { SEASON, THEMES, chosenTheme, christmasOf } from '../wall/theme.js';
 import { pictureSrc } from '../wall/Theme.jsx';
 import { MONTHS, MONTH_DAYS, mmdd, parseMMDD } from '../automation.js';
 
-const COLS = 12;
-const ROWS = 8;
+// The hub's wall grid (dashboards.GRID): saved with every dashboard as "grid", so the hub knows the
+// tiles aren't on the old 12 × 8 one.
+const COLS = 24;
+const ROWS = 16;
 const SIZES = { fire: [1280, 800], ipad: [1024, 768] };
 const PAGE_ICONS = ['home', 'shield', 'bulb', 'thermometer', 'camera', 'star', 'bed', 'sofa'];
 
 const rid = (p) => p + Math.random().toString(16).slice(2, 10);
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-const bodyOf = (d) => ({ name: d.name, theme: chosenTheme(d), christmas: christmasOf(d), pages: d.pages, names: cleanNames(d.names), home: homeOf(d), tabNames: TAB_NAMES.includes(d.tabNames) ? d.tabNames : TAB_NAMES[0] });
+const bodyOf = (d) => ({ name: d.name, theme: chosenTheme(d), christmas: christmasOf(d), pages: d.pages, names: cleanNames(d.names), home: homeOf(d), tabNames: TAB_NAMES.includes(d.tabNames) ? d.tabNames : TAB_NAMES[0], grid: [COLS, ROWS] });
 const THEME_NAMES = { midnight: 'Midnight', glass: 'Glass', christmas: 'Christmas' };
 
 /** [month] [day]: one end of the Christmas season ("MM-DD"). */
@@ -740,11 +742,11 @@ export default function DashboardEditor({ id }) {
                   <div className="de-side-title">{spec ? spec.name : tile.type}</div>
                   {spec ? <p className="help">{spec.description}</p> : null}
                   <div className="help">
-                    {tile.w} × {tile.h} · column {tile.x + 1}, row {tile.y + 1}
+                    {tile.w} × {tile.h} of {COLS} × {ROWS} · column {tile.x + 1}, row {tile.y + 1}
                   </div>
                 </div>
                 {((spec && spec.fields) || []).map((f) => (
-                  <TileField key={f.key} field={f} config={tile.config || {}} tileType={tile.type} names={dash.names} onName={setName} pages={dash.pages} onChange={(config) => setTiles((ts) => ts.map((t) => (t.id === tile.id ? { ...t, config } : t)))} />
+                  <TileField key={f.key} field={f} config={tile.config || {}} tileType={tile.type} names={dash.names} onName={setName} pages={dash.pages} screens={catalog.data.screens} onChange={(config) => setTiles((ts) => ts.map((t) => (t.id === tile.id ? { ...t, config } : t)))} />
                 ))}
                 {spec && !(spec.fields || []).length ? <div className="help">Nothing to set up for this tile.</div> : null}
                 <div className="inline-form">

@@ -233,7 +233,8 @@ export function WeatherTile({ tile }) {
   const isDay = a.isDay !== false;
   const toMins = (s) => (s ? new Date(s).getHours() * 60 + new Date(s).getMinutes() : null);
   const win = a.sunrise && a.sunset ? [toMins(a.sunrise), toMins(a.sunset)] : null;
-  const compact = tile.h <= 2;
+  const compact = tile.h <= 4;
+  const cols = Math.floor(tile.w / 2); // its width in the old grid's columns (12 across), which these counts were made for
   const hours = tile.config.show === 'hours';
   // Today's chance and amount after H/L, when there is any: "52% · 1.6 mm" (snow in cm).
   const todayF = forecast.find((d) => d.date === localDay(new Date(now))) || {};
@@ -280,14 +281,14 @@ export function WeatherTile({ tile }) {
 
   if (compact) {
     // The Charcoal board's header strip: icon, temperature, H/L, then as many days as fit.
-    const extra = Math.max(0, hours ? Math.min(6, (tile.w - 3) * 2) : Math.min(5, tile.w - 3));
+    const extra = Math.max(0, hours ? Math.min(6, (cols - 3) * 2) : Math.min(5, cols - 3));
     return (
       <div ref={rootRef} className={'wx wx--compact' + (e.available === false ? ' is-stale' : '')} aria-label={`${e.name}: ${deg(a.temperature)} ${label}`}>
         {banner}
         <div className="wx-strip">
           {nowButton(40, true)}
           <span className="wx-sub">
-            {tile.w >= 4 ? <span>{label}</span> : null}
+            {tile.w >= 8 ? <span>{label}</span> : null}
             <span className="wx-dim">{hl}</span>
           </span>
           {extra ? <span className="wx-strip-gap" /> : null}
@@ -308,7 +309,7 @@ export function WeatherTile({ tile }) {
           <span className="wx-dim">{hl}</span>
         </span>
       </div>
-      {hours ? <HoursRow hourly={hourly} now={now} count={Math.max(3, Math.min(6, tile.w + 2))} win={win} onOpen={open} /> : <DaysList forecast={forecast} now={now} onOpen={open} />}
+      {hours ? <HoursRow hourly={hourly} now={now} count={Math.max(3, Math.min(6, cols + 2))} win={win} onOpen={open} /> : <DaysList forecast={forecast} now={now} onOpen={open} />}
       {daySheet}
     </div>
   );

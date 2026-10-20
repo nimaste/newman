@@ -3,13 +3,15 @@
 //   picture / alerts → the kind has a camera · number-command → a number/percent command
 //   mode → a house-mode kind · forecast → reports a forecast · agenda → lists upcoming events
 //   temperature-setting → a number command in °C/°F · temperature → reports a room temperature
-//   (wall/climate.js) · any → everything. A "page" field picks one of this dashboard's pages.
+//   (wall/climate.js) · any → everything. A "page" field picks one of this dashboard's pages; "look"
+//   is a tile's Look (wall/look.js); "action" is When tapped / When held (wall/tileActions.js): what
+//   to do, then which page, screen (the catalog's `screens`), automation, or device and command.
 
 import { useState } from 'react';
 import { useApi, useHub } from '../hooks.js';
 import { reportsTemperature, setsTemperature } from '../wall/climate.js';
 import { Icon } from '../icons.jsx';
-import { Check } from './Controls.jsx';
+import { Check, Segmented } from './Controls.jsx';
 
 export function matchesFilter(e, kind, filter) {
   if (!kind) return false;
@@ -266,8 +268,107 @@ function PeopleField({ field, value, onChange }) {
   );
 }
 
+/** A tile's Look: Auto / Tiles / List, with what the chosen one means. */
+function LookField({ field, value, onChange }) {
+  const opts = field.options || [];
+  const v = opts.some((o) => o.value === value) ? value : field.default;
+  const chosen = opts.find((o) => o.value === v);
+  return (
+    <>
+      <Segmented label={field.label} value={v} onChange={onChange} options={opts.map((o) => ({ id: o.value, label: o.label }))} />
+      {chosen && chosen.help ? <span className="help">{chosen.help}</span> : null}
+    </>
+  );
+}
+
+/** Commands a tap can send as they are: no value to choose (a dial's number, a mode needs one). */
+const plainCommand = (c) => !c.takesValue;
+
+/** When tapped / When held: what to do, then what it needs (a page, a screen, an automation, a device). */
+function ActionField({ field, value, onChange, pages, screens }) {
+  const { entities, entitiesById, kindsById } = useHub();
+  const v = value && value.do ? value : field.default || { do: 'none' };
+  const autos = useApi(v.do === 'automation' ? 'api/automations' : null);
+  const set = (patch) => onChange({ ...v, ...patch });
+  const pick = (props) => (
+    <select className="select tf-action-pick" {...props} />
+  );
+  let more = null;
+  if (v.do === 'page') {
+    more = pick({
+      value: v.page || '',
+      'aria-label': `${field.label}: which page`,
+      onChange: (e) => set({ page: e.target.value || null }),
+      children: [<option key="" value="">Choose a page…</option>, ...(pages || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)],
+    });
+  } else if (v.do === 'screen') {
+    more = pick({
+      value: v.screen || '',
+      'aria-label': `${field.label}: which screen`,
+      onChange: (e) => set({ screen: e.target.value || null }),
+      children: [<option key="" value="">Choose a screen…</option>, ...(screens || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)],
+    });
+  } else if (v.do === 'automation') {
+    more = autos.data === undefined ? (
+      <div className="help">{autos.error ? "Couldn't load the automations." : 'Loading…'}</div>
+    ) : (
+      pick({
+        value: v.automation || '',
+        'aria-label': `${field.label}: which automation`,
+        onChange: (e) => set({ automation: e.target.value || null }),
+        children: [<option key="" value="">Choose an automation…</option>, ...(autos.data || []).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)],
+      })
+    );
+  } else if (v.do === 'device') {
+    const usable = (entities || []).filter((e) => ((kindsById[e.kind] || {}).commands || []).some(plainCommand));
+    const e = entitiesById[v.entity];
+    const cmds = ((e && (kindsById[e.kind] || {}).commands) || []).filter(plainCommand);
+    more = (
+      <>
+        {pick({
+          value: v.entity || '',
+          'aria-label': `${field.label}: which device`,
+          onChange: (ev) => set({ entity: ev.target.value || null, command: null }),
+          children: [
+            <option key="" value="">Choose a device…</option>,
+            ...groups(usable, kindsById).map(([name, list]) => (
+              <optgroup key={name} label={name}>
+                {list.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </optgroup>
+            )),
+          ],
+        })}
+        {e
+          ? pick({
+              value: v.command || '',
+              'aria-label': `${field.label}: what to do`,
+              onChange: (ev) => set({ command: ev.target.value || null }),
+              children: [<option key="" value="">What to do…</option>, ...cmds.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)],
+            })
+          : null}
+      </>
+    );
+  }
+  return (
+    <>
+      <select className="select" value={v.do} aria-label={field.label} onChange={(e) => onChange({ do: e.target.value })}>
+        {(field.options || []).map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {more}
+    </>
+  );
+}
+
 /** One field of a tile's config. */
-export function TileField({ field: raw, config, onChange, tileType, names, onName, pages }) {
+export function TileField({ field: raw, config, onChange, tileType, names, onName, pages, screens }) {
   // A field without a label gets one from its key ("textSize" → "Text size").
   const field = raw.label ? raw : { ...raw, label: (raw.key.charAt(0).toUpperCase() + raw.key.slice(1)).replace(/([a-z])([A-Z])/g, (m, a, b) => a + ' ' + b.toLowerCase()) };
   const value = config[field.key];
@@ -287,6 +388,8 @@ export function TileField({ field: raw, config, onChange, tileType, names, onNam
   else if (field.type === 'command') input = <CommandField field={field} value={value} onChange={set} config={config} />;
   else if (field.type === 'readings') input = <ReadingsField field={field} value={value} onChange={set} names={names} onName={onName} />;
   else if (field.type === 'people') input = <PeopleField field={field} value={value} onChange={set} />;
+  else if (field.type === 'look') input = <LookField field={field} value={value} onChange={set} />;
+  else if (field.type === 'action') input = <ActionField field={field} value={value} onChange={set} pages={pages} screens={screens} />;
   else if (field.type === 'page')
     input = (
       <select className="select" value={value || ''} aria-label={field.label} onChange={(e) => set(e.target.value || null)}>

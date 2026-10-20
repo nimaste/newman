@@ -554,6 +554,52 @@
   height: 100%;
   border-radius: 99px;
 }
+/* Rooms as a list (Look: List, or Auto on a narrow tile): a row each. */
+.cg-rooms--list {
+  gap: 0;
+}
+.cg-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 2px;
+  border-top: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.08);
+}
+.cg-row:first-child {
+  border-top: none;
+}
+.cg-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.2);
+}
+.cg-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-row .cg-room-h {
+  align-self: auto;
+}
+.cg-row .cg-room-t {
+  font-size: 18px;
+}
+.cg-row.is-off .cg-room-t {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--wt-dim);
+}
+.cg-rooms--list > .cg-room--more {
+  padding: 8px 2px;
+  justify-content: flex-start;
+}
 .cg-room--more {
   display: flex;
   align-items: center;

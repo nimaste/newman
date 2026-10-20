@@ -339,13 +339,13 @@ html.is-wall body {
   flex: 1 1 auto;
 }
 
-/* ---- the 12 × 8 grid ---- */
+/* ---- the 24 × 16 grid (the hub's dashboards.GRID; tiles span whole cells and the gaps between them) ---- */
 .wt-grid {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-rows: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  grid-template-rows: repeat(16, minmax(0, 1fr));
   gap: 14px;
 }
 .wt-tile {
@@ -4206,4 +4206,54 @@ button.wt-chip {
   color: var(--wt-coral);
   font-size: 14px;
   font-weight: 700;
+}
+
+/* A tile's Look as a list (look.js): a small icon, the full name, its state and a compact button. */
+.wt-row--compact {
+  gap: 10px;
+}
+.wt-row--compact .wt-row-icon {
+  width: 28px;
+  height: 28px;
+}
+.wt-row--compact .wt-row-name {
+  font-size: 16px;
+}
+.wt-row--compact .wt-action {
+  height: 44px;
+  min-width: 82px;
+  padding: 0 14px;
+  border-radius: 22px;
+  font-size: 14px;
+}
+.wt-row--compact .wt-action.wt-action--more {
+  width: 44px;
+  min-width: 44px;
+}
+/* Readings as cards (Look: Tiles). */
+.wt-list-body.wt-vals {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  overflow: hidden;
+}
+.wt-val {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.06);
+}
+.wt-val .wt-reading {
+  font-size: 22px;
+}
+/* A tile with its own When tapped (tileActions.js). */
+.wt-tile.has-tap {
+  cursor: pointer;
+}
+.wt-tile.has-tap:focus-visible {
+  outline: 2px solid var(--wt-teal, #3ccfb4);
+  outline-offset: 3px;
 }

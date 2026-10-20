@@ -333,7 +333,7 @@ function WallScreens({ auth, signOut }) {
         {page.id === home.page ? <StatusChips /> : null}
         <div className="wt-grid">
           {page.tiles.map((t) => (
-            <Tile key={t.id} tile={t} />
+            <Tile key={t.id} tile={t} dash={d.id} />
           ))}
         </div>
       </>

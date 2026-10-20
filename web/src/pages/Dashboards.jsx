@@ -124,7 +124,7 @@ export default function Dashboards() {
   const rename = async (d, name) => {
     try {
       const f = await full(d);
-      await api.put('api/dashboards/' + enc(d.id), { name, theme: f.theme, pages: f.pages, names: f.names || {}, home: f.home });
+      await api.put('api/dashboards/' + enc(d.id), { name, theme: f.theme, pages: f.pages, names: f.names || {}, home: f.home, grid: f.grid });
       toast('Renamed', 'success');
       setModal(null);
       list.reload();
