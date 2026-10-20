@@ -168,6 +168,7 @@ tried on real hardware.
 | ✅ **HomeKit device** | e.g. Ecobee thermostat + room sensors | HomeKit Accessory Protocol, locally | The 8-digit HomeKit code; remove it from other hubs first |
 | ✅ **Weather** | conditions, hourly / 7-day forecast, Environment Canada warnings | Open-Meteo (free, no account) | Nothing |
 | ✅ **Calendars** | upcoming events, "event starts" | Private iCal links (Google, iCloud, Outlook…) | The calendar's secret iCal address |
+| ✅ **Calendar server (CalDAV)** | every calendar the account can see; the wall tablets add and change events; reminders on the wall | CalDAV (GCloud, Nextcloud, Radicale, iCloud…) | Server address, user name and an app password |
 | ✅ **Roborock** | vacuums: start, pause, dock, find, clean rooms; battery, consumables | Locally when it can, Roborock's cloud as fallback | Email code sign-in once (session kept, no password) |
 | 🧪 **Home Connect** | Bosch, Thermador, Siemens, Gaggenau, Neff appliances | Home Connect's API + live event stream | A free developer app (Client ID) — see below |
 | β **LG ThinQ** | LG washers, dryers, WashTowers, dishwashers, ovens, fridges | LG's official ThinQ Connect API | A personal access token — see below |
@@ -362,6 +363,44 @@ own and change live; each lock / alarm / siren change carries who did it.
   can go.
 - Ring won't arm while a door or window is open; tick *Bypass open doors and windows when arming*
   to have Newman bypass them, as the Ring app offers.
+
+### Calendar server (CalDAV)
+
+For calendars on your own server — GCloud's family calendars, or Nextcloud, Radicale, iCloud and other
+CalDAV servers. Unlike an iCal link, it can also **change** them: the wall tablets add, edit and delete
+events.
+
+*Connections → Add → Calendar server (CalDAV)*:
+
+- **Server address** — for GCloud, its share address with `/caldav/` (e.g. `https://share.example.com/caldav/`).
+- **User name** and **Password** — for GCloud, a GCloud account made for Newman (e.g. `newman`) and an app
+  password made for it (GCloud *Settings → Phones & app passwords*). Newman sees exactly the calendars that
+  account can see: in GCloud, tick **On Newman** for a calendar (*Admin → Calendars*).
+
+Every calendar shows as a calendar device, in its own colour, on the calendar tile, the Today page and in
+automations ("event starts"), the same as iCal-link calendars. Calendars the account may only view show
+without **+** or **Edit**.
+
+**Changes show at once.** The connection's *Settings* show its change address (*When a calendar changes*).
+Copy it into GCloud's *Admin → Calendars → Newman address* (or any server that can call an address when a
+calendar changes), and an event added on a phone is on the wall within seconds. Without it, Newman checks
+every 15 minutes (*Check every*, under *More settings*).
+
+**On the wall tablet:**
+
+- Tap an event for its card: when, where, notes, and a QR code for its link (scan it with your phone).
+  **Edit** opens the form filled in; for a repeating event it asks *This event* or *All events*.
+- **+** on the calendar tile adds an event: what (needed), which calendar, all day, starts and ends (a big
+  month calendar for dates; hour and minute wheels with AM / PM for times), and repeats (including
+  *Custom…*: every few days, weeks, months or years, on chosen days, until a date or a number of times).
+  Moving the start moves the end with it; an end before the start can't be saved. Save closes the form and
+  shows *Added to <calendar>*. Notes and location are added on a phone or in GCloud.
+- **Remind on the wall tablets** — tick calendars here and each event's reminders (the ones set on it in
+  GCloud or on a phone) show as a card at the top of every wall tablet with a chime. **OK** on any tablet
+  clears it on all of them.
+
+The password is kept like other connections' keys (an app password: remove it in GCloud and Newman is cut
+off). Times are written in the hub's time zone.
 
 ### Amazon Alexa (experimental)
 

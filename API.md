@@ -1331,6 +1331,27 @@ app answers `{type: "clip", pcm (base64 PCM16), rate: 16000, ms}` · `{type: "cl
 `GET /api/events?limit=&before=&kind=&since=&runId=` → `[{"id", "ts", "kind", "title", "body", "entityId", "data"}]`
 (`runId`: the entries of one automation run - a push's `alertId`).
 
+## Calendar servers (CalDAV)
+
+The wall's add / edit / delete for calendars from a *Calendar server (CalDAV)* connection (`{eid}` = the
+calendar's device id; a calendar the account may only view answers 400). Times are local
+(`"2026-10-23T18:00"`, or `"2026-10-23"` with `allDay`); `end` is the last day for all-day events.
+
+- `GET /api/calendars/{eid}/event?href=&occurrence=&scope=all|this` → the form filled in:
+  `{"title", "allDay", "start", "end", "rrule", "location", "url", "notes"}`.
+- `POST /api/calendars/{eid}/events` `{"event": {title, allDay, start, end, rrule?, location?, url?, notes?}}`
+  → `{"ok", "calendar": name, "uid"}`. No title, or an end before the start → 400.
+- `PUT /api/calendars/{eid}/events` `{"href", "scope": "all"|"this", "occurrence"?, "event", "calendar"?}` —
+  `scope: "this"` changes one time of a repeating event; `calendar` moves it to another calendar on the same
+  server. Reminders and anything else on the event are kept.
+- `POST /api/calendars/{eid}/events/delete` `{"href", "scope", "occurrence"?, "title"?}`.
+- `GET /api/calendar-reminders` → `{"reminders": [{"id", "title", "start", "end", "allDay", "location", "calendar",
+  "colour", "minutes", "startsAt"}]}` (cards up now); `POST /api/calendar-reminders/{id}/done` clears one on every
+  tablet. Live: `{"type": "calendarReminder", "reminder"}` and `{"type": "calendarReminderDone", "id"}`.
+- `POST /api/public/calendars/{integrationId}/{key}` `{"calendar": id}` (no sign-in; the key is in the
+  address) — the server says a calendar changed, and Newman fetches it at once. The address is in the
+  connection's `adminDetails.addresses`.
+
 ## Alerts
 
 `GET /api/alerts?entity=&since=&limit=&before=` → camera alerts, newest first, each with `"at"`, `"label"`
