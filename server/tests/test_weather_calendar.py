@@ -3,12 +3,12 @@ import asyncio
 import os
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 os.environ.setdefault("TOKEN_SECRET", "test-secret")
 
-from newman.integrations.base import SECRET_MASK, Context, mask_config, merge_config  # noqa: E402
+from newman.integrations.base import SECRET_MASK, CommandError, Context, mask_config, merge_config  # noqa: E402
 from newman.integrations.calendar_ics import CalendarIntegration, parse  # noqa: E402
 from newman.integrations.weather import WeatherIntegration  # noqa: E402
 from newman.kinds import properties_for  # noqa: E402
@@ -78,6 +78,52 @@ class CalendarTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.05)
         self.assertEqual(fired, [("calendar.family", "start", "Pickup")])
         tmp.cleanup()
+
+    async def test_other_days_from_the_link(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        hub = Hub()
+        cal = CalendarIntegration("calendar", "Calendars", {"calendars": [{"name": "Family", "url": "https://x/y.ics"}]},
+                                  Context(hub, Path(tmp.name), Path(tmp.name)))
+        c = cal.config["calendars"][0]
+        first = date.today().replace(day=1)
+        past = ((first - timedelta(days=1)).replace(day=1) - timedelta(days=1)).replace(day=1)  # two months back
+        after = (past + timedelta(days=32)).replace(day=1)
+        began = datetime(past.year, past.month, past.day, 10) - timedelta(days=14)
+        trip = datetime(past.year, past.month, past.day, 9) + timedelta(days=9)
+        text = ics(vevent("w", "Swimming", f":{began:%Y%m%dT%H%M%S}", f":{began + timedelta(hours=1):%Y%m%dT%H%M%S}",
+                          "RRULE:FREQ=WEEKLY;COUNT=6\r\n"),
+                   vevent("t", "School trip", f":{trip:%Y%m%dT%H%M%S}", f":{trip + timedelta(hours=6):%Y%m%dT%H%M%S}"))
+
+        class Text:
+            def __init__(self, text):
+                self.text = text
+
+            def raise_for_status(self):
+                pass
+
+        async def fake_get(url):
+            return Text(text)
+        cal._http.get = fake_get
+        eid = cal._eid(c)
+        with self.assertRaisesRegex(CommandError, "hasn't been read yet"):
+            await cal.events_between(eid, past, after)
+        await cal._fetch(c)
+        self.assertEqual(cal._events["Family"], [])  # nothing in the window
+        evs = await cal.events_between(eid, past, after)
+        self.assertEqual([e["start"][:10] for e in evs if e["title"] == "Swimming"],
+                         [(past + timedelta(days=7 * i)).isoformat() for i in range(4)])
+        self.assertIn("School trip", [e["title"] for e in evs])
+        self.assertIs(await cal.events_between(eid, past, after), evs)  # kept until the link is read again
+        await asyncio.sleep(0.01)
+        await cal._fetch(c)
+        self.assertIsNot(await cal.events_between(eid, past, after), evs)
+        hub.upsert(eid, kind="calendar", name="Family", integration="calendar")
+        await cal._tick([c])
+        self.assertEqual(hub.get(eid).attrs["fetchedAt"], cal._fetched["Family"])
+        self.assertIn("upcomingUntil", hub.get(eid).attrs)
+        with self.assertRaisesRegex(CommandError, "isn't on this connection"):
+            await cal.events_between("calendar.nope", past, after)
 
     def test_calendar_links_are_hidden_like_passwords(self):
         cfg = {"calendars": [{"name": "Family", "url": "https://secret/1.ics"}, {"name": "Work", "url": "https://secret/2.ics"}]}

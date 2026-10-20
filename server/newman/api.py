@@ -16,6 +16,7 @@ import logging
 import re
 import secrets
 import time
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -73,6 +74,7 @@ log = logging.getLogger(__name__)
 SNAPSHOT_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 # Frigate ids look like 1790723343.68906-748iee; alerts are "r:<review id>"
 CLIP_ID = re.compile(r"^(r:)?[A-Za-z0-9._-]{1,64}$")
+CALENDAR_RANGE_DAYS = 45  # GET /api/calendars/{eid}/events: a month's six weeks, and a little
 STARTED = time.time()
 LOCATOR = web.AppKey("locator", Locator)  # tests reach the app's Locator through this
 
@@ -2547,7 +2549,8 @@ def build_app(h: "Newman") -> web.Application:
         msg = alexa_timers_message(h.integrations.instances)
         return web.json_response({"now": msg["now"], "timers": msg["timers"]})
 
-    # -- calendar servers (CalDAV): the wall's add / edit / delete, and reminders -----------------
+    # -- calendars: other days for the month screen; calendar servers (CalDAV): the wall's add / edit /
+    # delete, and reminders ------------------------------------------------------------------------
 
     def calendar_server(eid: str) -> Any:
         ent = h.hub.get(eid)
@@ -2565,6 +2568,27 @@ def build_app(h: "Newman") -> web.Application:
         try:
             return web.json_response(await inst.event_form(req.match_info["eid"], q.get("href", ""),
                                                            q.get("occurrence") or None, q.get("scope", "all")))
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+
+    @r.get("/api/calendars/{eid}/events")
+    async def calendar_events(req: web.Request) -> web.Response:
+        """One calendar's events on other days than it shows (the wall's month screen, a past month too):
+        ?from=YYYY-MM-DD&to=YYYY-MM-DD (to not included; at most CALENDAR_RANGE_DAYS) → {"events": [...]},
+        shaped like attrs.upcoming. From any connection whose calendars can (events_between)."""
+        eid = req.match_info["eid"]
+        ent = h.hub.get(eid)
+        inst = h.integrations.instances.get(ent.integration) if ent else None
+        if inst is None or not hasattr(inst, "events_between"):
+            return _err(404, "That calendar can only show what's coming up")
+        try:
+            start, end = date.fromisoformat(req.query.get("from", "")), date.fromisoformat(req.query.get("to", ""))
+        except ValueError:
+            return _err(400, "from and to are dates: YYYY-MM-DD")
+        if not 0 < (end - start).days <= CALENDAR_RANGE_DAYS:
+            return _err(400, f"to must be after from, and at most {CALENDAR_RANGE_DAYS} days later")
+        try:
+            return web.json_response({"events": await inst.events_between(eid, start, end)})
         except (CommandError, ValueError) as e:
             return _err(400, str(e))
 

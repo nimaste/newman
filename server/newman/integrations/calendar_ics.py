@@ -1,7 +1,8 @@
 """Calendars by link: the private "iCal" address Google Calendar, iCloud, Outlook and most others
 give you for a calendar. Read-only, no sign-in to any account: Newman fetches each link every few
 minutes, expands repeating events, and keeps one calendar device per link - "busy" while an event is
-on, with the next events for the calendar tile, and an event when one starts (for automations)."""
+on, with the next events for the calendar tile, and an event when one starts (for automations). The
+wall's month screen asks for other days too (events_between), expanded from the link last fetched."""
 from __future__ import annotations
 
 import asyncio
@@ -15,9 +16,11 @@ import icalendar
 import recurring_ical_events
 
 from ..store import slug
-from .base import Field, Integration
+from .base import CommandError, Field, Integration
 
 log = logging.getLogger(__name__)
+
+RANGE_KEEP = 32  # other days asked for (the month screen), kept until the link is fetched again
 
 COLOURS = ({"value": "#3CCFB4", "label": "Teal"}, {"value": "#7FB8FF", "label": "Blue"},
            {"value": "#F5B942", "label": "Amber"}, {"value": "#C58BFF", "label": "Purple"},
@@ -49,6 +52,17 @@ def parse(text: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
                     "allDay": all_day, "location": str(ev.get("LOCATION") or "")})
     out.sort(key=lambda x: x["start"])
     return out
+
+
+def window_attrs(until: datetime | None, later: list[dict[str, Any]], upcoming: list[dict[str, Any]],
+                 fetched: float | None) -> dict[str, Any]:
+    """A calendar device's attrs about what attrs.upcoming holds: upcomingUntil (everything before it is in
+    there; where a long list was cut short, its last start) and fetchedAt (when the calendar was last read,
+    so the wall knows other days it asked for may have changed)."""
+    if until is None:
+        return {}
+    end = until.isoformat() if len(later) <= len(upcoming) or not upcoming else upcoming[-1]["start"]
+    return {"upcomingUntil": end, "fetchedAt": fetched}
 
 
 class CalendarIntegration(Integration):
@@ -92,11 +106,36 @@ class CalendarIntegration(Integration):
         super().__init__(*a, **kw)
         self._http = httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": "Newman home hub"})
         self._events: dict[str, list[dict[str, Any]]] = {}
+        self._texts: dict[str, str] = {}          # calendar name -> the link's text last fetched
+        self._fetched: dict[str, float] = {}
+        self._until: dict[str, datetime] = {}
+        self._ranges: dict[tuple[str, date, date], tuple[float, list[dict[str, Any]]]] = {}
         self._errors: dict[str, str] = {}
         self._last_tick = time.time()
 
     def _eid(self, cal: dict[str, Any]) -> str:
         return self.entity_id(slug(cal["name"]))
+
+    async def events_between(self, eid: str, start: date, end: date) -> list[dict[str, Any]]:
+        """The calendar's events from `start` up to `end` (days; a past month too), shaped like
+        attrs.upcoming, for the wall's month screen - expanded from the link as last fetched."""
+        cal = next((c for c in self.config.get("calendars") or [] if c and c.get("url") and self._eid(c) == eid), None)
+        if cal is None:
+            raise CommandError("That calendar isn't on this connection any more")
+        name = cal["name"]
+        text = self._texts.get(name)
+        if text is None:
+            raise CommandError(f"{name} hasn't been read yet")
+        key = (name, start, end)
+        hit = self._ranges.get(key)
+        if hit and hit[0] == self._fetched.get(name):
+            return hit[1]
+        lo, hi = datetime(start.year, start.month, start.day), datetime(end.year, end.month, end.day)
+        events = await asyncio.to_thread(parse, text, lo, hi)
+        if len(self._ranges) >= RANGE_KEEP:
+            self._ranges.clear()
+        self._ranges[key] = (self._fetched.get(name, 0.0), events)
+        return events
 
     async def run(self) -> None:
         cals = [c for c in self.config.get("calendars") or [] if c and c.get("url")]
@@ -124,8 +163,12 @@ class CalendarIntegration(Integration):
         try:
             r = await self._http.get(url)
             r.raise_for_status()
-            events = await asyncio.to_thread(parse, r.text, now - timedelta(days=1), now + timedelta(days=days))
+            hi = now + timedelta(days=days)
+            events = await asyncio.to_thread(parse, r.text, now - timedelta(days=1), hi)
             self._events[cal["name"]] = events
+            self._texts[cal["name"]] = r.text
+            self._fetched[cal["name"]] = time.time()
+            self._until[cal["name"]] = hi
             self._errors.pop(cal["name"], None)
         except Exception as e:
             self._errors[cal["name"]] = f"{cal['name']}: {'link not found' if '404' in str(e) else 'unreachable'}"
@@ -143,10 +186,12 @@ class CalendarIntegration(Integration):
             eid = self._eid(c)
             current = [e for e in events if not e["allDay"]
                        and datetime.fromisoformat(e["start"]) <= now < datetime.fromisoformat(e["end"])]
-            upcoming = [e for e in events if datetime.fromisoformat(e["end"]) > now][:300]  # a month of busy calendars
+            later = [e for e in events if datetime.fromisoformat(e["end"]) > now]
+            upcoming = later[:300]  # a month of busy calendars
             await self.hub.update(eid, available=c["name"] not in self._errors, state="busy" if current else "free",
                                   attrs={"upcoming": upcoming, "colour": c.get("colour") or "#3CCFB4", "headsUp": c.get("headsUp") or "",
-                                         "now": current[0]["title"] if current else None})
+                                         "now": current[0]["title"] if current else None,
+                                         **window_attrs(self._until.get(c["name"]), later, upcoming, self._fetched.get(c["name"]))})
             for e in events:
                 s = datetime.fromisoformat(e["start"])
                 if not e["allDay"] and since < s <= now:

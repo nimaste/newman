@@ -4,9 +4,10 @@ too), reminders kept on edit, the end-before-start and no-name checks, a view-on
 server's "this calendar changed" call, and reminder cards on the wall."""
 import asyncio
 import os
+import re
 import tempfile
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,6 +18,7 @@ time.tzset()
 
 import httpx  # noqa: E402
 import icalendar  # noqa: E402
+import recurring_ical_events  # noqa: E402
 
 from newman.integrations import REGISTRY  # noqa: E402
 from newman.integrations import caldav as CD  # noqa: E402
@@ -43,6 +45,7 @@ class FakeServer:
         self.objects = {FAM: {}, CHORES: {}}  # cal id -> name -> (etag, text)
         self.n = 0
         self.calls = []
+        self.ranges = []  # each REPORT's time-range (UTC)
         self.password = "app-pw"
 
     def put(self, cal, name, text):
@@ -78,9 +81,13 @@ class FakeServer:
         if len(parts) >= 3 and parts[0] == "caldav" and parts[2] in self.objects:
             cid = parts[2]
             if req.method == "REPORT":
+                m = re.search(r'time-range start="(\w+)" end="(\w+)"', req.content.decode())
+                self.ranges.append(m.groups())
+                lo, hi = (datetime.strptime(x, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc) for x in m.groups())
                 inner = "".join(f"<d:response><d:href>/caldav/newman/{cid}/{n}</d:href>"
                                 + ok(f"<d:getetag>{e}</d:getetag><c:calendar-data>{t.replace('&', '&amp;').replace('<', '&lt;')}</c:calendar-data>")
-                                + "</d:response>" for n, (e, t) in self.objects[cid].items())
+                                + "</d:response>" for n, (e, t) in self.objects[cid].items()
+                                if recurring_ical_events.of(icalendar.Calendar.from_ical(t)).between(lo, hi))
                 return ms(inner)
             name = parts[3] if len(parts) > 3 else ""
             if cid == CHORES and req.method in ("PUT", "DELETE"):
@@ -323,6 +330,55 @@ class CalDavTests(unittest.TestCase):
         self.run_(inst.refresh())
         self.assertFalse(hub.get(self.eid(inst, FAM)).attrs["remindOnWall"])
 
+    def test_other_days_a_past_month_with_repeats(self):
+        hub, inst = self.make()
+        first = date.today().replace(day=1)
+        past = ((first - timedelta(days=1)).replace(day=1) - timedelta(days=1)).replace(day=1)  # two months back
+        after = (past + timedelta(days=32)).replace(day=1)
+        began = past - timedelta(days=14)  # weekly from two weeks before that month: 4 times in it
+        self.server.put(FAM, "swim.ics", ics("swim", "Swimming", f"{began:%Y%m%d}T100000", f"{began:%Y%m%d}T110000",
+                                             rrule="FREQ=WEEKLY;COUNT=6"))
+        trip = past + timedelta(days=9)
+        self.server.put(FAM, "trip.ics", ics("trip", "School trip", f"{trip:%Y%m%d}T090000", f"{trip:%Y%m%d}T150000"))
+        async def go():
+            await inst.refresh()
+            fam = self.eid(inst, FAM)
+            self.assertNotIn("School trip", [e["title"] for e in self.events(hub, fam)])  # not in the window
+            attrs = hub.get(fam).attrs
+            self.assertGreater(attrs["upcomingUntil"], (date.today() + timedelta(days=30)).isoformat())
+            self.assertIsNotNone(attrs["fetchedAt"])
+            evs = await inst.events_between(fam, past, after)
+            z = lambda d: datetime(d.year, d.month, d.day).astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")  # noqa: E731
+            self.assertEqual(self.server.ranges[-1], (z(past), z(after)))
+            swims = [e for e in evs if e["title"] == "Swimming"]
+            self.assertEqual([e["start"][:10] for e in swims], [(past + timedelta(days=7 * i)).isoformat() for i in range(4)])
+            self.assertTrue(all(e["recurring"] and e["uid"] == "swim" and e["href"].endswith("/swim.ics") for e in swims))
+            self.assertEqual(len({e["occurrence"] for e in swims}), 4)
+            titles = [e["title"] for e in evs]
+            self.assertIn("School trip", titles)
+            self.assertNotIn("Dinner at Nonna's", titles)
+            # Asked again: kept, not asked of the server again.
+            reports = sum(1 for m, _p in self.server.calls if m == "REPORT")
+            self.assertIs(await inst.events_between(fam, past, after), evs)
+            self.assertEqual(sum(1 for m, _p in self.server.calls if m == "REPORT"), reports)
+            # One from that month opens like the window's, and can be changed.
+            ev = next(e for e in evs if e["title"] == "School trip")
+            form = await inst.event_form(fam, ev["href"], None, "all")
+            self.assertEqual((form["title"], form["start"]), ("School trip", f"{trip.isoformat()}T09:00"))
+            await inst.change_event(fam, ev["href"], {**form, "title": "School trip (zoo)"}, "all", None)
+            self.assertIn("School trip (zoo)", self.server.objects[FAM]["trip.ics"][1])
+            # The calendar was fetched since: the month is asked for again.
+            again = await inst.events_between(fam, past, after)
+            self.assertIn("School trip (zoo)", [e["title"] for e in again])
+            self.assertEqual(sum(1 for m, _p in self.server.calls if m == "REPORT"), reports + 2)
+        self.run_(go())
+
+    def test_other_days_of_a_calendar_gone(self):
+        hub, inst = self.make()
+        self.run_(inst.refresh())
+        with self.assertRaisesRegex(CommandError, "isn't on the server any more"):
+            self.run_(inst.events_between("caldav.nope", date.today(), date.today() + timedelta(days=7)))
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -364,3 +420,65 @@ class ChangedAddressTests(unittest.IsolatedAsyncioTestCase):
             del self.h.integrations.instances["caldav"]
             if inst._nudge_later:
                 inst._nudge_later.cancel()
+
+
+class OtherDaysApiTests(unittest.IsolatedAsyncioTestCase):
+    """GET /api/calendars/{eid}/events?from=&to=: signed in, from any connection that has events_between."""
+
+    async def asyncSetUp(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        from newman.api import build_app
+        from newman.config import config
+        from newman.integrations.base import Integration
+        from test_auth import H
+        self.tmp = tempfile.TemporaryDirectory()
+        object.__setattr__(config, "data_dir", Path(self.tmp.name))
+        self.h = H(Path(self.tmp.name))
+        ctx = self.h.integrations._ctx
+
+        class Ranged(Integration):
+            type = "ranged"
+            asked = []
+
+            async def events_between(self, eid, start, end):
+                if eid == "ranged.broken":
+                    raise CommandError("Couldn't read Broken from the calendar server")
+                self.asked.append((eid, start, end))
+                return [{"title": "Swimming", "start": f"{start.isoformat()}T10:00:00", "end": f"{start.isoformat()}T11:00:00",
+                         "allDay": False, "location": ""}]
+
+        class Plain(Integration):
+            type = "plain"
+
+        self.ranged = Ranged("ranged", "Ranged", {}, ctx)
+        self.h.integrations.instances["ranged"] = self.ranged
+        self.h.integrations.instances["plain"] = Plain("plain", "Plain", {}, ctx)
+        for eid, iid in (("ranged.family", "ranged"), ("ranged.broken", "ranged"), ("plain.work", "plain")):
+            self.h.hub.upsert(eid, kind="calendar", name=eid, integration=iid)
+        self.client = TestClient(TestServer(build_app(self.h)))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+        self.tmp.cleanup()
+
+    async def test_range(self):
+        r = await self.client.get("/api/calendars/ranged.family/events?from=2026-08-01&to=2026-09-01")
+        self.assertEqual(r.status, 401)  # signed in only
+        r = await self.client.post("/api/auth/setup", json={"username": "Chris", "name": "Chris", "password": "correct horse"})
+        self.assertEqual(r.status, 200)
+        r = await self.client.get("/api/calendars/ranged.family/events?from=2026-08-01&to=2026-09-01")
+        self.assertEqual(r.status, 200, await r.text())
+        self.assertEqual((await r.json())["events"][0]["title"], "Swimming")
+        self.assertEqual(self.ranged.asked, [("ranged.family", date(2026, 8, 1), date(2026, 9, 1))])
+        for q in ("from=2026-08-01&to=2026-09-16", "from=2026-08-01&to=2026-08-01", "from=2026-08-01", "from=Aug&to=Sep"):
+            r = await self.client.get(f"/api/calendars/ranged.family/events?{q}")
+            self.assertEqual(r.status, 400, q)
+        r = await self.client.get("/api/calendars/ranged.family/events?from=2026-08-01&to=2026-09-15")
+        self.assertEqual(r.status, 200)  # 45 days
+        r = await self.client.get("/api/calendars/plain.work/events?from=2026-08-01&to=2026-09-01")
+        self.assertEqual(r.status, 404)
+        r = await self.client.get("/api/calendars/nope.none/events?from=2026-08-01&to=2026-09-01")
+        self.assertEqual(r.status, 404)
+        r = await self.client.get("/api/calendars/ranged.broken/events?from=2026-08-01&to=2026-09-01")
+        self.assertEqual((r.status, (await r.json())["error"]), (400, "Couldn't read Broken from the calendar server"))

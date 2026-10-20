@@ -10,7 +10,9 @@ work the same - plus, per event, what the wall needs to show and edit it (uid, i
 which occurrence of a repeating one, notes, link, reminders, its repeat rule).
 
 Events come from a calendar-query for the window shown (yesterday … `days` ahead); a calendar whose
-getctag hasn't changed isn't fetched again (except once a few hours, as the window moves on). The server
+getctag hasn't changed isn't fetched again (except once a few hours, as the window moves on). The wall's
+month screen asks for other days too (events_between: a calendar-query for those days, a past month too),
+kept RANGE_KEEP_S unless the calendar is fetched again meanwhile. The server
 can say "this calendar changed" by POSTing {"calendar": <its id>} to /api/public/calendars/changed (GCloud
 does when its Admin › Calendars › Newman address is the hub's address). The message is only a nudge - the
 calendar is fetched with the connection's own sign-in - so it needs no key; nudges closer together than
@@ -46,7 +48,7 @@ import recurring_ical_events
 
 from ..store import slug
 from .base import CommandError, Field, Integration, check_every_field
-from .calendar_ics import _local
+from .calendar_ics import _local, window_attrs
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +59,8 @@ TICK_S = 30.0
 NUDGE_GAP_S = 5.0          # "a calendar changed" nudges closer together than this become one fetch
 REMINDER_KEEP_S = 2 * 3600  # a reminder nobody dismissed goes this long after its event starts
 MAX_NOTES = 2000
+RANGE_KEEP_S = 300         # other days asked for (the month screen) are asked of the server again after this
+MAX_SEEN = 2000            # events from other days kept for opening / editing them, per calendar
 
 HOME_PROPS = f"""<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="{D}" xmlns:c="{C}" xmlns:cs="{CS}" xmlns:ic="{IC}"><d:prop>
@@ -430,6 +434,9 @@ class CalDavIntegration(Integration):
         self._objects: dict[str, dict[str, dict[str, str]]] = {}  # entity id -> href -> {"etag", "ics"}
         self._events: dict[str, list[dict[str, Any]]] = {}
         self._fetched: dict[str, float] = {}
+        self._until: dict[str, datetime] = {}           # entity id -> the end of the window fetched
+        self._ranges: dict[tuple[str, date, date], tuple[float, list[dict[str, Any]]]] = {}  # other days asked for
+        self._seen: dict[str, dict[str, dict[str, str]]] = {}  # entity id -> href -> {"etag", "ics"} from other days
         self._errors: dict[str, str] = {}
         self._wake = asyncio.Event()
         self._wanted: set[str] = set()   # calendar ids the server said changed ("*" = all / unknown)
@@ -505,6 +512,7 @@ class CalDavIntegration(Integration):
         for gone in set(self._cals) - set(cals):
             self._events.pop(gone, None)
             self._objects.pop(gone, None)
+            self._seen.pop(gone, None)
             await self.hub.update(gone, available=False)
         self._cals = cals
 
@@ -517,36 +525,11 @@ class CalDavIntegration(Integration):
         days = max(1, int(self.config.get("days") or 31))
         now = datetime.now()
         lo, hi = now - timedelta(days=1), now + timedelta(days=days)
-        z = lambda d: d.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")  # noqa: E731
-        body = (f'<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="{D}" xmlns:c="{C}">'
-                f"<d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name=\"VCALENDAR\">"
-                f'<c:comp-filter name="VEVENT"><c:time-range start="{z(lo)}" end="{z(hi)}"/></c:comp-filter>'
-                f"</c:comp-filter></c:filter></c:calendar-query>")
         try:
-            r = await self._dav("REPORT", cal["href"], body, "1")
-            if r.status_code != 207:
-                raise ConnectionError(f"{cal['name']} answered {r.status_code}")
-            objects: dict[str, dict[str, str]] = {}
-            for href, props in multistatus(r.content):
-                data = props.get(_q(C, "calendar-data"))
-                if data is None or not (data.text or "").strip():
-                    continue
-                etag = props.get(_q(D, "getetag"))
-                objects[urljoin(cal["href"], href)] = {"etag": (etag.text or "").strip() if etag is not None else "",
-                                                       "ics": data.text}
-            events: list[dict[str, Any]] = []
-
-            def parse_all() -> None:
-                for href, o in objects.items():
-                    try:
-                        events.extend(parse_resource(o["ics"], href, lo, hi))
-                    except Exception as e:  # one bad event mustn't hide the rest
-                        log.warning("Calendar %s: an event couldn't be read (%s)", cal["name"], e)
-
-            await asyncio.to_thread(parse_all)
-            events.sort(key=lambda x: x["start"])
+            objects, events = await self._query(cal, lo, hi)
             self._objects[eid] = objects
             self._events[eid] = events
+            self._until[eid] = hi
             self._fetched[eid] = time.time()
             self._errors.pop(eid, None)
         except SignInRefused:
@@ -554,6 +537,62 @@ class CalDavIntegration(Integration):
         except Exception as e:
             self._errors[eid] = f"{cal['name']}: couldn't be read"
             log.warning("Calendar %s: %s", cal["name"], e)
+
+    async def _query(self, cal: dict[str, Any], lo: datetime, hi: datetime) -> tuple[dict[str, dict[str, str]], list[dict[str, Any]]]:
+        """A calendar-query for [lo, hi) → ({href: {"etag", "ics"}}, its occurrences in it, by start)."""
+        z = lambda d: d.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")  # noqa: E731
+        body = (f'<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="{D}" xmlns:c="{C}">'
+                f"<d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name=\"VCALENDAR\">"
+                f'<c:comp-filter name="VEVENT"><c:time-range start="{z(lo)}" end="{z(hi)}"/></c:comp-filter>'
+                f"</c:comp-filter></c:filter></c:calendar-query>")
+        r = await self._dav("REPORT", cal["href"], body, "1")
+        if r.status_code != 207:
+            raise ConnectionError(f"{cal['name']} answered {r.status_code}")
+        objects: dict[str, dict[str, str]] = {}
+        for href, props in multistatus(r.content):
+            data = props.get(_q(C, "calendar-data"))
+            if data is None or not (data.text or "").strip():
+                continue
+            etag = props.get(_q(D, "getetag"))
+            objects[urljoin(cal["href"], href)] = {"etag": (etag.text or "").strip() if etag is not None else "",
+                                                   "ics": data.text}
+        events: list[dict[str, Any]] = []
+
+        def parse_all() -> None:
+            for href, o in objects.items():
+                try:
+                    events.extend(parse_resource(o["ics"], href, lo, hi))
+                except Exception as e:  # one bad event mustn't hide the rest
+                    log.warning("Calendar %s: an event couldn't be read (%s)", cal["name"], e)
+
+        await asyncio.to_thread(parse_all)
+        events.sort(key=lambda x: x["start"])
+        return objects, events
+
+    async def events_between(self, eid: str, start: date, end: date) -> list[dict[str, Any]]:
+        """The calendar's events from `start` up to `end` (days; a past month too) in the attrs.upcoming
+        shape, for the wall's month screen. Asked of the server again after RANGE_KEEP_S, or sooner when
+        the calendar was fetched since (a change). Its events can be opened and edited like the window's."""
+        cal = self._calendar(eid, change=False)
+        key = (eid, start, end)
+        hit = self._ranges.get(key)
+        if hit and hit[0] >= self._fetched.get(eid, 0) and time.time() - hit[0] < RANGE_KEEP_S:
+            return hit[1]
+        lo, hi = datetime(start.year, start.month, start.day), datetime(end.year, end.month, end.day)
+        try:
+            objects, events = await self._query(cal, lo, hi)
+        except SignInRefused as e:
+            raise CommandError("The calendar server didn't accept Newman's password") from e
+        except (httpx.HTTPError, ConnectionError) as e:
+            raise CommandError(f"Couldn't read {cal['name']} from the calendar server") from e
+        now = time.time()
+        self._ranges = {k: v for k, v in self._ranges.items() if now - v[0] < RANGE_KEEP_S}
+        self._ranges[key] = (now, events)
+        seen = self._seen.setdefault(eid, {})
+        if len(seen) + len(objects) > MAX_SEEN:
+            seen.clear()
+        seen.update(objects)
+        return events
 
     async def refresh(self, which: set[str] | None = None) -> None:
         """Look again: the calendar list, then the events of `which` calendar ids (all when None)."""
@@ -619,12 +658,14 @@ class CalDavIntegration(Integration):
                 continue
             current = [e for e in events if not e["allDay"]
                        and datetime.fromisoformat(e["start"]) <= now < datetime.fromisoformat(e["end"])]
-            upcoming = [e for e in events if datetime.fromisoformat(e["end"]) > now][:300]
+            later = [e for e in events if datetime.fromisoformat(e["end"]) > now]
+            upcoming = later[:300]
             await self.hub.update(eid, available=eid not in self._errors, state="busy" if current else "free",
                                   attrs={"upcoming": upcoming, "colour": c["colour"], "headsUp": "",
                                          "now": current[0]["title"] if current else None,
                                          "readOnly": not c["writable"], "calendarId": c["id"],
-                                         "remindOnWall": c["id"] in remind})
+                                         "remindOnWall": c["id"] in remind,
+                                         **window_attrs(self._until.get(eid), later, upcoming, self._fetched.get(eid))})
             if publish_only:
                 continue
             for e in events:
@@ -694,7 +735,7 @@ class CalDavIntegration(Integration):
         return c
 
     def _object(self, eid: str, href: str) -> dict[str, str]:
-        o = (self._objects.get(eid) or {}).get(href)
+        o = (self._objects.get(eid) or {}).get(href) or (self._seen.get(eid) or {}).get(href)
         if not o:
             raise CommandError("That event isn't on the calendar any more")
         return o
