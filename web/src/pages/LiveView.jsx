@@ -22,7 +22,20 @@ function whatOf(a) {
 function Clip({ alert }) {
   const [failed, setFailed] = useState(false);
   const src = clipUrl(alert.clip);
-  useEffect(() => setFailed(false), [alert.id]);
+  const begun = useRef(false);
+  useEffect(() => {
+    setFailed(false);
+    begun.current = false;
+  }, [alert.id]);
+  // Start it ourselves once it can play: some tablets' web views ignore autoplay (React doesn't put
+  // `muted` on the element itself), which left the clip waiting for a second tap on ▶.
+  const start = (ev) => {
+    if (begun.current) return; // once per clip: a pause by hand stays paused
+    begun.current = true;
+    const v = ev.currentTarget;
+    v.muted = true;
+    if (v.paused) v.play().catch(() => {});
+  };
   if (!src || failed) {
     return (
       <div className="lv-clip lv-clip--none">
@@ -31,7 +44,7 @@ function Clip({ alert }) {
       </div>
     );
   }
-  return <video key={alert.id} className="lv-clip" src={src} controls autoPlay playsInline muted onError={() => setFailed(true)} aria-label={`Recording: ${alert.title || whatOf(alert)}`} />;
+  return <video key={alert.id} className="lv-clip" src={src} controls autoPlay playsInline muted onLoadedMetadata={start} onCanPlay={start} onError={() => setFailed(true)} aria-label={`Recording: ${alert.title || whatOf(alert)}`} />;
 }
 
 /** The alert to replay when the view opens (the wall's alerts tile sets it before navigating). */
