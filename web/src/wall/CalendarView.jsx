@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
+import { useCalendarSheets } from './CalendarEvents.jsx';
 
 const DAYS_AHEAD = 31;
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -47,7 +48,7 @@ function useEvents(cals, from, until) {
         const s = new Date(ev.start);
         const e = new Date(ev.end || ev.start);
         if (Number.isNaN(s.getTime()) || e <= from || s >= until) return;
-        events.push({ ...ev, key: c.id + ':' + i, s, e, colour: c.attrs.colour || '#3CCFB4', cal: c.name, calId: c.id });
+        events.push({ ...ev, key: c.id + ':' + i, s, e, colour: c.attrs.colour || '#3CCFB4', cal: c.name, calId: c.id, writable: c.attrs.readOnly === false });
       }),
     );
     events.sort((a, b) => (a.allDay === b.allDay ? a.s - b.s : a.allDay ? -1 : 1));
@@ -62,10 +63,10 @@ function eventsOn(events, day) {
   return events.filter((ev) => ev.s.getTime() < end && (ev.e.getTime() > start || (ev.e.getTime() === ev.s.getTime() && ev.s.getTime() >= start)));
 }
 
-function EventRow({ ev, now }) {
+function EventRow({ ev, now, onOpen }) {
   const on = !ev.allDay && ev.s.getTime() <= now && now < ev.e.getTime();
   return (
-    <div className={'wcal-ev' + (on ? ' is-now' : '')}>
+    <button type="button" className={'wcal-ev' + (on ? ' is-now' : '')} onClick={() => onOpen(ev)}>
       <span className="wcal-ev-bar" style={{ background: ev.colour }} />
       <span className="wcal-ev-text">
         <span className="wcal-ev-title">
@@ -77,12 +78,13 @@ function EventRow({ ev, now }) {
         </span>
         {ev.location ? <span className="wcal-ev-sub">{ev.location}</span> : null}
       </span>
-    </div>
+    </button>
   );
 }
 
 export default function CalendarView({ day, cals, onBack }) {
   const now = useNow(60000);
+  const sheets = useCalendarSheets();
   const today = useMemo(() => {
     const d = new Date(now);
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -202,7 +204,7 @@ export default function CalendarView({ day, cals, onBack }) {
                 return (
                   <div key={ev.key} className="wcal-item">
                     {heading ? <span className="wcal-heading">{heading}</span> : null}
-                    <EventRow ev={ev} now={now} />
+                    <EventRow ev={ev} now={now} onOpen={sheets.openEvent} />
                   </div>
                 );
               })
@@ -212,12 +214,13 @@ export default function CalendarView({ day, cals, onBack }) {
           ) : (
             dayEvents.map((ev) => (
               <div key={ev.key} className="wcal-item">
-                <EventRow ev={ev} now={now} />
+                <EventRow ev={ev} now={now} onOpen={sheets.openEvent} />
               </div>
             ))
           )}
         </div>
       </aside>
+      {sheets.ui}
     </div>
   );
 }

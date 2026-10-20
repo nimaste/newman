@@ -9,6 +9,7 @@ import { Icon } from '../icons.jsx';
 import { entityLabel } from '../model.js';
 import { WeatherIcon } from './WeatherIcon.jsx';
 import { DaySheet } from './WeatherDay.jsx';
+import { useCalendarSheets, writableCalendars } from './CalendarEvents.jsx';
 
 export { WeatherIcon };
 
@@ -364,21 +365,37 @@ export function CalendarTile({ tile }) {
       const e = new Date(ev.end || ev.start);
       if (Number.isNaN(s.getTime()) || e.getTime() <= now || s.getTime() >= until) return;
       const shownOn = s < todayStart ? todayStart : s; // running since before today: under Today
-      events.push({ ...ev, key: c.id + ':' + i, s, e, day: localDay(shownOn), colour: c.attrs.colour || '#3CCFB4', cal: c.name, on: !ev.allDay && s.getTime() <= now && now < e.getTime() });
+      events.push({ ...ev, key: c.id + ':' + i, s, e, day: localDay(shownOn), colour: c.attrs.colour || '#3CCFB4', cal: c.name, calId: c.id, writable: c.attrs.readOnly === false, on: !ev.allDay && s.getTime() <= now && now < e.getTime() });
     }),
   );
   events.sort((a, b) => (a.day === b.day ? (a.allDay === b.allDay ? a.s - b.s : a.allDay ? -1 : 1) : a.day < b.day ? -1 : 1));
   const shown = fit != null && events.length > fit ? events.slice(0, Math.max(0, fit - 1)) : events;
   let lastDay = null;
-  // A tap anywhere (the "+N more" line too) opens the full-screen calendar, with this tile's calendars.
+  // A tap on an event opens its card; + adds one (calendars Newman may change); a tap anywhere else
+  // (the "+N more" line too) opens the full-screen calendar, with this tile's calendars.
   const href = '#/wall/calendar' + (ids.length ? '?cals=' + ids.map(encodeURIComponent).join(',') : '');
-  const Root = cals.length ? 'a' : 'div';
+  const sheets = useCalendarSheets();
+  const canAdd = writableCalendars(cals).length > 0;
+  const open = (e) => {
+    if (cals.length && !(e.target.closest && e.target.closest('button, a'))) window.location.hash = href;
+  };
   return (
-    <Root className={'cal' + (cals.length ? ' cal--link' : '')} {...(cals.length ? { href, title: 'Open the calendar' } : {})}>
-      <div className="wt-tile-head">
-        <span className="cal-head">
-          <Icon name="calendar" size={20} /> Coming up
-        </span>
+    <div className={'cal' + (cals.length ? ' cal--link' : '')} onClick={open}>
+      <div className="wt-tile-head cal-headrow">
+        {cals.length ? (
+          <a className="cal-head cal-head-link" href={href} title="Open the calendar">
+            <Icon name="calendar" size={20} /> Coming up
+          </a>
+        ) : (
+          <span className="cal-head">
+            <Icon name="calendar" size={20} /> Coming up
+          </span>
+        )}
+        {canAdd ? (
+          <button type="button" className="cal-add" aria-label="New event" onClick={sheets.newEvent}>
+            <Icon name="plus" size={22} strokeWidth={2.4} />
+          </button>
+        ) : null}
       </div>
       <div className="cal-list" ref={listRef}>
         {!(entities || []).some(hasAgenda) ? (
@@ -391,7 +408,7 @@ export function CalendarTile({ tile }) {
           lastDay = ev.day;
           const [l1, l2] = dayLabel(ev.day, now);
           return (
-            <div key={ev.key} className={'cal-ev' + (ev.on ? ' is-now' : '')}>
+            <button type="button" key={ev.key} className={'cal-ev' + (ev.on ? ' is-now' : '')} onClick={() => sheets.openEvent(ev)}>
               <span className="cal-when">
                 {first ? (
                   <>
@@ -411,12 +428,13 @@ export function CalendarTile({ tile }) {
                   {ev.location ? ' · ' + ev.location : ''}
                 </span>
               </span>
-            </div>
+            </button>
           );
         })}
         {events.length > shown.length ? <div className="wt-more">+{events.length - shown.length} more</div> : null}
       </div>
-    </Root>
+      {sheets.ui}
+    </div>
   );
 }
 

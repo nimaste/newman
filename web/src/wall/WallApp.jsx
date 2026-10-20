@@ -22,6 +22,7 @@ import { StatusChips, Tile } from './tiles.jsx';
 import { CommandProvider } from './PinPad.jsx';
 import { NamedHub } from './names.jsx';
 import WallAlerts from './WallAlerts.jsx';
+import { CalendarReminders } from './CalendarEvents.jsx';
 import VoiceLayer from './VoiceLayer.jsx';
 import { MusicEngine, NowPlayingChip } from './Music.jsx';
 import { busyNow } from './music.js';
@@ -356,6 +357,7 @@ function WallScreens({ auth, signOut }) {
         {/* Dimmed, only the time shows: the page's tiles (camera pictures, weather, calendar…) stop until it wakes. */}
         {dim ? null : body}
         <WallAlerts auth={auth} onWake={() => setDim(false)} />
+        <CalendarReminders onWake={() => setDim(false)} />
         <VoiceLayer homePage={currentHome(home)} />
         <MusicEngine />
         <CookEngine />

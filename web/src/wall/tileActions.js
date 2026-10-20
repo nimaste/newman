@@ -14,6 +14,7 @@ const CONTROLS = 'button, a, input, select, textarea, [role="button"], [role="sl
 const MOVE_PX = 12; // further than this and it's a drag, not a hold
 
 function onControl(target, tile) {
+  if (target && !tile.contains(target)) return true; // a sheet the tile opened (a portal): not the tile
   const el = target && target.closest ? target.closest(CONTROLS) : null;
   return !!el && el !== tile && tile.contains(el) && !el.hasAttribute('data-tile-surface');
 }
