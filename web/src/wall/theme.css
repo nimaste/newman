@@ -596,18 +596,6 @@
   font-size: 14px;
   color: var(--wt-dim);
 }
-.cg-rooms--list > .cg-room--more {
-  padding: 8px 2px;
-  justify-content: flex-start;
-}
-.cg-room--more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--wt-dim);
-}
 .wt-confirm.cg-sheet {
   width: min(680px, 94vw);
   max-width: none;

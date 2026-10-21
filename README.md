@@ -1247,7 +1247,11 @@ up to date / coming up / due today / overdue), so automations can notify when on
 Dashboards are grids of tiles (devices, groups, cameras, the round thermostat dial, weather,
 calendar agenda, alerts, people…), with per-tile text size and per-dashboard display names. Each account
 picks its dashboard; the wall tablet (`/wall`) shows it full screen with tabs you swipe between,
-live camera video, and the weather and calendar details a tap away.
+live camera video, and the weather and calendar details a tap away. A camera tile has a button for
+every one of its cameras, in a row that scrolls sideways (*All cameras* stays at its end); swiping the
+picture left or right goes to the next or previous camera, and dots under it show which one it is.
+Lists on the wall (a Devices list, Needs attention, Climate glance rooms, To do) never leave anything
+out: when the tile is short the list scrolls, fading at the bottom while there's more below.
 
 **Sizes, looks and taps.** The wall's grid is 24 columns by 16 rows, so tiles size and move in
 half-steps (dashboards made before it was this fine were doubled once, automatically: they look the
@@ -1335,7 +1339,7 @@ what it's doing (*HEAT · IDLE*), an arc showing where it's set with the room's 
 number, *Set to 22.5°*, humidity and the outside (from a weather place, if chosen); then a box per
 chosen room - as boxes (name, temperature, humidity when the device reports it, and a cool-to-warm bar,
 two or more to a row) or, with its Look a list (or Auto on a narrow tile), a row each: a cool-to-warm
-dot, the full name, humidity and temperature (the rest as *+N more*). Numbers are exactly what the
+dot, the full name, humidity and temperature (every room; they scroll when the tile is short). Numbers are exactly what the
 devices report. Settings: **Thermostat** (anything set to a temperature), **Rooms** (devices that report
 a room temperature), **Outside** (a weather place, optional), plus Look, When tapped and When held. A
 tap opens the thermostat's own dial unless When tapped says otherwise (an older "Opens page" became

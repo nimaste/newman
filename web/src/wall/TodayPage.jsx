@@ -1,10 +1,11 @@
 // The Today page's own tiles (layout B: Today · Overview · …, the mornings' home page):
 //   greeting  "Good morning" and today in one line - things to do, events, rain or a warning
 //   todo      To do grouped like the To do screen (overdue, today, coming up), Done right there;
-//             as many rows as the tile has room for, the rest behind "See all".
+//             every row, scrolling when the tile is short.
 // Both read GET /api/today (today.js), like the Today tile.
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useMoreAfter } from './fade.js';
 import { Icon } from '../icons.jsx';
 import { TodoRow, useDeviceOpener } from './TodayTile.jsx';
 import { GROUPS } from './TodoView.jsx';
@@ -56,44 +57,6 @@ export function GreetingTile() {
   );
 }
 
-/** The element's height in px, kept current. */
-function useHeight(ref) {
-  const [h, setH] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const measure = () => setH(el.clientHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref]);
-  return h;
-}
-
-// Row heights in wall.css (.tt-*): a row 44 + 6 gap, a group heading 30 + 6, "+N more" 30 + 6.
-const ROW = 50;
-const HEAD = 36;
-const MORE = 36;
-
-/** Which rows of each group fit in `height` px; the rest are counted for "+N more". */
-export function fitGroups(groups, height) {
-  const total = groups.reduce((n, g) => n + g.items.length, 0);
-  const need = groups.reduce((px, g) => px + HEAD + g.items.length * ROW, 0);
-  if (!height || need <= height) return { groups, hidden: 0 };
-  let left = height - MORE;
-  const out = [];
-  for (const g of groups) {
-    if (left < HEAD + ROW) break;
-    left -= HEAD;
-    const n = Math.min(g.items.length, Math.floor(left / ROW));
-    out.push({ ...g, items: g.items.slice(0, n) });
-    left -= n * ROW;
-  }
-  if (!out.length && groups.length) out.push({ ...groups[0], items: groups[0].items.slice(0, 1) }); // always one
-  return { groups: out, hidden: total - out.reduce((n, g) => n + g.items.length, 0) };
-}
-
 export function TodoTile() {
   const { data } = useToday();
   const upkeep = useUpkeep();
@@ -101,12 +64,11 @@ export function TodoTile() {
   const [asking, setAsking] = useState(null);
   const { openDevice, muteDevice, sheet } = useDeviceOpener();
   const bodyRef = useRef(null);
-  const height = useHeight(bodyRef);
+  const more = useMoreAfter(bodyRef);
   const people = (upkeep.data && upkeep.data.people) || [];
 
   const all = data ? [...withRecent(data.todo, recent), ...(data.soon || [])] : [];
   const groups = GROUPS.map((g) => ({ ...g, items: all.filter((x) => g.levels.includes(x.level)) })).filter((g) => g.items.length);
-  const fit = fitGroups(groups, height);
   const pick = async (item, who) => {
     setAsking(null);
     await doItem(item, upkeep.data, who);
@@ -120,14 +82,14 @@ export function TodoTile() {
           See all ›
         </a>
       </div>
-      <div className="tt-body" ref={bodyRef}>
+      <div className={'tt-body wt-scroll' + (more ? ' has-more' : '')} ref={bodyRef}>
         {!data ? <div className="wt-muted">Loading…</div> : null}
         {data && !all.length ? (
           <div className="tt-empty">
             <Icon name="check" size={20} strokeWidth={2.4} /> Nothing needs doing.
           </div>
         ) : null}
-        {fit.groups.map((g) => (
+        {groups.map((g) => (
           <div key={g.name} className="tt-group">
             <span className="tt-head">{g.name}</span>
             {g.items.map((item) => (
@@ -135,11 +97,6 @@ export function TodoTile() {
             ))}
           </div>
         ))}
-        {fit.hidden > 0 ? (
-          <a className="tt-more" href="#/wall/todo">
-            +{fit.hidden} more ›
-          </a>
-        ) : null}
       </div>
       {sheet}
     </div>

@@ -11,6 +11,7 @@ import { navigate, useHub } from '../hooks.js';
 import Dial, { arc, pol, KNOB, TRACK } from './Dial.jsx';
 import { deg, mix, pct, roomColumns, roomOf, tempCommand, thermostatOf, warmth } from './climate.js';
 import { lookOf } from './look.js';
+import { useMoreAfter } from './fade.js';
 
 // The arc's colour by the thermostat's mode (its state), as on the Dial; anything else: the accent.
 const MODE_TONE = { heat: 'var(--wt-heat, #ff8a5b)', cool: 'var(--wt-cool, #5aa9ff)' };
@@ -63,23 +64,10 @@ export default function ClimateTile({ tile }) {
   const root = useRef(null);
   const grid = useRef(null);
   const box = useBox(root);
-  const area = useBox(grid);
   const asList = lookOf(c, box.w) === 'list';
   const cols = asList ? 1 : roomColumns(box.w / (Number(c.textSize) > 0 ? Number(c.textSize) / 100 : 1), rooms.length);
-  // As many rows of rooms as fit (measured from a drawn box); the rest as "+N more".
-  const [rowH, setRowH] = useState(0);
-  useLayoutEffect(() => {
-    const g = grid.current;
-    const first = g && g.firstElementChild;
-    if (!first) return;
-    const zoom = g.getBoundingClientRect().height / (g.clientHeight || 1) || 1;
-    const h = first.getBoundingClientRect().height / zoom + 8;
-    if (Math.abs(h - rowH) > 1) setRowH(h);
-  });
-  const rows = area.h && rowH ? Math.max(1, Math.floor((area.h + 8) / rowH)) : Math.ceil(rooms.length / cols);
-  const room = rows * cols;
-  const shown = rooms.length > room ? rooms.slice(0, room - 1) : rooms;
-  const more = rooms.length - shown.length;
+  // Every room; they scroll when the tile is short.
+  const more = useMoreAfter(grid);
   const tone = (t && MODE_TONE[t.modeId]) || 'var(--wt-teal, #3ccfb4)';
   const open = () => {
     if (c.page) navigate('wall/' + enc(c.page)); // saved before When tapped (the hub moves it there)
@@ -124,9 +112,9 @@ export default function ClimateTile({ tile }) {
             <span className="cg-sm">Outside {outLine}</span>
           </span>
         ) : null}
-        <span className={'cg-rooms' + (asList ? ' cg-rooms--list' : '')} ref={grid} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+        <span className={'cg-rooms wt-scroll' + (asList ? ' cg-rooms--list' : '') + (more ? ' has-more' : '')} ref={grid} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
           {!t && !rooms.length ? <span className="wt-muted">No thermostat or rooms chosen.</span> : null}
-          {shown.map((r) => {
+          {rooms.map((r) => {
             const f = warmth(r.temp, r.unit);
             if (asList) {
               return (
@@ -147,7 +135,6 @@ export default function ClimateTile({ tile }) {
               </span>
             );
           })}
-          {more > 0 ? <span className="cg-room cg-room--more">+{more} more</span> : null}
         </span>
       </button>
       {sheet && t

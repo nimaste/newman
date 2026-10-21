@@ -411,11 +411,21 @@ html.is-wall body {
   font-weight: 700;
   text-align: center;
 }
-.wt-more {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--wt-dim);
-  padding-top: 4px;
+/* A list that scrolls by touch with every item in it (fade.js): a soft fade at the bottom while there's more below. */
+:is(.wt-list-body, .cg-rooms, .tt-body).wt-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.wt-scroll::-webkit-scrollbar {
+  display: none;
+}
+.wt-scroll > * {
+  flex-shrink: 0;
+}
+.wt-scroll.has-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
 }
 
 /* camera tile */
@@ -434,6 +444,12 @@ html.is-wall body {
   overflow: hidden;
   display: block;
   background: linear-gradient(160deg, #26314f 0%, #121a33 70%);
+  touch-action: pan-y; /* a sideways swipe changes camera; up and down still moves the page */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.wt-cam-pic img {
+  -webkit-user-drag: none;
 }
 .wt-cam-video {
   position: absolute !important;
@@ -473,11 +489,52 @@ html.is-wall body {
   align-items: center;
   justify-content: center;
 }
-.wt-pills {
+/* Dots on the picture: which of the tile's cameras this is (a swipe moves along them). */
+.wt-cam-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.wt-cam-dots > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.wt-cam-dots > i.is-on {
+  width: 18px;
+  background: #fff;
+}
+.wt-cam-row {
   flex: 0 0 auto;
   display: flex;
+  align-items: center;
   gap: 6px;
-  overflow: hidden;
+}
+/* Every camera's button; the row scrolls sideways, fading at the right while more are off it. */
+.wt-pills {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+.wt-pills::-webkit-scrollbar {
+  display: none;
+}
+.wt-pills.has-more {
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 36px);
+  mask-image: linear-gradient(to left, transparent, #000 36px);
 }
 .wt-pill {
   height: 44px;
@@ -502,9 +559,6 @@ html.is-wall body {
 }
 .wt-cam .wt-pill {
   flex-shrink: 0;
-}
-.wt-pill[hidden] {
-  display: none;
 }
 .wt-pill--link {
   margin-left: auto;
@@ -2475,7 +2529,6 @@ button.wt-chip {
 .wt-tile .wt-mode-text,
 .wt-tile .wt-alert-text,
 .wt-tile .wt-alert-time,
-.wt-tile .wt-more,
 .wt-tile .wt-cam-name,
 .wt-tile .wx-now .wx-temp,
 .wt-tile .wx-strip .wx-temp,
@@ -3799,7 +3852,6 @@ button.wt-chip {
   display: flex;
   flex-direction: column;
 }
-/* Rows here are counted to fit (TodayPage.jsx: a row 44 + 6, a heading 30 + 6, "+N more" 30 + 6). */
 .tt-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -3823,16 +3875,6 @@ button.wt-chip {
   letter-spacing: 0.8px;
   color: var(--wt-faint, #8e9ac0);
   text-transform: uppercase;
-}
-.wall .tt-more {
-  flex-shrink: 0;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  padding-left: 15px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--wt-dim) !important;
 }
 .tt-empty {
   margin: auto;

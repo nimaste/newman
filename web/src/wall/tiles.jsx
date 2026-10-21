@@ -26,6 +26,7 @@ import { RecipesTile } from './CookMode.jsx';
 import ClimateTile from './ClimateTile.jsx';
 import { roomOf } from '../model.js';
 import { lookOf, useWidth } from './look.js';
+import { useMoreAfter } from './fade.js';
 import { useTileActions } from './tileActions.js';
 
 
@@ -60,40 +61,16 @@ function Title({ children, right }) {
 
 /* ---------------- camera ---------------- */
 
-/**
- * How many of a row's chips fit whole beside its last child (the "All cameras" link): the rest are
- * left out rather than squeezed. Widths are measured once while every chip shows.
- */
-function useChipFit(ref, key) {
-  const [fit, setFit] = useState(null);
-  const widths = useRef(null);
-  useLayoutEffect(() => {
-    widths.current = null;
-    setFit(null);
-  }, [key]);
-  useLayoutEffect(() => {
-    const row = ref.current;
-    if (!row || typeof ResizeObserver === 'undefined') return undefined;
-    const measure = () => {
-      const kids = [...row.children];
-      if (kids.length < 2) return;
-      if (!widths.current) widths.current = kids.slice(0, -1).map((k) => k.offsetWidth);
-      const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
-      let room = row.clientWidth - kids[kids.length - 1].offsetWidth;
-      let n = 0;
-      for (const w of widths.current) {
-        if (room < w + gap) break;
-        room -= w + gap;
-        n += 1;
-      }
-      setFit(n);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(row);
-    return () => ro.disconnect();
-  }, [ref, key, fit === null]);
-  return fit;
+const SWIPE_PX = 30; // further sideways than this on the picture: the next or previous camera
+
+/** Swallow the click a swipe ends with (at the window, before the tile's When tapped sees it). */
+function eatNextClick() {
+  const stop = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  };
+  window.addEventListener('click', stop, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener('click', stop, { capture: true }), 400);
 }
 
 function CameraTile({ tile }) {
@@ -101,11 +78,37 @@ function CameraTile({ tile }) {
   const [pick, setPick] = useState(null);
   const cam = cams.find((c) => c.id === pick) || cams[0];
   const chips = useRef(null);
-  const fit = useChipFit(chips, cams.map((c) => c.name).join('|'));
+  const swipe = useRef(null);
+  const moreRight = useMoreAfter(chips, true);
+  // The chosen camera's button in view (centred where the row allows).
+  useEffect(() => {
+    const row = chips.current;
+    const on = row && row.querySelector('.is-on');
+    if (on) row.scrollTo({ left: Math.max(0, on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2), behavior: 'smooth' });
+  }, [cam && cam.id]);
   if (!cam) return <div className="wt-empty">No cameras chosen for this tile.</div>;
+  const at = cams.indexOf(cam);
+  const swipeEnd = (ev) => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s || cams.length < 2) return;
+    const dx = ev.clientX - s.x;
+    if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(ev.clientY - s.y)) return;
+    eatNextClick();
+    setPick(cams[(at + (dx < 0 ? 1 : -1) + cams.length) % cams.length].id);
+  };
   return (
     <div className="wt-cam">
-      <a className="wt-cam-pic" data-tile-surface href={'#/wall/camera/' + enc(cam.id)} aria-label={`Watch ${cam.name} full screen`}>
+      <a
+        className="wt-cam-pic"
+        data-tile-surface
+        href={'#/wall/camera/' + enc(cam.id)}
+        aria-label={`Watch ${cam.name} full screen`}
+        draggable={false}
+        onPointerDown={(ev) => (swipe.current = { x: ev.clientX, y: ev.clientY })}
+        onPointerUp={swipeEnd}
+        onPointerCancel={() => (swipe.current = null)}
+      >
         <LiveVideo key={cam.id} entity={cam} quality="sub" stillHeight={480} showNote={false} className="wt-cam-video" />
         <span className="wt-cam-name">
           <span className="wt-live-dot" aria-hidden="true" />
@@ -116,13 +119,22 @@ function CameraTile({ tile }) {
             <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
           </svg>
         </span>
+        {cams.length > 1 ? (
+          <span className="wt-cam-dots" aria-hidden="true">
+            {cams.map((c) => (
+              <i key={c.id} className={c.id === cam.id ? 'is-on' : ''} />
+            ))}
+          </span>
+        ) : null}
       </a>
-      <div className="wt-pills" ref={chips}>
-        {cams.map((c, i) => (
-          <button key={c.id} type="button" className={'wt-pill' + (c.id === cam.id ? ' is-on' : '')} hidden={fit !== null && i >= fit} onClick={() => setPick(c.id)} aria-pressed={c.id === cam.id}>
-            {c.name}
-          </button>
-        ))}
+      <div className="wt-cam-row">
+        <div className={'wt-pills' + (moreRight ? ' has-more' : '')} ref={chips}>
+          {cams.map((c) => (
+            <button key={c.id} type="button" className={'wt-pill' + (c.id === cam.id ? ' is-on' : '')} onClick={() => setPick(c.id)} aria-pressed={c.id === cam.id}>
+              {c.name}
+            </button>
+          ))}
+        </div>
         <a className="wt-pill wt-pill--link" href="#/wall/cameras">
           <Icon name="grid" size={15} strokeWidth={2.2} /> All cameras
         </a>
@@ -335,18 +347,16 @@ function DevicesTile({ tile, width }) {
   const byArea = c.groupBy === 'area';
   if (byArea) ents = ents.slice().sort((a, b) => (roomOf(a) || '~').localeCompare(roomOf(b) || '~'));
   const listRef = useRef(null);
-  const fitRows = useFit(listRef, 52, ents.length);
+  const more = useMoreAfter(listRef);
   if (lookOf(c, width) === 'list') {
-    const shown = ents.slice(0, fitRows);
     return (
       <div className="wt-list">
         {c.title ? <Title>{c.title}</Title> : null}
-        <div className="wt-list-body" ref={listRef}>
+        <div className={'wt-list-body wt-scroll' + (more ? ' has-more' : '')} ref={listRef}>
           {!ents.length ? <div className="wt-muted">No devices chosen.</div> : null}
-          {shown.map((e, i) => (
-            <DeviceRow key={e.id} e={e} kind={kindsById[e.kind]} last={i === shown.length - 1} showArea={byArea} compact />
+          {ents.map((e, i) => (
+            <DeviceRow key={e.id} e={e} kind={kindsById[e.kind]} last={i === ents.length - 1} showArea={byArea} compact />
           ))}
-          {ents.length > shown.length ? <div className="wt-more">+{ents.length - shown.length} more</div> : null}
         </div>
       </div>
     );
@@ -472,8 +482,7 @@ function AttentionTile() {
     ...sick,
   ];
   const listRef = useRef(null);
-  const fit = useFit(listRef, 46, bad.length);
-  const shown = bad.slice(0, fit);
+  const more = useMoreAfter(listRef);
   return (
     <div className={'wt-attn' + (bad.length ? ' is-bad' : '')}>
       <Title>
@@ -482,14 +491,13 @@ function AttentionTile() {
           {bad.length ? 'Needs attention' : 'All devices OK'}
         </span>
       </Title>
-      <div className="wt-list-body" ref={listRef}>
-        {shown.map((e) => (
+      <div className={'wt-list-body wt-scroll' + (more ? ' has-more' : '')} ref={listRef}>
+        {bad.map((e) => (
           <div key={e.id} className={'wt-attn-item' + (e.alarm ? ' is-alarm' : '')}>
             <span className="wt-attn-name">{e.name}</span>
             <span className="wt-attn-issues">{((e.health && e.health.issues) || []).join(' · ')}</span>
           </div>
         ))}
-        {bad.length > shown.length ? <div className="wt-more">+{bad.length - shown.length} more</div> : null}
       </div>
     </div>
   );
