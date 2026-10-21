@@ -43,19 +43,27 @@ export function cameraTiles(entities, kindsById) {
   return entities.filter((e) => camerasCandidate(e, entities, kindsById) && shownInCameras(e));
 }
 
-function startOfToday() {
+/** Midnight `daysBack` days ago, in unix seconds (0: today's). */
+function startOfDay(daysBack = 0) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - daysBack);
   return d.getTime() / 1000;
 }
 
-/** Today's alerts from path (a device's lerts or api/alerts), newest first; refreshed when a live alert arrives. */
-export function useTodayAlerts(path) {
+/** Alerts from path (a device's alerts or api/alerts) since midnight `daysBack` days ago, newest first;
+ *  refreshed when a live alert arrives. */
+export function useRecentAlerts(path, daysBack) {
   const res = useApi(path ? path + (path.includes('?') ? '&' : '?') + 'limit=200' : null);
   useLiveRefresh((m) => m.type === 'activity' && !!m.entry && m.entry.kind === 'alert', () => path && res.reload(), 800);
-  const since = startOfToday();
+  const since = startOfDay(daysBack);
   const list = useMemo(() => (Array.isArray(res.data) ? res.data.filter((a) => (a.start || 0) >= since) : null), [res.data, since]);
   return { ...res, list };
+}
+
+/** Today's alerts from path. */
+export function useTodayAlerts(path) {
+  return useRecentAlerts(path, 0);
 }
 
 export function ZoneLink({ zone, kind, dark }) {

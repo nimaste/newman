@@ -2,7 +2,8 @@
 // in the dashboard's own look). #/cameras/<id>
 //   left: "‹ Back" pill, LIVE/REPLAY tag + name, grid button; the full-quality stream with
 //         prev/next arrows and dots for where you are among the cameras.
-//   right: "Today" — this camera's alerts (or all cameras'); tapping one replays its clip here.
+//   right: "Recent" — this camera's alerts (or all cameras') from the last 7 days under day headings;
+//          tapping one replays its clip here.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { enc } from '../api.js';
@@ -11,7 +12,7 @@ import { Icon } from '../icons.jsx';
 import { fmtClock } from '../format.js';
 import LiveVideo from '../components/LiveVideo.jsx';
 import { clipUrl } from '../components/Camera.jsx';
-import { cameraForZone, cameraTiles, useTodayAlerts } from '../components/CameraGrid.jsx';
+import { cameraForZone, cameraTiles, useRecentAlerts } from '../components/CameraGrid.jsx';
 
 function whatOf(a) {
   const objs = (a.objects || []).map((o) => String(o).replace(/_/g, ' '));
@@ -101,6 +102,33 @@ function Clip({ alert }) {
   );
 }
 
+const RECENT_DAYS = 7;
+
+/** Alerts (newest first) under their day: Today always (it may have none), then each earlier day that has some. */
+function byDay(list) {
+  const key = (ts) => {
+    const d = new Date(ts * 1000);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+  const now = new Date();
+  const todayKey = key(now.getTime() / 1000);
+  const yest = new Date(now);
+  yest.setDate(now.getDate() - 1);
+  const yestKey = key(yest.getTime() / 1000);
+  const groups = [{ key: todayKey, label: 'Today', alerts: [] }];
+  list.forEach((a) => {
+    const k = key(a.start || 0);
+    let g = groups.find((x) => x.key === k);
+    if (!g) {
+      const label = k === yestKey ? 'Yesterday' : new Date((a.start || 0) * 1000).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      g = { key: k, label, alerts: [] };
+      groups.push(g);
+    }
+    g.alerts.push(a);
+  });
+  return groups;
+}
+
 /** The alert to replay when the view opens (the wall's alerts tile sets it before navigating). */
 export const pendingReplay = { alert: null };
 
@@ -122,7 +150,7 @@ export default function LiveView({ id, wall = null }) {
     return a;
   });
   const camPath = (cid) => (wall ? 'wall/camera/' : 'cameras/') + enc(cid);
-  const today = useTodayAlerts(allCams ? 'api/alerts' : e ? e.alerts : null);
+  const today = useRecentAlerts(allCams ? 'api/alerts' : e ? e.alerts : null, RECENT_DAYS - 1);
   const list = useMemo(() => today.list || [], [today.list]);
 
   // New alerts slide in at the top: remember what was already shown.
@@ -174,7 +202,7 @@ export default function LiveView({ id, wall = null }) {
   }
 
   const heading = playing ? `${whatOf(playing)} at ${playing.cameraName || e.name} · ${fmtClock(playing.start)}` : e.name;
-  const count = list.length === 1 ? '1 alert' : `${list.length} alerts`;
+  const groups = byDay(list);
 
   return (
     <div className={'lv' + (wall ? ' lv--wall' : '')} role="dialog" aria-modal="true" aria-label={`Live: ${e.name}`}>
@@ -221,10 +249,10 @@ export default function LiveView({ id, wall = null }) {
         </div>
       </div>
 
-      <aside className="lv-side" aria-label="Today's alerts">
+      <aside className="lv-side" aria-label="Recent alerts">
         <div className="lv-side-head">
-          <span className="lv-side-title">Today</span>
-          <span className="lv-side-count">{today.list ? count : ''}</span>
+          <span className="lv-side-title">Recent</span>
+          <span className="lv-side-count">last {RECENT_DAYS} days</span>
         </div>
         <div className="lv-toggle" role="group" aria-label="Which alerts">
           <button type="button" aria-pressed={!allCams} onClick={() => setAllCams(false)}>
@@ -238,9 +266,12 @@ export default function LiveView({ id, wall = null }) {
           {!today.list ? (
             <div className="lv-empty">{today.error ? "Couldn't load alerts." : 'Loading…'}</div>
           ) : !list.length ? (
-            <div className="lv-empty">{allCams ? 'Nothing on any camera today.' : e.alerts ? 'Nothing on this camera today.' : 'This camera keeps no alerts.'}</div>
+            <div className="lv-empty">{allCams ? `Nothing on any camera in the last ${RECENT_DAYS} days.` : e.alerts ? `Nothing on this camera in the last ${RECENT_DAYS} days.` : 'This camera keeps no alerts.'}</div>
           ) : (
-            list.map((a) => {
+            groups.map((g) => [
+              <div key={'d' + g.key} className="lv-day">{g.label}</div>,
+              ...(g.alerts.length ? [] : [<div key={'n' + g.key} className="lv-day-none">Nothing yet.</div>]),
+              ...g.alerts.map((a) => {
               const on = playing && playing.id === a.id;
               const where = [allCams ? a.cameraName : null, (a.zones || []).join(', ')].filter(Boolean).join(' · ');
               return (
@@ -258,7 +289,8 @@ export default function LiveView({ id, wall = null }) {
                   </span>
                 </button>
               );
-            })
+              }),
+            ])
           )}
         </div>
       </aside>

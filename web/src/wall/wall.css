@@ -1332,6 +1332,8 @@ html.is-wall body {
   border-color: rgba(var(--wt-fg, 255, 255, 255), 0.1);
 }
 .lv--wall .lv-side-count,
+.lv--wall .lv-day,
+.lv--wall .lv-day-none,
 .lv--wall .lv-item-where,
 .lv--wall .lv-empty {
   color: var(--wt-dim, #a9b4d6);
