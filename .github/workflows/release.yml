@@ -46,7 +46,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}},value=${{ env.TAG }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(env.TAG, '-') }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -74,6 +74,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          prerelease: ${{ contains(env.TAG, '-') }}
           name: ${{ env.TAG }}
           body_path: /tmp/release-notes.md
 
@@ -126,6 +127,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          prerelease: ${{ contains(env.TAG, '-') }}
           files: |
             Newman_*.apk
             NewmanWall_*.apk
@@ -252,6 +254,7 @@ jobs:
       - name: Archive phone app (with its notification, location push and widget extensions)
         working-directory: ios
         run: |
+          # A pre-release tag (v2026.10.4-rc1) builds as 2026.10.4: iOS version numbers are digits and dots only.
           xcodebuild archive \
             -project Newman.xcodeproj \
             -scheme Newman \
@@ -265,12 +268,13 @@ jobs:
             NEWMAN_PROFILE_EXTENSION="$PROFILE_EXTENSION" \
             NEWMAN_PROFILE_LOCATION="$PROFILE_LOCATION" \
             NEWMAN_PROFILE_WIDGETS="$PROFILE_WIDGETS" \
-            MARKETING_VERSION="${TAG#v}" \
+            MARKETING_VERSION="$(echo "${TAG#v}" | cut -d- -f1)" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       - name: Archive wall app
         working-directory: ios
         run: |
+          # A pre-release tag (v2026.10.4-rc1) builds as 2026.10.4: iOS version numbers are digits and dots only.
           xcodebuild archive \
             -project Newman.xcodeproj \
             -scheme NewmanWall \
@@ -281,7 +285,7 @@ jobs:
             CODE_SIGN_IDENTITY="Apple Distribution" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             NEWMAN_PROFILE_WALL="$PROFILE_WALL" \
-            MARKETING_VERSION="${TAG#v}" \
+            MARKETING_VERSION="$(echo "${TAG#v}" | cut -d- -f1)" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       - name: Export IPAs
@@ -307,6 +311,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          prerelease: ${{ contains(env.TAG, '-') }}
           files: |
             Newman_*.ipa
             NewmanWall_*.ipa

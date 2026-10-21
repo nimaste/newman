@@ -39,10 +39,14 @@ fun releaseVersion(): Pair<String, Int> {
         null
     }?.removePrefix("v")
 
-    val parts = tag?.split(".")?.mapNotNull { it.toIntOrNull() }
-    if (tag != null && parts?.size == 3) {
+    // A pre-release tag (2026.10.4-rc1) gets a lower versionCode than its
+    // release: the version's number times 100, plus the rc number for a
+    // pre-release and 99 for the release, so rc1 < rc2 < 2026.10.4.
+    val rc = tag?.substringAfter("-rc", "")?.toIntOrNull()
+    val parts = tag?.substringBefore("-")?.split(".")?.mapNotNull { it.toIntOrNull() }
+    if (tag != null && parts?.size == 3 && (rc != null || !tag.contains("-"))) {
         val (major, minor, patch) = parts
-        return tag to (major * 10000 + minor * 100 + patch)
+        return tag to ((major * 10000 + minor * 100 + patch) * 100 + (rc?.coerceAtMost(98) ?: 99))
     }
     return "dev" to 1
 }
