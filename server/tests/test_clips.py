@@ -42,6 +42,12 @@ class FakeFrigate(FrigateIntegration):
         self.finished = True
         self.break_after = None
 
+    def has_alerts(self, entity_id):
+        return True
+
+    async def alerts(self, entity_id, limit, before):
+        return [{"id": "r1", "start": 1792527186.0, "objects": ["person"], "clip": "frig:r:abc"}]
+
     async def event_finished(self, clip_id):
         return self.finished
 
@@ -70,6 +76,13 @@ class ClipTests(unittest.IsolatedAsyncioTestCase):
     async def get(self, path):
         r = await self.client.get(path)
         return r.status, await r.read()
+
+    async def test_a_clip_has_one_address_in_every_alert_list(self):
+        self.h.hub.upsert("frig.garage", kind="camera", name="Garage", integration="frig")
+        one = await (await self.client.get("/api/entities/frig.garage/alerts")).json()
+        every = await (await self.client.get("/api/alerts")).json()
+        self.assertEqual(one[0]["clip"], "api/clips/frig/r:abc")
+        self.assertEqual(every[0]["clip"], one[0]["clip"])
 
     async def test_one_copy_for_players_asking_at_once(self):
         got = await asyncio.gather(*(self.get("/api/clips/frig/r:abc") for _ in range(4)))

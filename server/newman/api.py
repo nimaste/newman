@@ -2963,7 +2963,8 @@ def build_app(h: "Newman") -> web.Application:
         if not inst or not inst.has_alerts(eid):
             return _err(404, "not found")
         try:
-            return web.json_response(await inst.alerts(eid, *_page(req)))
+            # The same shape as GET /api/alerts, so a clip has one address whichever list it came from.
+            return web.json_response([alert_brief(dict(a, integration=inst.id)) for a in await inst.alerts(eid, *_page(req))])
         except Exception as e:
             return _err(502, f"{inst.display_name} unreachable: {e}")
 

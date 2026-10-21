@@ -9,6 +9,9 @@ import { countList } from '../model.js';
 /** "<integration>:<clip id>" -> api/clips/<integration>/<clip id> */
 export function clipUrl(clip) {
   if (!clip || typeof clip !== 'string') return null;
+  // The hub's alert lists give the signed-in path already; activity entries and pushes give the clip id.
+  if (clip.startsWith('api/clips/')) return clip;
+  if (clip.startsWith('/api/clips/')) return clip.slice(1);
   const i = clip.indexOf(':');
   if (i <= 0) return null;
   return `api/clips/${enc(clip.slice(0, i))}/${enc(clip.slice(i + 1))}`;
