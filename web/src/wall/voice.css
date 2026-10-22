@@ -125,16 +125,17 @@
   font-size: 20px;
 }
 
-/* Timer cards: bottom right (top right on a tablet held upright). */
+/* Timer and alarm cards: bottom right (top right on a tablet held upright), the alarms first, then the
+   timers in the order they were set. */
 .vo-timers {
   position: fixed;
   right: 24px;
   bottom: 28px;
   z-index: 55;
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   gap: 12px;
-  width: 232px;
+  width: 248px;
 }
 @media (max-aspect-ratio: 1/1) {
   .vo-timers {
@@ -395,5 +396,385 @@
   .vt-paragraph,
   .vt-tip {
     font-size: 18px;
+  }
+}
+
+/* A timer card's ⏸ / ▶ beside its ✕; a paused one, and the alarm card (amber). */
+.vo-timer-btns {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 8px 8px 0;
+}
+.vo-timer-btns .vo-timer-x {
+  margin: 0;
+}
+.vo-timer-main.is-open {
+  cursor: pointer;
+}
+.vo-timer.is-paused .vo-timer-bar {
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.35);
+}
+.vo-alarm {
+  border-color: rgba(245, 185, 66, 0.45);
+}
+.vo-alarm .vo-timer-main {
+  padding-right: 18px;
+}
+.vo-alarm .vo-timer-name {
+  color: var(--wt-amber, #f5b942);
+}
+
+/* The ringing screen: over everything (wall alerts too), until Stop. */
+.vo-ring {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
+  background: radial-gradient(700px 500px at 50% 40%, rgba(245, 185, 66, 0.22), rgba(var(--wt-shade, 11, 16, 38), 0.97) 70%),
+    rgb(var(--wt-shade, 11, 16, 38));
+  color: var(--wt-ink, #eef2ff);
+  font-family: var(--wt-font-body, Manrope, system-ui, sans-serif);
+}
+.vo-ring-label {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--wt-amber, #f5b942);
+}
+.vo-ring-big {
+  font-family: var(--wt-font-num, Sora, Manrope, system-ui, sans-serif);
+  font-size: min(190px, 26vh);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.vo-ring-src {
+  font-size: 22px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-ring-btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 22px;
+  margin-top: 22px;
+}
+.vo-ring-b {
+  min-width: 260px;
+  padding: 26px 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.22);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.12);
+  color: inherit;
+  font: inherit;
+  font-size: 30px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.vo-ring-b.is-stop {
+  background: var(--wt-amber, #f5b942);
+  border-color: var(--wt-amber, #f5b942);
+  color: #0b1026;
+}
+.vo-ring-say {
+  margin-top: 8px;
+  font-size: 18px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-card.is-over {
+  z-index: 101; /* "Hey Newman, stop" shows over the ringing screen */
+}
+
+/* The sheets: Alarms & timers, a timer, + New timer, New / Edit alarm. */
+.vo-sheet-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(var(--wt-shade, 5, 8, 20), 0.6);
+}
+.vo-sheet {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 26px 24px;
+  border-radius: 24px;
+  background: rgb(var(--wt-panel, 18, 26, 58));
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.14);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  color: var(--wt-ink, #eef2ff);
+  font-family: var(--wt-font-body, Manrope, system-ui, sans-serif);
+  animation: vo-pop 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.vo-sheet.is-center {
+  align-items: center;
+  text-align: center;
+}
+.vo-sheet-head {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  font-size: 24px;
+  font-weight: 700;
+}
+.vo-sheet-x {
+  margin-left: auto;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  color: var(--wt-dim, #a9b4d6);
+  cursor: pointer;
+}
+.vo-sheet-scroll {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+.vo-sec {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-row {
+  display: grid;
+  grid-template-columns: 160px 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 4px;
+  border-top: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.1);
+}
+.vo-sec + .vo-row {
+  border-top: 0;
+}
+.vo-row-tm {
+  font-family: var(--wt-font-num, Sora, Manrope, system-ui, sans-serif);
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.vo-row-tm.is-off {
+  color: rgba(var(--wt-fg, 255, 255, 255), 0.42);
+}
+.vo-row-d {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 17px;
+  font-weight: 600;
+  min-width: 0;
+}
+.vo-row-d small {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-empty {
+  padding: 10px 4px;
+  font-size: 17px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-row2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.vo-row2.is-center {
+  justify-content: center;
+}
+.vo-flex {
+  flex: 1;
+}
+.vo-pill {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.18);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.1);
+  color: inherit;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vo-pill.is-pri {
+  background: var(--wt-teal, #3ccfb4);
+  border-color: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #0b1026);
+}
+.vo-pill.is-del {
+  color: var(--wt-coral, #ff8a6b);
+}
+.vo-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.vo-tg {
+  width: 58px;
+  height: 32px;
+  border-radius: 999px;
+  border: 0;
+  padding: 0;
+  position: relative;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.18);
+  cursor: pointer;
+}
+.vo-tg::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: left 0.15s ease;
+}
+.vo-tg.is-on {
+  background: var(--wt-teal, #3ccfb4);
+}
+.vo-tg.is-on::after {
+  left: 29px;
+}
+.vo-big {
+  font-family: var(--wt-font-num, Sora, Manrope, system-ui, sans-serif);
+  font-size: 104px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.vo-of {
+  font-size: 18px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-lab {
+  width: 120px;
+  font-size: 16px;
+  color: var(--wt-dim, #a9b4d6);
+}
+.vo-colon {
+  font-size: 24px;
+  font-weight: 700;
+}
+.vo-sel,
+.vo-input {
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.22);
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 600;
+}
+.vo-sel {
+  min-width: 100px;
+}
+.vo-sel option {
+  background: rgb(var(--wt-panel, 18, 26, 58));
+  color: var(--wt-ink, #eef2ff);
+}
+.vo-input {
+  flex: 1;
+  min-width: 260px;
+  font-weight: 500;
+}
+.vo-days {
+  display: flex;
+  gap: 8px;
+}
+.vo-days button {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--wt-fg, 255, 255, 255), 0.22);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vo-days button.is-on {
+  background: var(--wt-teal, #3ccfb4);
+  border-color: var(--wt-teal, #3ccfb4);
+  color: var(--wt-on-teal, #0b1026);
+}
+
+/* When it can't listen: the microphone not allowed (with the way to allow it), or speech not available. */
+.vo-banner {
+  position: fixed;
+  left: 24px;
+  right: 296px;
+  bottom: 28px;
+  z-index: 54;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 18px;
+  background: rgba(255, 138, 107, 0.16);
+  border: 1px solid rgba(255, 138, 107, 0.55);
+  color: var(--wt-warn-text, #ffd2c5);
+  font-family: var(--wt-font-body, Manrope, system-ui, sans-serif);
+  font-size: 17px;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+.vo-banner b {
+  color: var(--wt-ink, #fff);
+}
+.vo-banner .vo-pill {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.vo-banner-ic {
+  font-size: 22px;
+}
+.vo-banner.is-plain {
+  background: rgba(var(--wt-panel, 22, 30, 62), 0.8);
+  border-color: rgba(var(--wt-fg, 255, 255, 255), 0.14);
+  color: var(--wt-dim, #a9b4d6);
+}
+@media (max-aspect-ratio: 1/1) {
+  .vo-banner {
+    right: 24px;
+  }
+  .vo-row {
+    grid-template-columns: 120px 1fr auto auto;
   }
 }

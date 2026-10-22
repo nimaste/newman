@@ -159,15 +159,25 @@ function TopBar({ pages, current, tabNames, decor = null, decorRuler = null, dec
   // Inside a wall app (Android or iPad): its own settings (behind the tablet's PIN), also on a corner hold.
   const bridge = typeof window !== 'undefined' ? window.NewmanWall : null;
   const nativeSettings = bridge && typeof bridge.openSettings === 'function' ? () => (setMenu(false), bridge.openSettings()) : null;
-  // A long press on the clock shows who is signed in (there are no settings on the tablet).
+  // A long press on the clock shows who is signed in (there are no settings on the tablet); a tap opens
+  // Alarms & timers (VoiceLayer.jsx listens for 'newman-alarms').
+  const held = useRef(false);
   const down = () => {
     clearTimeout(press.current);
-    press.current = setTimeout(() => setMenu(true), 700);
+    held.current = false;
+    press.current = setTimeout(() => {
+      held.current = true;
+      setMenu(true);
+    }, 700);
   };
   const up = () => clearTimeout(press.current);
+  const tap = (e) => {
+    if (held.current || menu || (e.target.closest && e.target.closest('.wt-menu'))) return;
+    window.dispatchEvent(new Event('newman-alarms'));
+  };
   return (
     <header className="wt-top">
-      <div className="wt-clock" onPointerDown={down} onPointerUp={up} onPointerLeave={up} onContextMenu={(e) => e.preventDefault()}>
+      <div className="wt-clock" onPointerDown={down} onPointerUp={up} onPointerLeave={up} onClick={tap} onContextMenu={(e) => e.preventDefault()}>
         <WallTime date={now} />
         <div className="wt-date">
           <span>{day}</span>
@@ -358,7 +368,7 @@ function WallScreens({ auth, signOut }) {
         {dim ? null : body}
         <WallAlerts auth={auth} onWake={() => setDim(false)} />
         <CalendarReminders onWake={() => setDim(false)} />
-        <VoiceLayer homePage={currentHome(home)} />
+        <VoiceLayer homePage={currentHome(home)} onWake={() => setDim(false)} />
         <MusicEngine />
         <CookEngine />
       </NamedHub>
