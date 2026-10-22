@@ -6,8 +6,17 @@
     GET    /api/voice/wakewords           the wake words on the hub to choose from
     GET    /api/voice/wakeword/{file}     one of those .onnx files
     GET    /api/voice/timers              this account's timers
+    POST   /api/voice/timers              {"seconds", "label"}: a new one (the wall's + New timer)
+    PATCH  /api/voice/timers/{id}         {"do": pause | resume | restart | add | take | set, "seconds"}
     DELETE /api/voice/timers/{id}         cancel one / stop it ringing
     GET    /api/voice/timers/{id}/done    {"text", "audio"}: "Your pasta timer is done." spoken
+    GET    /api/voice/alarms              this account's alarms
+    POST   /api/voice/alarms              {"hour", "minute", "days", "label"}: a new one
+    PATCH  /api/voice/alarms/{id}         change hour / minute / days / label / enabled
+    DELETE /api/voice/alarms/{id}         delete it
+    POST   /api/voice/alarms/{id}/snooze  {"minutes"?}: snooze it (the tablet's own "Snooze for" by default)
+    POST   /api/voice/alarms/{id}/stop    stop it ringing / call off its snooze
+    PUT    /api/voice/ringing             {"snoozeMinutes", "ringMinutes"}: the wall app's own settings
     GET    /api/voice/voices              the reply voices to choose from (Piper's, or the HTTP service's)
     GET    /api/voice/settings/{uid}      a wall tablet's voice settings (admin)
     PATCH  /api/voice/settings/{uid}      change them (admin)
@@ -40,6 +49,7 @@ from .names import Name, NameIndex
 from .openai_tts import FallbackTTS, OpenAITTS
 from .pipeline import Pipeline, Sources, VoiceUnavailable, VoiceViewer
 from .teach import add_teach_routes
+from .alarms import Alarms
 from .timers import Timers
 from .whisper_restart import WhisperRestarter
 from .wyoming import WyomingClient, WyomingError, parse_address, pcm_from_wav
@@ -50,6 +60,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 STT_CHECK_S = 60  # how often Newman checks that speech to text answers (the tablets listen only while it does)
+STT_DOWN_CHECK_S = 10  # … while it doesn't (so the tablets start listening soon after it's back)
+# The wall app's "Snooze for" and "Stop ringing after" choices (minutes), and what a tablet gets before it says.
+SNOOZE_CHOICES = (5, 9, 10, 15)
+RING_CHOICES = (5, 10, 15, 30)
+RINGING_DEFAULTS = {"snoozeMinutes": 9, "ringMinutes": 10}
 
 MAX_AUDIO_BYTES = 30 * 16000 * 2  # 30 s of 16 kHz 16-bit mono
 SENSITIVITY = {"low": 0.15, "normal": 0.0, "high": -0.15}  # added to the model's threshold
@@ -299,8 +314,8 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     heard = {"ok": not watch_stt}
 
     async def watch_speech() -> None:
-        """Checks speech to text every STT_CHECK_S; when it starts or stops answering, the tablets hear
-        it ("voice-settings") and start or stop listening for the wake word."""
+        """Checks speech to text every STT_CHECK_S (STT_DOWN_CHECK_S while it doesn't answer); when it starts
+        or stops answering, the tablets hear it ("voice-settings") and start or stop listening for the wake word."""
         while True:
             try:
                 ok = await stt_ready()
@@ -313,7 +328,8 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
                 for u in h.store.users():
                     if u.get("role") == "tablet":
                         await send_to_user(u["id"], {"type": "voice-settings"})
-            await asyncio.sleep(STT_CHECK_S)
+            # (A wall that can't listen also asks again by itself every 30 s - e.g. while the wake words download.)
+            await asyncio.sleep(STT_CHECK_S if ok else min(STT_CHECK_S, STT_DOWN_CHECK_S))
 
     # Whisper reads the hint only when it starts: restarted when it changes and nobody is talking.
     restarter = WhisperRestarter(voice_dir / "whisper_prompt.txt", config.voice_stt_container, docker_connection,
@@ -334,7 +350,16 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
         if hasattr(tts, "known_voices"):
             return tts.known_voices() or {config.voice_name}
         return {x["name"] for x in VOICES}
-    timers = Timers(h.store._db)
+    def ringing_of(uid: str) -> dict[str, int]:
+        """A tablet's "Snooze for" / "Stop ringing after" (minutes), as its wall app last said (PUT api/voice/ringing)."""
+        got = (h.store.settings().get("voiceRinging") or {}).get(uid) or {}
+        return {**RINGING_DEFAULTS, **{k: v for k, v in got.items() if k in RINGING_DEFAULTS}}
+
+    def ring_for(uid: str) -> float:
+        return ringing_of(uid)["ringMinutes"] * 60.0
+
+    timers = Timers(h.store._db, ring_for=ring_for)
+    alarms = Alarms(h.store._db, ring_for=ring_for)
     spoken: dict[str, dict[str, Any]] = {}  # done-announcement text -> audio (a few, kept)
 
     def saved_settings(uid: str) -> dict[str, Any]:
@@ -369,7 +394,8 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
         book = kitchen.source() if kitchen else None
         return I.World(devices=devices, people=people,
                        pages=[{"id": p["id"], "name": p["name"]} for p in d.get("pages") or []],
-                       timers=timers.list(v.user["id"]), allow_sensitive=bool(v.settings.get("allowSensitive")),
+                       timers=timers.list(v.user["id"]), alarms=alarms.list(v.user["id"]),
+                       allow_sensitive=bool(v.settings.get("allowSensitive")),
                        music=next((x for x in devices if x.id == mine), None),
                        music_offer=bool(mine and m.offer(v.user["id"])),
                        recipes=[{"id": x["id"], "title": x["title"]} for x in book.summaries()] if book else None,
@@ -440,11 +466,16 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     pipeline = Pipeline(Sources(world=world, command=h.engine.command, today=today, log_event=h.store.log_event,
                                 music=play_music, music_answer=music_answer, device=device, cook=cook if kitchen else None,
                                 names=names, run_automation=run_automation),
-                        timers, stt, tts, voice=config.voice_name, language=config.voice_language)
+                        timers, stt, tts, voice=config.voice_name, language=config.voice_language,
+                        alarms=alarms, snooze_for=lambda uid: ringing_of(uid)["snoozeMinutes"] * 60.0)
 
     async def timers_changed(uid: str) -> None:
         await send_to_user(uid, {"type": "timers", "now": time.time(), "timers": timers.list(uid)})
     timers.listeners.append(timers_changed)
+
+    async def alarms_changed(uid: str) -> None:
+        await send_to_user(uid, {"type": "alarms", "now": time.time(), "alarms": alarms.list(uid)})
+    alarms.listeners.append(alarms_changed)
 
     def viewer(req: web.Request) -> VoiceViewer:
         u = req["user"]
@@ -481,8 +512,13 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     @r.get("/api/voice")
     async def voice_info(req: web.Request) -> web.Response:
         v = viewer(req)
+        wake = wake_json(v.settings)
+        # Why "Hey Newman" can't be listened for, in words for the wall ("Hey Newman isn't available: …").
+        reason = ("speech isn't set up on the hub" if stt is None else
+                  "the speech containers aren't running" if not heard["ok"] else
+                  "the wake word is still downloading" if not wake else "")
         return web.json_response({"available": stt is not None and heard["ok"], "speaks": tts is not None, "settings": v.settings,
-                                  "wakeword": wake_json(v.settings)})
+                                  "wakeword": wake, "reason": reason, "ringing": ringing_of(v.user["id"])})
 
     @r.get("/api/voice/wakeword")
     async def wakeword(req: web.Request) -> web.Response:
@@ -586,6 +622,112 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
                     log.warning("Timer announcement: %s", e)
         return web.json_response({"text": text, "audio": audio})
 
+    def number(v: Any, what: str) -> float:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise web.HTTPBadRequest(text=json.dumps({"error": f"{what} must be a number"}), content_type="application/json")
+        return float(v)
+
+    def bad(e: Exception) -> web.Response:
+        return web.json_response({"error": str(e)}, status=400)
+
+    @r.post("/api/voice/timers")
+    async def timers_add(req: web.Request) -> web.Response:
+        b = await body(req)
+        try:
+            t = await timers.add(req["user"]["id"], int(number(b.get("seconds"), "seconds")), str(b.get("label") or ""))
+        except ValueError as e:
+            return bad(e)
+        return web.json_response(t, status=201)
+
+    @r.patch("/api/voice/timers/{tid}")
+    async def timers_change(req: web.Request) -> web.Response:
+        b = await body(req)
+        do = str(b.get("do") or "")
+        if do not in ("pause", "resume", "restart", "add", "take", "set"):
+            return web.json_response({"error": "do: pause, resume, restart, add, take or set"}, status=400)
+        secs = number(b.get("seconds"), "seconds") if do in ("add", "take", "set") else 0
+        try:
+            t = await timers.change(req["user"]["id"], req.match_info["tid"], do, secs)
+        except ValueError as e:
+            return bad(e)
+        return web.json_response(t) if t else web.json_response({"error": "No such timer"}, status=404)
+
+    # -- alarms ------------------------------------------------------------------------------------
+
+    @r.get("/api/voice/alarms")
+    async def alarms_list(req: web.Request) -> web.Response:
+        return web.json_response({"now": time.time(), "alarms": alarms.list(req["user"]["id"])})
+
+    def alarm_fields(b: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for k in ("hour", "minute"):
+            if k in b:
+                out[k] = int(number(b[k], k))
+        if "days" in b:
+            if not isinstance(b["days"], list):
+                raise ValueError("days: a list of 0 (Sunday) to 6")
+            out["days"] = [int(number(x, "days")) for x in b["days"]]
+        if "label" in b:
+            out["label"] = str(b["label"] or "")
+        if "enabled" in b:
+            if not isinstance(b["enabled"], bool):
+                raise ValueError("enabled: true or false")
+            out["enabled"] = b["enabled"]
+        return out
+
+    @r.post("/api/voice/alarms")
+    async def alarms_add(req: web.Request) -> web.Response:
+        try:
+            f = alarm_fields(await body(req))
+            a = await alarms.add(req["user"]["id"], f.get("hour", 7), f.get("minute", 0), f.get("days") or [],
+                                 f.get("label", ""))
+        except ValueError as e:
+            return bad(e)
+        return web.json_response(a, status=201)
+
+    @r.patch("/api/voice/alarms/{aid}")
+    async def alarms_change(req: web.Request) -> web.Response:
+        try:
+            a = await alarms.update(req["user"]["id"], req.match_info["aid"], **alarm_fields(await body(req)))
+        except ValueError as e:
+            return bad(e)
+        return web.json_response(a) if a else web.json_response({"error": "No such alarm"}, status=404)
+
+    @r.delete("/api/voice/alarms/{aid}")
+    async def alarms_remove(req: web.Request) -> web.Response:
+        ok = await alarms.remove(req["user"]["id"], req.match_info["aid"])
+        return web.json_response({"ok": ok}, status=200 if ok else 404)
+
+    @r.post("/api/voice/alarms/{aid}/snooze")
+    async def alarms_snooze(req: web.Request) -> web.Response:
+        uid = req["user"]["id"]
+        b = await body(req) if req.can_read_body else {}
+        minutes = number(b["minutes"], "minutes") if b.get("minutes") is not None else ringing_of(uid)["snoozeMinutes"]
+        a = await alarms.snooze(uid, req.match_info["aid"], minutes * 60)
+        return web.json_response(a) if a else web.json_response({"error": "No such alarm"}, status=404)
+
+    @r.post("/api/voice/alarms/{aid}/stop")
+    async def alarms_stop(req: web.Request) -> web.Response:
+        a = await alarms.stop(req["user"]["id"], req.match_info["aid"])
+        return web.json_response(a) if a else web.json_response({"error": "No such alarm"}, status=404)
+
+    @r.put("/api/voice/ringing")
+    async def ringing_set(req: web.Request) -> web.Response:
+        """The wall app's own "Snooze for" / "Stop ringing after" (its hidden settings), for this tablet."""
+        b = await body(req)
+        uid = req["user"]["id"]
+        s = ringing_of(uid)
+        for key, choices in (("snoozeMinutes", SNOOZE_CHOICES), ("ringMinutes", RING_CHOICES)):
+            if key in b:
+                if b[key] not in choices:
+                    return web.json_response({"error": f"{key}: one of {', '.join(map(str, choices))}"}, status=400)
+                s[key] = b[key]
+        all_ = dict(h.store.settings().get("voiceRinging") or {})
+        if all_.get(uid) != s:
+            all_[uid] = s
+            h.store.set_setting("voiceRinging", all_)
+        return web.json_response(s)
+
     # -- settings (per wall tablet account) ----------------------------------------------------------
 
     @r.get("/api/voice/voices")
@@ -645,6 +787,7 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
     async def startup(_: web.Application) -> None:
         loop = asyncio.get_running_loop()
         task["t"] = loop.create_task(timers.run(), name="voice-timers")
+        task["a"] = loop.create_task(alarms.run(), name="voice-alarms")
         task["w"] = loop.create_task(ensure_pretrained(voice_dir, fetch or fetch_url), name="voice-wake-words")
         if hasattr(tts, "voices"):
             task["v"] = loop.create_task(tts.voices(), name="voice-voices")
@@ -656,7 +799,7 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
 
     async def cleanup(_: web.Application) -> None:
         hint.stop()
-        for t in (task.pop("t", None), task.pop("w", None), task.pop("v", None), task.pop("h", None),
+        for t in (task.pop("t", None), task.pop("a", None), task.pop("w", None), task.pop("v", None), task.pop("h", None),
                   task.pop("r", None), task.pop("s", None)):
             if t:
                 t.cancel()

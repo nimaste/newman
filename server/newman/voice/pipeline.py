@@ -9,6 +9,10 @@ audio is kept: the activity log gets the words heard and what happened.
 A name the parser couldn't find as heard ("run good nite", "where is ma seemo") gets a second look against
 every name the hub knows of the kind the request needs (names.py): sure -> done as corrected; fairly sure ->
 "Did you mean Massimo?", and a "yes" within OFFER_S does it.
+
+Other questions back wait FOLLOW_S for their answer ("Which one: pasta or eggs?", "Just tomorrow, or every
+time?", "6:30 in the morning or the evening?"); anything else lets the question go. A reply that asks has
+action.listen = True: the wall listens for the answer without the wake word.
 """
 from __future__ import annotations
 
@@ -16,12 +20,13 @@ import base64
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable, Protocol
 
 from ..automations.engine import ActionError
 from . import intents as I
 from . import names as N
+from .alarms import SNOOZE_S, Alarms, js_day, say_clock
 from .timers import Timers
 
 log = logging.getLogger(__name__)
@@ -81,14 +86,23 @@ class Sources:
 
 
 OFFER_S = 60  # how long "Did you mean …?" waits for a yes
+FOLLOW_S = 60  # how long "Which one: …?" and the other questions back wait for their answer
+JUST_WORDS = {"just", "only", "once", "tomorrow", "today", "tonight", "next", "this", "that", "skip"} | set(I.DAY_WORDS)
+EVERY_WORDS = {"every", "all", "always", "good", "each", "forever", "completely", "everytime", "both", "whole"}
 
 
 class Pipeline:
     def __init__(self, sources: Sources, timers: Timers, stt: SpeechToText | None, tts: TextToSpeech | None,
-                 voice: str = "", language: str = "en", clock: Callable[[], float] = time.time) -> None:
+                 voice: str = "", language: str = "en", clock: Callable[[], float] = time.time,
+                 alarms: Alarms | None = None, snooze_for: Callable[[str], float] | None = None) -> None:
+        """`snooze_for`: a tablet's "Snooze for" (seconds), from its own settings."""
         self.src, self.timers, self.stt, self.tts = sources, timers, stt, tts
         self.voice, self.language, self.clock = voice, language, clock
+        self.alarms = alarms
+        self.snooze_for = snooze_for or (lambda _uid: SNOOZE_S)
         self.offers: dict[str, dict[str, Any]] = {}  # uid -> {"text": the corrected request, "name", "at"}
+        # uid -> {"kind": which_timer | which_alarm | repeat | ampm, "intent", "ids", "at"}: a question back
+        self.pending: dict[str, dict[str, Any]] = {}
 
     async def handle(self, viewer: VoiceViewer, pcm: bytes | None = None, rate: int = 16000,
                      text: str | None = None, speak: bool = True) -> dict[str, Any]:
@@ -151,6 +165,14 @@ class Pipeline:
                 reply = "Okay, never mind."
                 self.src.log_event("voice", f"{who}: “{heard}”", reply, None, {"intent": "confirm", "via": "voice"})
                 return {"heard": heard, "reply": reply, "action": {"type": "confirm", "yes": False}}
+        # "Which one: pasta or eggs?" -> "pasta"; "Just tomorrow, or every time?" -> "every time"; …
+        pend = self.pending.pop(uid, None)
+        if pend and said is None and self.clock() - pend["at"] <= FOLLOW_S:
+            got = await self._follow_up(pend, I.clean(heard), uid, world)
+            if got is not None:
+                reply, action = got
+                self.src.log_event("voice", f"{who}: “{heard}”", reply, None, {"intent": action["type"], "via": "voice"})
+                return {"heard": heard, "reply": reply, "action": action}
         it = I.parse(said or heard, world)
         if it.missing and said is None:
             fix = self._correct(heard, it, world)
@@ -164,7 +186,7 @@ class Pipeline:
                 reply = f"Did you mean {name.text}?"
                 self.src.log_event("voice", f"{who}: “{heard}”", reply, None, {"intent": "confirm", "via": "voice"})
                 return {"heard": heard, "reply": reply,
-                        "action": {"type": "confirm", "name": name.text, "slot": name.slot}}
+                        "action": {"type": "confirm", "name": name.text, "slot": name.slot, "listen": True}}
         action: dict[str, Any] = {"type": it.type}
         reply = it.reply
         entity = it.devices[0].id if it.devices else None
@@ -216,8 +238,13 @@ class Pipeline:
         elif it.type.startswith("timer_") and not reply:
             reply, extra = await self._timer(it, uid, world)
             action.update(extra)
+        elif it.type.startswith("alarm_") or it.type in ("snooze", "another_minute"):
+            reply, extra = await self._alarm(it, uid, world)
+            action.update(extra)
         elif it.type == "stop":
             stopped = await self.timers.stop_ringing(uid)
+            if self.alarms is not None:
+                stopped += await self.alarms.stop_ringing(uid)
             if not stopped and it.label == "timer":
                 running = [t for t in world.timers if t["state"] == "running"]
                 if len(running) == 1:
@@ -344,6 +371,9 @@ class Pipeline:
                "lyrics": "Here are the lyrics."}.get(it.show or "", "Okay.")
         return {"show": it.show, "say": say}
 
+
+    # -- timers ------------------------------------------------------------------------------------------
+
     async def _timer(self, it: I.Intent, uid: str, world: I.World) -> tuple[str, dict[str, Any]]:
         now = self.clock()
         if it.type == "timer_set":
@@ -353,24 +383,260 @@ class Pipeline:
                 return str(e), {}
             what = f"{it.label} timer for {I.say_duration(t['seconds'], exact=True)}" if it.label else t["name"]
             return f"Okay, {what}, starting now.", {"timerId": t["id"]}
-        found = I._find_timers(world, it.label)
         if it.type == "timer_list":
             return I.say_timers(world.timers, now, count=True), {}
+        if not world.timers:
+            return "You don't have any timers.", {}
+        found = I.find_timers(world.timers, it.label, it.ref)
         if it.type == "timer_query":
-            if not world.timers:
-                return "You don't have any timers.", {}
             if not found:
                 return f"You don't have a {it.label} timer.", {}
             return I.say_timers(found, now), {}
-        # cancel
-        if not world.timers:
-            return "You don't have any timers.", {}
         if not found:
-            return f"You don't have a {it.label} timer.", {}
-        if len(found) > 1 and not it.all and not it.label:
-            names = [t["name"] for t in found[:3]]
-            return f"Which timer: {I.join_names(names, 'or')}? Or say “cancel all timers”.", {}
-        await self.timers.remove(uid, [t["id"] for t in found])
-        if len(found) == 1:
-            return f"Okay, I cancelled your {found[0]['name']}.", {"cancelled": [found[0]["id"]]}
-        return f"Okay, I cancelled {len(found)} timers.", {"cancelled": [t["id"] for t in found]}
+            return (f"You don't have a {it.label} timer." if it.label else "I couldn't find that timer."), {}
+        if not it.label and not it.ref and len(found) > 1 and not it.all:
+            # Only the ones it can mean: pausing a running one, resuming a paused one.
+            pool = {"timer_pause": "running", "timer_resume": "paused"}.get(it.type)
+            fits = [t for t in found if t["state"] == pool] if pool else found
+            found = fits or found
+        if len(found) > 1 and not it.all:
+            self.pending[uid] = {"kind": "which_timer", "intent": it, "ids": [t["id"] for t in found], "at": now}
+            return I.which_timer(found), {"listen": True}
+        return await self._timer_do(it, uid, found)
+
+    async def _timer_do(self, it: I.Intent, uid: str, found: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+        n = len(found)
+        both = "both timers" if n == 2 else f"all {n} timers"
+        if it.type == "timer_cancel":
+            await self.timers.remove(uid, [t["id"] for t in found])
+            ids = {"cancelled": [t["id"] for t in found]}
+            if n == 1:
+                return f"Okay, I cancelled your {found[0]['name']}.", ids
+            return f"Okay, {both} are cancelled.", ids
+        do = {"timer_add": "add", "timer_take": "take", "timer_pause": "pause", "timer_resume": "resume",
+              "timer_restart": "restart", "timer_change": "set"}[it.type]
+        if n == 1:
+            t = found[0]
+            if do == "pause" and t["state"] != "running":
+                return f"The {t['name']} isn't running.", {}
+            if do == "resume" and t["state"] != "paused":
+                return f"The {t['name']} isn't paused.", {}
+        done = []
+        try:
+            for t in found:
+                got = await self.timers.change(uid, t["id"], do, it.seconds or 0)
+                if got:
+                    done.append(got)
+        except ValueError as e:
+            return str(e), {}
+        if not done:
+            return "That timer isn't there any more.", {}
+        extra = {"timerId": done[0]["id"]}
+        if n > 1:
+            amount = I.say_duration(it.seconds or 0, exact=True)
+            return {"add": f"Okay, I added {amount} to {both}.", "take": f"Okay, I took {amount} off {both}.",
+                    "pause": f"Okay, {both} are paused.", "resume": f"Okay, {both} are running again.",
+                    "restart": f"Okay, {both} are back to their full time.",
+                    "set": f"Okay, {both} are now {amount}."}[do], extra
+        t, old = done[0], found[0]
+        the = f"the {old['name']}"
+        left = self.timers.left(t)
+        if do in ("add", "take"):
+            if t["state"] != "paused" and t["endsAt"] <= self.clock():
+                return f"Okay, {the} is done.", extra
+            return f"Okay, {the} has {I.say_duration(left)} left.", extra
+        if do == "pause":
+            return f"Okay, paused with {I.say_duration(left)} left.", extra
+        if do == "resume":
+            return f"Okay, {the} is running again.", extra
+        if do == "restart":
+            return f"Okay, {the} is back to {I.say_duration(t['seconds'], exact=True)}.", extra
+        the = f"the {old['label']} timer" if old.get("label") else "the timer"
+        return f"Okay, {the} is now {I.say_duration(t['seconds'], exact=True)}.", extra
+
+    # -- alarms ------------------------------------------------------------------------------------------
+
+    async def _alarm(self, it: I.Intent, uid: str, world: I.World) -> tuple[str, dict[str, Any]]:
+        if it.type in ("snooze", "another_minute"):
+            return await self._snooze(it, uid, world)
+        if self.alarms is None:
+            return "Alarms aren't set up here.", {}
+        al = self.alarms
+        v = dict(it.value or {})
+        if it.type == "alarm_set":
+            if not v.get("ampm") and 1 <= v["hour"] <= 12 and (v.get("days") or v.get("once")):
+                self.pending[uid] = {"kind": "ampm", "intent": it, "at": self.clock()}
+                said = f"{v['hour']}" if not v["minute"] else f"{v['hour']}:{v['minute']:02d}"
+                return f"{said} in the morning or the evening?", {"listen": True}
+            return await self._alarm_set(v, uid)
+        if it.type == "alarm_list":
+            on = [a for a in world.alarms if a["enabled"] or a["state"] != "set"]
+            if not on:
+                return "You don't have any alarms on.", {"show": "alarms"}
+            parts = [(f"the {a['label']} alarm at {a['time']} " if a["label"] else f"{a['time']} ") + al.say_when(a)
+                     for a in on]
+            s = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + ", and " + parts[-1]
+            head = "You have 1 alarm" if len(on) == 1 else f"You have {len(on)} alarms"
+            return f"{head}: {s}.", {"show": "alarms"}
+        if not world.alarms:
+            return "You don't have any alarms.", {}
+        target = v.get("target", v) if it.type == "alarm_change" else v
+        found = I.find_alarms(world.alarms, target)
+        if not found:
+            return (f"You don't have a {target['label']} alarm." if target.get("label") else
+                    "I couldn't find that alarm."), {}
+        if len(found) > 1 and not (it.all and it.type in ("alarm_cancel", "alarm_off", "alarm_on")):
+            self.pending[uid] = {"kind": "which_alarm", "intent": it, "ids": [a["id"] for a in found], "at": self.clock()}
+            return I.which_alarm(found), {"listen": True}
+        return await self._alarm_do(it, uid, found)
+
+    async def _alarm_set(self, v: dict[str, Any], uid: str) -> tuple[str, dict[str, Any]]:
+        al = self.alarms
+        assert al is not None
+        h, m, days = v["hour"], v["minute"], set(v.get("days") or [])
+        if not v.get("ampm") and 1 <= h <= 12:
+            # No AM / PM, no day: the next one coming.
+            pairs = [(al.coming(x % 24, m) or float("inf"), x % 24) for x in (h % 12, h % 12 + 12)]
+            h = min(pairs)[1]
+        on_date: date | None = None
+        once = v.get("once") or ""
+        today = al.today()
+        if once == "today":
+            on_date = today
+        elif once == "tomorrow":
+            on_date = today + timedelta(days=1)
+        elif once.startswith("d"):
+            want = int(once[1:])
+            for i in range(0, 8):
+                d = today + timedelta(days=i)
+                if js_day(d) == want and al.at(d, h, m) > self.clock():
+                    on_date = d
+                    break
+        try:
+            a = await al.add(uid, h, m, sorted(days), v.get("label") or "", on_date)
+        except ValueError as e:
+            return str(e), {}
+        what = f"{a['label']} alarm" if a["label"] else "alarm"
+        return f"Okay, {what} set for {a['time']} {al.say_when(a)}.", {"alarmId": a["id"]}
+
+    async def _alarm_do(self, it: I.Intent, uid: str, found: list[dict[str, Any]]) -> tuple[str, dict[str, Any]]:
+        al = self.alarms
+        assert al is not None
+        if len(found) > 1:  # "cancel all my alarms"
+            n = len(found)
+            for a in found:
+                if it.type == "alarm_cancel":
+                    await al.remove(uid, a["id"])
+                else:
+                    await al.update(uid, a["id"], enabled=it.type == "alarm_on")
+            what = "both your alarms" if n == 2 else f"all {n} of your alarms"
+            return f"Okay, {what} {'are cancelled' if it.type == 'alarm_cancel' else 'are ' + ('on' if it.type == 'alarm_on' else 'off')}.", {}
+        a = found[0]
+        extra = {"alarmId": a["id"]}
+        if it.type in ("alarm_cancel", "alarm_off") and a["days"] and a.get("nextAt"):
+            self.pending[uid] = {"kind": "repeat", "intent": it, "ids": [a["id"]], "at": self.clock()}
+            day = al.day_word(a["nextAt"]).removeprefix("on ")
+            return f"Just {day}, or every time?", {**extra, "listen": True}
+        if it.type == "alarm_cancel":
+            await al.remove(uid, a["id"])
+            return f"Okay, your {a['name']} is cancelled.", extra
+        if it.type == "alarm_off":
+            await al.update(uid, a["id"], enabled=False)
+            return f"Okay, your {a['name']} is off.", extra
+        if it.type == "alarm_on":
+            b = await al.update(uid, a["id"], enabled=True)
+            return f"Okay, your {a['name']} is on, {al.say_when(b) if b else ''}.".replace(", .", "."), extra
+        if it.type == "alarm_skip":
+            if not a["days"]:
+                await al.update(uid, a["id"], enabled=False)
+                return f"Okay, your {a['name']} is off.", extra
+            once = (it.value or {}).get("once") or ""
+            nxt = a.get("nextAt")
+            if once and nxt:
+                want = {"today": al.today(), "tomorrow": al.today() + timedelta(days=1)}.get(once)
+                got = al.local(nxt).date()
+                if (want is not None and got != want) or (once.startswith("d") and js_day(got) != int(once[1:])):
+                    word = {"today": "today", "tomorrow": "tomorrow"}.get(once) or "on " + \
+                        ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][int(once[1:])]
+                    return f"Your {a['name']} doesn't go off {word}.", extra
+            await al.skip_next(uid, a["id"])
+            return f"Okay, your {a['name']} won't go off {al.day_word(nxt) if nxt else 'next time'}.", extra
+        if it.type == "alarm_change":
+            v = it.value or {}
+            h, m = v["hour"], v["minute"]
+            if not v.get("ampm") and 1 <= h <= 12:
+                h = h % 12 + (12 if a["hour"] >= 12 else 0)  # the same half of the day as before
+            b = await al.update(uid, a["id"], hour=h, minute=m)
+            the = f"the {a['label']} alarm" if a["label"] else "your alarm"
+            return f"Okay, {the} is now {say_clock(h, m)}{', ' + al.say_when(b) if b and not b['days'] else ''}.", extra
+        return "Okay.", extra
+
+    async def _snooze(self, it: I.Intent, uid: str, world: I.World) -> tuple[str, dict[str, Any]]:
+        """"Snooze" / "another minute": a ringing alarm snoozes, a ringing timer gets the time more."""
+        ring_alarms = [a for a in world.alarms if a["state"] == "ringing"]
+        ring_timers = [t for t in world.timers if t["state"] == "ringing"]
+        if not ring_alarms and not ring_timers:
+            return "Nothing is ringing.", {}
+        if it.type == "snooze":
+            secs = it.seconds or (self.snooze_for(uid) if ring_alarms else 60)
+        else:
+            secs = it.seconds or 60
+        if ring_alarms and self.alarms is not None:
+            for a in ring_alarms:
+                await self.alarms.snooze(uid, a["id"], secs)
+        for t in ring_timers:
+            await self.timers.change(uid, t["id"], "add", secs)
+        if ring_alarms and it.type == "snooze":
+            return f"Okay, snoozing for {I.say_duration(secs, exact=True)}.", {"snoozed": True}
+        return ("Okay, one more minute." if secs == 60 else f"Okay, {I.say_duration(secs, exact=True)} more."), {}
+
+    # -- answers to the questions back ----------------------------------------------------------------
+
+    async def _follow_up(self, pend: dict[str, Any], words: list[str], uid: str,
+                         world: I.World) -> tuple[str, dict[str, Any]] | None:
+        """The answer to a question Newman asked (pending), done; None when what was said isn't an answer."""
+        if not words:
+            return None
+        it: I.Intent = pend["intent"]
+        kind = pend["kind"]
+        if kind == "which_timer":
+            cands = [t for t in world.timers if t["id"] in pend["ids"]]
+            picked = I.pick_answer(words, cands)
+            if not picked:
+                return None
+            reply, extra = await self._timer_do(it, uid, picked)
+            return reply, {"type": it.type, **extra}
+        if kind == "which_alarm":
+            cands = [a for a in world.alarms if a["id"] in pend["ids"]]
+            picked = I.pick_alarm(words, cands)
+            if not picked:
+                return None
+            reply, extra = await self._alarm_do(it, uid, picked[:1] if len(picked) > 1 and not it.all else picked)
+            return reply, {"type": it.type, **extra}
+        if kind == "repeat" and self.alarms is not None:
+            a = next((x for x in world.alarms if x["id"] in pend["ids"]), None)
+            if a is None:
+                return None
+            ws = set(words)
+            if ws & EVERY_WORDS:
+                if it.type == "alarm_cancel":
+                    await self.alarms.remove(uid, a["id"])
+                    return f"Okay, your {a['name']} is cancelled.", {"type": it.type, "alarmId": a["id"]}
+                await self.alarms.update(uid, a["id"], enabled=False)
+                return f"Okay, your {a['name']} is off.", {"type": it.type, "alarmId": a["id"]}
+            if ws & JUST_WORDS:
+                nxt = a.get("nextAt")
+                await self.alarms.skip_next(uid, a["id"])
+                return (f"Okay, your {a['name']} won't go off {self.alarms.day_word(nxt) if nxt else 'next time'}.",
+                        {"type": "alarm_skip", "alarmId": a["id"]})
+            return None
+        if kind == "ampm":
+            which = I.ampm_answer(words)
+            if not which:
+                return None
+            v = dict(it.value or {})
+            h = v["hour"] % 12
+            v["hour"], v["ampm"] = (h + 12 if which == "pm" else h), which
+            reply, extra = await self._alarm_set(v, uid)
+            return reply, {"type": "alarm_set", **extra}
+        return None

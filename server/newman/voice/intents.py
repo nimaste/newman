@@ -52,7 +52,8 @@ class World:
     devices: list[Device] = field(default_factory=list)
     people: list[dict[str, Any]] = field(default_factory=list)  # locations.person_json for this tablet
     pages: list[dict[str, Any]] = field(default_factory=list)   # [{"id", "name"}] of its dashboard
-    timers: list[dict[str, Any]] = field(default_factory=list)  # its timers (timers.Timers.json)
+    timers: list[dict[str, Any]] = field(default_factory=list)  # its timers (timers.Timers.json), in the order set
+    alarms: list[dict[str, Any]] = field(default_factory=list)  # its alarms (alarms.Alarms.json)
     allow_sensitive: bool = False
     music: Device | None = None  # this tablet's own music player (the music connection), if any
     music_offer: bool = False    # it asked "Did you mean …?" (a song it wasn't sure of) and waits for a yes
@@ -69,7 +70,14 @@ class World:
 @dataclass
 class Intent:
     """type: command | refuse | ask_state | ask_value | describe | where | today | time | date | show |
-    timer_set | timer_query | timer_cancel | timer_list | stop | ambiguous | unknown |
+    timer_set | timer_query | timer_cancel | timer_list | timer_add / timer_take (seconds more / less) |
+    timer_pause | timer_resume | timer_restart | timer_change (seconds = the new full time) - which timer: label
+    and ref ({"ordinal": 2 = "the second timer", -1 = the last; "seconds": "the 10 minute timer"}) |
+    snooze (seconds or None = the tablet's own) | another_minute (seconds, 60 unless said) |
+    alarm_set (value = {"hour", "minute", "ampm": "am" | "pm" | "", "days": repeat days 0 = Sunday, "once":
+    "today" | "tomorrow" | "d<0-6>" | "", "label"}) | alarm_list | alarm_cancel | alarm_off | alarm_on | alarm_skip |
+    alarm_change (value = {"target": which alarm (alarm_target), "hour", "minute", "ampm"}; the others' value is
+    that target, alarm_skip's with "once") | stop | ambiguous | unknown |
     music_play (music = {title, artist, album, playlist, query, kind, shuffle, random}) | music_control
     (command = the player's command) | music_what | music_answer (value = True / False: the answer to
     "Did you mean …?") | cook (value = what to do in cook mode: {"do": open |
@@ -96,6 +104,7 @@ class Intent:
     reply: str = ""                 # set when the answer is known at parse time
     music: dict[str, Any] = field(default_factory=dict)  # music_play: what to look for
     missing: dict[str, Any] | None = None
+    ref: dict[str, Any] = field(default_factory=dict)  # which timer, besides its label (see the types)
 
 # -- words --------------------------------------------------------------------------------------------
 
@@ -568,7 +577,8 @@ def parse(text: str, world: World) -> Intent:
     words = clean(text)
     if not words:
         return Intent("unknown", reply=NOT_UNDERSTOOD)
-    for step in (_clock, _cook, _music_answer, _stop, _music, _timer, _show, _where, _today, _automation, _question,
+    for step in (_clock, _cook, _music_answer, _stop, _ringing, _alarm, _music, _timer, _show, _where, _today,
+                 _automation, _question,
                  _command):
         it = step(words, world)
         if it is not None:
@@ -626,9 +636,307 @@ def _stop(words: list[str], world: World) -> Intent | None:
     if words[0] in STOP_HEADS and all(w in STOP_FILL for w in words[1:]):
         if words[0] == "cancel" and len(words) > 1 and any(w in TIMER_WORDS for w in words):
             return None  # "cancel the timer": a timer intent
+        if words[0] == "cancel" and any(w in ALARM_WORDS for w in words) and not _ringing_now(world):
+            return None  # "cancel the alarm" with nothing ringing: an alarm intent
         return Intent("stop", label="timer" if any(w in TIMER_WORDS for w in words) else "")
     if words in (["never", "mind"], ["be", "quiet"], ["that", "is", "enough"], ["thats", "enough"]):
         return Intent("stop")
+    return None
+
+
+def _ringing_now(world: World) -> bool:
+    return any(t.get("state") == "ringing" for t in world.timers) or \
+        any(a.get("state") == "ringing" for a in world.alarms)
+
+
+# -- snooze / another minute (something ringing) ----------------------------------------------------
+
+SNOOZE_FILL = {"snooze", "it", "the", "alarm", "that", "for", "please", "a", "again", "me", "another", "more", "bit",
+               "few", "little", "timer"}
+MORE_FILL = {"give", "me", "us", "just", "another", "1", "more", "minute", "minutes", "a", "please", "i", "need",
+             "want", "can", "have", "one", "few", "extra", "it", "then", "ok", "okay"}
+
+
+def _ringing(words: list[str], world: World) -> Intent | None:
+    """"Snooze" / "snooze for 5 minutes"; "another minute" / "one more minute" while something rings."""
+    if words[0] == "snooze" and all(w in SNOOZE_FILL or w in DURATION_UNITS or _is_num(w) for w in words[1:]):
+        return Intent("snooze", seconds=parse_duration(words)[0])
+    if not _ringing_now(world) or any(w in TIMER_WORDS for w in words):
+        return None
+    if ("another" in words or "more" in words or "extra" in words) and \
+            all(w in MORE_FILL or w in DURATION_UNITS or _is_num(w) for w in words) and \
+            any(w in DURATION_UNITS for w in words):
+        secs = parse_duration(words)[0]
+        return Intent("another_minute", seconds=secs if secs and secs > 60 else 60)
+    return None
+
+
+# -- alarms -------------------------------------------------------------------------------------------
+
+ALARM_WORDS = {"alarm", "alarms"}
+DAY_WORDS = {"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4, "friday": 5, "saturday": 6}
+AMPM = ((["in", "the", "morning"], "am"), (["this", "morning"], "am"), (["morning"], "am"), (["mornings"], "am"),
+        (["a", "m"], "am"), (["am"], "am"), (["in", "the", "afternoon"], "pm"), (["afternoon"], "pm"),
+        (["in", "the", "evening"], "pm"), (["this", "evening"], "pm"), (["evening"], "pm"), (["evenings"], "pm"),
+        (["at", "night"], "pm"), (["tonight"], "pm"), (["night"], "pm"), (["p", "m"], "pm"), (["pm"], "pm"))
+ALARM_SKIP = {"a", "an", "the", "my", "our", "your", "alarm", "alarms", "set", "create", "make", "add", "new", "another",
+              "for", "at", "on", "to", "me", "us", "up", "wake", "please", "cancel", "delete", "remove", "clear", "turn",
+              "switch", "off", "skip", "change", "move", "push", "what", "which", "do", "i", "we", "have", "is",
+              "are", "there", "any", "list", "show", "all", "every", "each", "daily", "everyday", "day", "days",
+              "tomorrow", "today", "tonight", "morning", "mornings", "evening", "evenings", "afternoon", "night", "am",
+              "pm", "m", "p", "oclock", "o", "clock", "in", "this", "and", "just", "only", "it", "its", "one", "next",
+              "so", "that", "called", "named", "from", "weekday", "weekdays", "weekend", "weekends", "work", "noon",
+              "midnight", "half", "quarter", "past", "snooze", "get", "rid", "of", "be", "will", "would", "you", "can",
+              "could", "until", "by", "time", "times", "now", "again", "go", "goes", "disable", "enable", "when",
+              "how", "many", "much", "set", "put", "start", "keep", "workdays", "workday", "school", "oh", "instead",
+              "reset", "update", "make", "shift", "except", "but", "not", "dont", "never", "mind", "very", "early"}
+
+
+def _clock_at(words: list[str], i: int) -> tuple[int, int, set[int]] | None:
+    """A time said at words[i]: "7", "7 30", "6 oh 5", "7 oclock", "6.3" (6:30), "noon", "half past 6",
+    "quarter past / to 7", "20 past 6" -> (hour as said, minute, indexes used)."""
+    w = words[i]
+    nxt = words[i + 1] if i + 1 < len(words) else ""
+    if w == "noon":
+        return 12, 0, {i}
+    if w == "midnight":
+        return 0, 0, {i}
+    if w in ("half", "quarter") and nxt in ("past", "after", "to", "before") and i + 2 < len(words) and \
+            words[i + 2].isdigit() and 1 <= int(words[i + 2]) <= 12:
+        h = int(words[i + 2])
+        m = 30 if w == "half" else 15
+        if nxt in ("to", "before"):
+            if w == "half":
+                return None
+            return (h - 1) or 12, 45, {i, i + 1, i + 2}
+        return h, m, {i, i + 1, i + 2}
+    if w.isdigit() and nxt in ("past", "after") and i + 2 < len(words) and words[i + 2].isdigit() and \
+            1 <= int(w) < 60 and 1 <= int(words[i + 2]) <= 12:
+        return int(words[i + 2]), int(w), {i, i + 1, i + 2}
+    if re.fullmatch(r"\d{1,2}\.\d{1,2}", w):
+        h, m = w.split(".")
+        mi = int(m) * (10 if len(m) == 1 else 1)
+        if int(h) <= 24 and mi < 60:
+            return int(h), mi, {i}
+        return None
+    if not w.isdigit():
+        return None
+    if len(w) in (3, 4) and int(w[-2:]) < 60 and int(w[:-2]) <= 24:  # "730", "0630"
+        if nxt not in DURATION_UNITS:
+            return int(w[:-2]), int(w[-2:]), {i}
+        return None
+    h = int(w)
+    if h > 24 or nxt in DURATION_UNITS or nxt in TIMER_WORDS:
+        return None
+    used = {i}
+    m = 0
+    j = i + 1
+    if j < len(words) and words[j] == "oh" and j + 1 < len(words) and words[j + 1].isdigit() and int(words[j + 1]) < 10:
+        m, used = int(words[j + 1]), used | {j, j + 1}
+        j += 2
+    elif j < len(words) and words[j].isdigit() and int(words[j]) < 60 and \
+            not (j + 1 < len(words) and words[j + 1] in DURATION_UNITS):
+        m, used = int(words[j]), used | {j}
+        j += 1
+    if j < len(words) and words[j] == "oclock":
+        used.add(j)
+    elif j + 1 < len(words) and words[j:j + 2] == ["o", "clock"]:
+        used |= {j, j + 1}
+    return h, m, used
+
+
+def parse_clock(words: list[str], start: int = 0, stop: int | None = None) -> dict[str, Any] | None:
+    """The first time of day in words[start:stop] -> {"hour" (0-23 when AM / PM is known, else 1-12 as
+    said), "minute", "ampm": "am" | "pm" | "", "used"}; None when no time is said."""
+    stop = len(words) if stop is None else stop
+    for i in range(start, stop):
+        got = _clock_at(words[:stop], i)
+        if got is None:
+            continue
+        h, m, used = got
+        ampm = ""
+        if words[i] in ("noon", "midnight"):
+            ampm = "pm" if words[i] == "noon" else "am"
+        j = max(used) + 1
+        for phrase, which in AMPM:
+            if words[j:j + len(phrase)] == phrase:
+                ampm, used = which, used | set(range(j, j + len(phrase)))
+                break
+        if not ampm:  # "tomorrow morning at 7", "every evening at 6"
+            for k, w in enumerate(words[:stop]):
+                if k not in used and w in ("morning", "mornings", "tonight", "evening", "evenings", "afternoon"):
+                    ampm = "am" if w.startswith("morning") else "pm"
+                    used = used | {k}
+                    break
+        if h > 12:
+            ampm, h = "pm", h
+        elif h == 0:
+            ampm = "am"
+        elif ampm == "pm":
+            h = 12 if h == 12 else h + 12
+        elif ampm == "am":
+            h = 0 if h == 12 else h
+        return {"hour": h, "minute": m, "ampm": ampm if ampm or h > 12 or h == 0 else "", "used": used}
+    return None
+
+
+def parse_days(words: list[str]) -> tuple[set[int], str, set[int]]:
+    """(repeat days 0 = Sunday, one day "today" | "tomorrow" | "d<n>" (the next such day), indexes used):
+    "on weekdays", "every Saturday", "on Saturdays", "every day", "daily", "weekends", "tomorrow", "on Friday"."""
+    rep: set[int] = set()
+    once = ""
+    used: set[int] = set()
+    singles: list[int] = []
+    for i, w in enumerate(words):
+        prev = words[i - 1] if i else ""
+        if w in ("daily", "everyday") or (w in ("day", "morning", "night") and prev in ("every", "each")):
+            rep, used = set(range(7)), used | {i, i - 1}
+        elif w in ("weekdays", "weekday", "workdays", "workday") or (w == "days" and prev in ("work", "school")):
+            rep |= {1, 2, 3, 4, 5}
+            used |= {i}
+        elif w in ("weekends", "weekend"):
+            rep |= {0, 6}
+            used |= {i}
+        elif w in DAY_WORDS or (w.endswith("s") and w[:-1] in DAY_WORDS):
+            d = DAY_WORDS[w if w in DAY_WORDS else w[:-1]]
+            used.add(i)
+            if w not in DAY_WORDS or prev in ("every", "each"):
+                rep.add(d)
+                if prev in ("every", "each"):
+                    used.add(i - 1)
+            else:
+                singles.append(d)
+        elif w == "tomorrow":
+            once, used = "tomorrow", used | {i}
+        elif w in ("today", "tonight"):
+            once, used = "today", used | {i}
+    if len(singles) > 1 or (singles and rep):
+        rep |= set(singles)  # "Monday and Wednesday"
+    elif singles:
+        once = f"d{singles[0]}"
+    used.discard(-1)
+    return rep, once, used
+
+
+def _alarm_label(words: list[str], used: set[int]) -> str:
+    """The name in "a gym alarm", "an alarm called gym", "the gym alarm"."""
+    for lead in ("called", "named"):
+        if lead in words:
+            i = words.index(lead)
+            after = [w for j, w in enumerate(words[i + 1:], i + 1) if j not in used and w not in ALARM_SKIP
+                     and not _is_num(w) and w not in DAY_WORDS]
+            if after:
+                return " ".join(after[:2])
+    i = next((j for j, w in enumerate(words) if w in ALARM_WORDS), len(words))
+    before = [w for j, w in enumerate(words[:i]) if j not in used and w not in ALARM_SKIP and not _is_num(w)
+              and w not in DAY_WORDS and not (w.endswith("s") and w[:-1] in DAY_WORDS)]
+    return " ".join(before[-2:])
+
+
+def alarm_target(words: list[str]) -> dict[str, Any]:
+    """Which alarm words name: {"hour", "minute", "ampm", "days", "once", "label", "all"} (each optional)."""
+    clock = parse_clock(words)
+    used = set(clock["used"]) if clock else set()
+    rep, once, dused = parse_days(words)
+    t: dict[str, Any] = {"label": _alarm_label(words, used | dused), "days": sorted(rep), "once": once,
+                         "all": "alarms" in words or any(w in ALL_WORDS for w in words)}
+    if clock:
+        t.update(hour=clock["hour"], minute=clock["minute"], ampm=clock["ampm"])
+    return t
+
+
+def find_alarms(alarms: list[dict[str, Any]], target: dict[str, Any]) -> list[dict[str, Any]]:
+    """The alarms a target (alarm_target) fits."""
+    out = list(alarms)
+    if target.get("label"):
+        lw = target["label"].split()
+        named = [a for a in out if a.get("label") and all(any(same_word(x, y) for y in a["label"].split()) for x in lw)]
+        out = named
+    if target.get("hour") is not None:
+        h, m = target["hour"], target.get("minute") or 0
+        same = (lambda a: a["hour"] == h) if target.get("ampm") or h > 12 or h == 0 else (lambda a: a["hour"] % 12 == h % 12)
+        out = [a for a in out if same(a) and a["minute"] == m]
+    if target.get("days"):
+        want = set(target["days"])
+        out = [a for a in out if a.get("days") and want <= set(a["days"])]
+    return out
+
+
+def ampm_answer(words: list[str]) -> str:
+    """The answer to "6:30 in the morning or the evening?": "am", "pm" or ""."""
+    for i in range(len(words)):
+        for phrase, which in AMPM:
+            if words[i:i + len(phrase)] == phrase:
+                return which
+    return ""
+
+
+def pick_alarm(words: list[str], cands: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    """The answer to "Which one: the gym alarm or the 7:00 AM alarm?"."""
+    got = pick_answer(words, cands)
+    if got:
+        return got
+    t = alarm_target(words)
+    if t.get("hour") is None and not t["days"] and not t["label"]:
+        return None
+    return find_alarms(cands, t) or None
+
+
+def alarm_called(a: dict[str, Any]) -> str:
+    return f"the {a['label']} alarm" if a.get("label") else f"the {a['time']} alarm"
+
+
+def which_alarm(cands: list[dict[str, Any]]) -> str:
+    names = [alarm_called(a) for a in cands[:4]]
+    if len(set(names)) < len(names):
+        names = [f"the {k} one" for k in ("first", "second", "third", "fourth")[:len(names)]]
+    return f"Which one: {join_names(names, 'or')}?"
+
+
+def _alarm(words: list[str], world: World) -> Intent | None:
+    has = any(w in ALARM_WORDS for w in words)
+    wake = words[:2] in (["wake", "me"], ["wake", "us"]) or words[0] == "wakeup"
+    if not has and not wake:
+        return None
+    head = words[0]
+    ringing = any(a.get("state") == "ringing" for a in world.alarms)
+    target = alarm_target(words)
+    qualified = bool(target.get("hour") is not None or target["days"] or target["once"] or target["label"] or
+                     "my" in words or "alarms" in words)
+    off = head in ("turn", "switch", "shut") and "off" in words or head == "disable"
+    on = head in ("turn", "switch") and "on" in words and "off" not in words or head == "enable"
+    if (off or head in STOP_HEADS) and ringing and not (target.get("hour") is not None or target["label"]):
+        return Intent("stop")
+    if head in ("cancel", "delete", "remove", "clear", "erase") or words[:3] == ["get", "rid", "of"]:
+        return Intent("alarm_cancel", value=target, all=target["all"])
+    if off or on:
+        if not qualified:
+            return None  # "turn off the alarm": the security alarm (a device), not one of these
+        return Intent("alarm_off" if off else "alarm_on", value=target, all=target["all"])
+    if head == "skip":
+        return Intent("alarm_skip", value=target)
+    if head in ("change", "move", "push", "make", "set", "reset", "update", "shift") and "to" in words[1:]:
+        k = len(words) - 1 - words[::-1].index("to")
+        new = parse_clock(words, k + 1)
+        before = alarm_target(words[:k])
+        if new is not None and (before.get("hour") is not None or before["label"] or before["days"] or "my" in words[:k]
+                                or words[1:3] in (["the", "alarm"], ["my", "alarm"])):
+            return Intent("alarm_change", value={"target": before, "hour": new["hour"], "minute": new["minute"],
+                                                 "ampm": new["ampm"]})
+    asking = head in ("what", "which", "list", "show", "when", "how", "tell") or words[:3] in (["do", "i", "have"],
+                                                                                           ["do", "we", "have"]) \
+        or (head in QUESTION_HEADS and ("any" in words or "set" in words))
+    if asking and not wake and ("alarms" in words or "my" in words or "set" in words or "have" in words or
+                                "time" in words or head == "when"):
+        return Intent("alarm_list")  # (not "what's the alarm": the security alarm's state)
+    if wake or head in ("set", "create", "make", "add", "new", "put", "start") or (has and words[0] in ("alarm", "an", "a")):
+        clock = parse_clock(words)
+        if clock is None:
+            return Intent("unknown", reply="What time? Say something like “set an alarm for 7”.")
+        rep, once, dused = parse_days(words)
+        label = _alarm_label(words, set(clock["used"]) | dused) if has else ""
+        return Intent("alarm_set", value={"hour": clock["hour"], "minute": clock["minute"], "ampm": clock["ampm"],
+                                          "days": sorted(rep), "once": once, "label": label})
     return None
 
 
@@ -939,8 +1247,8 @@ def _yes_no(words: list[str], world: World) -> str | None:
     if any(w in ("no", "nope", "nah", "not", "dont", "skip") for w in words):
         return "no" if all(w in NO_FILL for w in words) else None
     if words[0] in YES and all(w in YES_FILL for w in words):
-        if set(words) <= {"ok", "okay", "thanks", "thank", "you"} and any(t.get("state") == "ringing" for t in world.timers):
-            return None  # "okay" to a ringing timer: stop it
+        if set(words) <= {"ok", "okay", "thanks", "thank", "you"} and _ringing_now(world):
+            return None  # "okay" to a ringing timer or alarm: stop it
         return "yes"
     return None
 
@@ -1105,13 +1413,17 @@ def _cook_open(words: list[str], world: World, said_cook: bool) -> Intent | None
 
 
 def _timer_label(words: list[str], used: set[int]) -> str:
-    """The name in "a pasta timer", "a timer for the pasta", "a timer called pasta"."""
+    """The name in "a pasta timer", "a timer for the pasta", "a timer called pasta", "the eggs"."""
     skip = {"a", "an", "the", "my", "timer", "timers", "for", "set", "start", "make", "create", "add", "new",
             "another", "second", "on", "of", "and", "called", "named", "minute", "minutes", "hour", "hours",
             "second", "seconds", "put", "cancel", "stop", "delete", "remove", "clear", "end", "is", "left",
             "how", "much", "time", "long", "until", "till", "remaining", "what", "check", "status", "please",
             "there", "in", "with", "to", "go", "off", "turn", "get", "rid", "it", "s", "all", "every", "one",
-            "countdown", "kill", "does", "do", "have", "has", "remain", "before", "done", "until", "the"}
+            "countdown", "kill", "does", "do", "have", "has", "remain", "before", "done", "until", "the",
+            "first", "third", "fourth", "fifth", "last", "1st", "2nd", "3rd", "4th", "5th", "extend", "by", "give",
+            "more", "extra", "take", "knock", "subtract", "shave", "minus", "pause", "resume", "unpause", "continue",
+            "restart", "reset", "again", "over", "back", "change", "adjust", "update", "be", "so", "that", "from",
+            "hold", "both", "me", "us", "i", "we", "just", "instead", "now", "running", "up", "cut", "freeze"}
     i = next((j for j, w in enumerate(words) if w in TIMER_WORDS), len(words))
     before = [w for j, w in enumerate(words[:i]) if j not in used and w not in skip and not _is_num(w)]
     after = [w for j, w in enumerate(words[i + 1:], i + 1) if j not in used and w not in skip and not _is_num(w)]
@@ -1119,16 +1431,96 @@ def _timer_label(words: list[str], used: set[int]) -> str:
     return " ".join(pick_)
 
 
-def _find_timers(world: World, label: str) -> list[dict[str, Any]]:
+def _timer_ref(words: list[str]) -> tuple[dict[str, Any], set[int]]:
+    """"the second timer" ({"ordinal": 2}; "the last timer": -1) and "the 10 minute timer" ({"seconds": 600})."""
+    ref: dict[str, Any] = {}
+    used: set[int] = set()
+    for i, w in enumerate(words):
+        if w not in TIMER_WORDS and w != "one":
+            continue
+        if i >= 1 and (words[i - 1] in ORDINALS or words[i - 1] == "last" or re.fullmatch(r"\d+(st|nd|rd|th)", words[i - 1])):
+            ref["ordinal"] = -1 if words[i - 1] == "last" else _as_int(words[i - 1])
+            used.add(i - 1)
+        if i >= 2 and words[i - 1] in DURATION_UNITS and _is_num(words[i - 2]):
+            ref["seconds"] = int(round(float(words[i - 2]) * DURATION_UNITS[words[i - 1]]))
+            used |= {i - 2, i - 1}
+    return ref, used
+
+
+def find_timers(timers: list[dict[str, Any]], label: str = "", ref: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The timers a name ("pasta"), "the second timer" or "the 10 minute timer" fits (all of them when none is said)."""
+    ref = ref or {}
+    out = list(timers)
+    if ref.get("ordinal"):
+        n = ref["ordinal"]
+        if n == -1:
+            return out[-1:]
+        return [out[n - 1]] if 1 <= n <= len(out) else []
+    if ref.get("seconds"):
+        out = [t for t in out if t["seconds"] == ref["seconds"]]
     if not label:
-        return list(world.timers)
+        return out
     lw = label.split()
-    return [t for t in world.timers if t.get("label") and all(any(same_word(a, b) for b in t["label"].split()) for a in lw)] \
-        or [t for t in world.timers if timer_name(t).startswith(label)]
+    return [t for t in out if t.get("label") and all(any(same_word(a, b) for b in t["label"].split()) for a in lw)] \
+        or [t for t in out if timer_name(t).startswith(label)]
+
+
+def _find_timers(world: World, label: str) -> list[dict[str, Any]]:
+    return find_timers(world.timers, label)
+
+
+def _timer_edit(words: list[str], world: World, has_timer: bool) -> Intent | None:
+    """Changing a timer that's there: more / less time, pause, resume, restart, a new length."""
+    if not world.timers:
+        return None
+    head = words[0]
+    ref, rused = _timer_ref(words)
+    masked = [w if j not in rused else "_" for j, w in enumerate(words)]
+    # "2 more minutes", "a few extra minutes": the amount without the "more"
+    keep = [j for j, w in enumerate(masked) if not (w in ("more", "extra") and 0 < j < len(masked) - 1 and
+                                                    masked[j + 1] in DURATION_UNITS)]
+    amount, sub_used = parse_duration([masked[j] for j in keep])
+    used = {keep[k] for k in sub_used} | rused
+    label = _timer_label(words, used)
+
+    def it(kind: str, seconds: int | None = None) -> Intent:
+        return Intent(kind, seconds=seconds, label=label, ref=ref)
+    # less time: "take 2 minutes off the timer", "knock a minute off the eggs", "remove a minute from the timer"
+    if amount and (head in ("take", "knock", "subtract", "shave", "cut", "minus") and ("off" in words or "from" in words or
+                                                                                       "away" in words)
+                   or head in ("remove", "subtract") and "from" in words):
+        return it("timer_take", amount)
+    # more time: "extend the timer by 4 minutes", "add 4 minutes to the pasta timer", "give it 2 more minutes"
+    article = any(w in ("a", "an", "another", "new") for w in words[1:next((j for j, w in enumerate(words) if w in TIMER_WORDS),
+                                                                            len(words))])
+    if amount and (head == "extend" or (head == "add" and ("to" in words or "more" in words or not has_timer)) or
+                   (head in ("give", "put") and ("more" in words or "it" in words or "another" in words or "extra" in words)
+                    and not article) or
+                   (("more" in words or "extra" in words) and head not in ("set", "start", "make", "create", "new"))):
+        if head == "add" and has_timer and article and "to" not in words:
+            return None  # "add a timer for 5 minutes": a new one
+        return it("timer_add", amount)
+    if not has_timer:
+        return None
+    if head in ("pause", "hold", "freeze") or (head == "stop" and "for" in words and "now" in words):
+        return it("timer_pause")
+    if head in ("resume", "unpause", "continue", "unfreeze") or (head == "start" and "again" in words and not amount):
+        return it("timer_resume")
+    if head in ("restart", "reset") and not amount or (head == "start" and "over" in words):
+        return it("timer_restart")
+    if amount and (head in ("change", "adjust", "update", "reset") or
+                   head in ("make", "set") and not article and (label or ref or "the" in words or "my" in words)):
+        if amount > 24 * 3600:
+            return Intent("unknown", reply="Timers can be up to 24 hours.")
+        return it("timer_change", amount)
+    return None
 
 
 def _timer(words: list[str], world: World) -> Intent | None:
     has_timer = any(w in TIMER_WORDS for w in words)
+    edit = _timer_edit(words, world, has_timer)
+    if edit is not None:
+        return edit
     seconds, used = parse_duration(words)
     head = words[0]
     if not has_timer:
@@ -1139,13 +1531,17 @@ def _timer(words: list[str], world: World) -> Intent | None:
             if not [w for w in rest if w not in STOPWORDS]:
                 return Intent("timer_query", reply="" if world.timers else "You don't have any timers.")
         return None
-    label = _timer_label(words, used)
+    ref, rused = _timer_ref(words)
+    label = _timer_label(words, used | rused)
     if head in ("cancel", "stop", "delete", "remove", "clear", "end", "kill", "turn") or \
             words[:3] == ["get", "rid", "of"]:
-        return Intent("timer_cancel", label=label, all=any(w in ALL_WORDS for w in words) or "timers" in words)
+        _, used2 = parse_duration([w if j not in rused else "_" for j, w in enumerate(words)])
+        return Intent("timer_cancel", label=_timer_label(words, used2 | rused), ref=ref,
+                      all=any(w in ALL_WORDS for w in words) or "timers" in words)
     if has_phrase(words, ["how", "long"]) >= 0 or any(w in ("remaining", "left", "status") for w in words) or \
             head in ("check",):
-        return Intent("timer_query", label=label)
+        _, used2 = parse_duration([w if j not in rused else "_" for j, w in enumerate(words)])
+        return Intent("timer_query", label=_timer_label(words, used2 | rused), ref=ref)
     if head in ("list", "which") or has_phrase(words, ["what", "timers"]) >= 0 or \
             has_phrase(words, ["how", "many"]) >= 0 or (head in QUESTION_HEADS and "any" in words) or \
             (head in ("show",) and not seconds):
@@ -1153,10 +1549,49 @@ def _timer(words: list[str], world: World) -> Intent | None:
     if seconds:
         if seconds > 24 * 3600:
             return Intent("unknown", reply="Timers can be up to 24 hours.")
-        return Intent("timer_set", seconds=seconds, label=label)
+        return Intent("timer_set", seconds=seconds, label=_timer_label(words, used))
     if head in ("set", "start", "make", "create", "add", "put", "new"):
         return Intent("unknown", reply="How long? Say something like “set a timer for 10 minutes”.")
-    return Intent("timer_query", label=label)
+    return Intent("timer_query", label=label, ref=ref)
+
+
+def timer_called(t: dict[str, Any]) -> str:
+    """How a question names a timer: its name ("pasta"), else "the 10 minute timer"."""
+    return t["label"] if t.get("label") else f"the {timer_name(t)}"
+
+
+def which_timer(cands: list[dict[str, Any]]) -> str:
+    """"Which one: pasta or eggs?" ("the first one or the second one" when they'd sound the same)."""
+    names = [timer_called(t) for t in cands[:4]]
+    if len(set(names)) < len(names):
+        names = [f"the {k} one" for k in ("first", "second", "third", "fourth")[:len(names)]]
+    return f"Which one: {join_names(names, 'or')}?"
+
+
+def pick_answer(words: list[str], cands: list[dict[str, Any]], label_of=None) -> list[dict[str, Any]] | None:
+    """The answer to "Which one: …?" ("pasta", "the eggs one", "the second one", "the 10 minute one",
+    "both"): the timers or alarms it picks, or None when it isn't an answer."""
+    if not words:
+        return None
+    if any(w in ("both", "all", "every", "each") for w in words) and len(words) <= 4:
+        return list(cands)
+    for w in words:
+        n = -1 if w == "last" else _as_int(w) if (w in ORDINALS or re.fullmatch(r"\d+(st|nd|rd|th)", w)) else None
+        if n:
+            return [cands[n - 1 if n > 0 else -1]] if -1 <= n <= len(cands) and n != 0 else None
+    label_of = label_of or (lambda t: t.get("label") or "")
+    said = [w for w in words if w not in ("the", "one", "1", "a", "an", "my", "timer", "alarm", "please", "that", "it",
+                                          "is", "for", "on", "just", "oh", "um", "uh")]
+    if not said:
+        return None
+    hits = [c for c in cands if label_of(c) and all(any(same_word(a, b) for b in label_of(c).split()) for a in said)]
+    if hits:
+        return hits
+    secs, _ = parse_duration(said)
+    if secs:
+        hits = [c for c in cands if c.get("seconds") == secs]
+        return hits or None
+    return None
 
 
 def _show(words: list[str], world: World) -> Intent | None:
@@ -1669,6 +2104,8 @@ def say_timers(timers: list[dict[str, Any]], now: float, count: bool = False) ->
     for t in timers[:4]:
         if t.get("state") == "ringing":
             parts.append(f"your {timer_name(t)} is done")
+        elif t.get("state") == "paused":
+            parts.append(f"your {timer_name(t)} is paused with {say_duration(t.get('left') or 0)} left")
         else:
             parts.append(f"{say_duration(t['endsAt'] - now)} left on your {timer_name(t)}")
     s = join_names(parts)
