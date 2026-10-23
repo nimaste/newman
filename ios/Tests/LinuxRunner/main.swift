@@ -1140,6 +1140,7 @@ eq(TodayView.greetingFit(height: .infinity), TodayView.GreetingFit(size: 26, two
 
 runVoiceTests()
 runWallScreenTests()
+runWallRingingTests()
 runLiveStatusTests()
 runMoreTests()
 runControlsTests()

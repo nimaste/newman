@@ -30,6 +30,29 @@ final class WallModel: ObservableObject {
         }
     }
 
+    /// Newman's alarms ringing: one of Newman's own sounds (WallTones.names).
+    @Published var alarmTone: String {
+        didSet { defaults.set(WallTones.named(alarmTone), forKey: "alarmTone") }
+    }
+    /// Newman's timers ringing: the same choice, its own.
+    @Published var timerTone: String {
+        didSet { defaults.set(WallTones.named(timerTone), forKey: "timerTone") }
+    }
+    /// "Snooze for" (minutes, WallRinging.snoozeChoices).
+    @Published var snoozeMinutes: Int {
+        didSet {
+            defaults.set(WallRinging.snoozeSetting(snoozeMinutes), forKey: "snoozeMinutes")
+            pageState()
+        }
+    }
+    /// "Stop ringing after" (minutes, WallRinging.ringChoices).
+    @Published var ringMinutes: Int {
+        didSet {
+            defaults.set(WallRinging.ringSetting(ringMinutes), forKey: "ringMinutes")
+            pageState()
+        }
+    }
+
     // State.
     @Published private(set) var dimmed = false
     /// Dimmed, and the page didn't draw its own dimmed screen (an error, an older hub): darken it here.
@@ -70,6 +93,11 @@ final class WallModel: ObservableObject {
         awakeBrightness = WallBrightness.awake(d.object(forKey: "awakeBrightness") as? Double ?? WallBrightness.system)
         dimBrightness = WallBrightness.dimSetting(d.object(forKey: "dimBrightness") as? Double ?? WallBrightness.defaultDim)
         shell = WallShell.saved(background: d.string(forKey: "shellBackground"), scheme: d.string(forKey: "shellScheme"))
+        alarmTone = WallTones.named(d.string(forKey: "alarmTone") ?? WallTones.defaultName)
+        timerTone = WallTones.named(d.string(forKey: "timerTone") ?? WallTones.defaultName)
+        snoozeMinutes = WallRinging.snoozeSetting(d.object(forKey: "snoozeMinutes") as? Int ?? WallRinging.defaultSnooze)
+        ringMinutes = WallRinging.ringSetting(d.object(forKey: "ringMinutes") as? Int ?? WallRinging.defaultRing)
+        WallRinger.shared.onChange = { [weak self] in self?.ringChanged() }
         NotificationCenter.default.addObserver(forName: .newmanServerChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.serverChanged() }
         }
@@ -108,6 +136,7 @@ final class WallModel: ObservableObject {
         voice.setForeground(true)
         // The address stays the one chosen on the Server screen (no home/away switching on the
         // wall: a hub restart must not move it outside); WallWebView retries a failed load every 30 s.
+        pageState() // (the microphone may have been allowed in Settings meanwhile)
     }
 
     func resignedActive() {
@@ -118,6 +147,7 @@ final class WallModel: ObservableObject {
         battery.stop()
         voice.setForeground(false)
         clips.cancel()
+        WallRinger.shared.stop() // (iOS: no ringing from the background)
         restoreOwnBrightness()
     }
 
@@ -158,7 +188,7 @@ final class WallModel: ObservableObject {
     }
 
     private func tick() {
-        guard !dimmed, !settingsOpen, !serverOpen, serverURL != nil, dimMinutes > 0 else { return }
+        guard !dimmed, !settingsOpen, !serverOpen, serverURL != nil, dimMinutes > 0, !WallRinger.shared.isRinging else { return }
         if Date().timeIntervalSince(lastTouch) >= dimMinutes * 60 { dim() }
     }
 
@@ -183,7 +213,8 @@ final class WallModel: ObservableObject {
             setScreen(WallBrightness.dimmed(dimBrightness))
             return
         }
-        let level = pageBrightness ?? WallBrightness.awake(awakeBrightness)
+        // Something ringing: fully bright.
+        let level = WallRinger.shared.isRinging ? 1 : (pageBrightness ?? WallBrightness.awake(awakeBrightness))
         if level < 0 {
             restoreOwnBrightness()
         } else {
@@ -235,7 +266,16 @@ final class WallModel: ObservableObject {
             if cfg.enabled && !Self.micGranted { askForMic() }
         case "voiceDone":
             guard isHubPage else { return }
-            voice.replyFinished()
+            voice.replyFinished(listen: (msg["listen"] as? Bool) ?? ((msg["listen"] as? NSNumber)?.boolValue ?? false))
+        case "ring":
+            guard isHubPage, let r = WallRinging.parseRing(msg["value"] as? String) else { return }
+            WallRinger.shared.start(r, tone: r.isTimer ? timerTone : alarmTone)
+        case "stopRing":
+            guard isHubPage else { return }
+            WallRinger.shared.stop()
+        case "openMicSettings":
+            guard isHubPage, let url = URL(string: UIApplication.openSettingsURLString) else { return }
+            UIApplication.shared.open(url)
         case "recordClip":
             guard isHubPage else { return }
             if !Self.micGranted {
@@ -289,9 +329,32 @@ final class WallModel: ObservableObject {
         return UIColor(red: c[0], green: c[1], blue: c[2], alpha: 1)
     }
 
+    // MARK: alarms and timers ringing
+
+    /// Ringing started or stopped: woken and fully bright while it rings, the usual level after.
+    private func ringChanged() {
+        if WallRinger.shared.isRinging {
+            wake()
+        } else {
+            applyBrightness()
+        }
+    }
+
+    /// What NewmanWall.micAllowed() / ringSettings() say, sent to the page (with 'newmanwall-resume').
+    private func pageState() {
+        let js = WallBridgeJS.state(micAllowed: Self.micNotRefused, ringSettings: ringSettingsJSON)
+        refreshBridgeScript()
+        guard isHubPage, let w = webView else { return }
+        w.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    var ringSettingsJSON: String { WallRinging.settingsJSON(snooze: snoozeMinutes, ring: ringMinutes) }
+
     // MARK: voice
 
     static var micGranted: Bool { AVAudioApplication.shared.recordPermission == .granted }
+    /// Not refused (still to be asked counts as allowed: the page shows "can't hear you" only once refused).
+    static var micNotRefused: Bool { AVAudioApplication.shared.recordPermission != .denied }
 
     /// The microphone is asked for once (iOS itself never asks twice: Settings from then on).
     private func askForMic() {
@@ -303,6 +366,7 @@ final class WallModel: ObservableObject {
                 Task { @MainActor in
                     let m = WallModel.shared
                     m.voice.setPermitted(granted)
+                    m.pageState()
                     if !granted { m.toPage(VoiceEvent.error("Allow the microphone for Newman Wall in the iPad's Settings to use voice.")) }
                 }
             }
@@ -331,7 +395,9 @@ final class WallModel: ObservableObject {
 
     /// Injected at document start in the main frame: window.NewmanWall (WallBridgeJS), knowing
     /// whether the screen is dimmed as the page loads (NewmanWall.isDimmed()).
-    var bridgeScript: String { WallBridgeJS.script(version: version, dimmed: dimmed) }
+    var bridgeScript: String {
+        WallBridgeJS.script(version: version, dimmed: dimmed, micAllowed: Self.micNotRefused, ringSettings: ringSettingsJSON)
+    }
 
     /// The next page load gets the current dimmed state.
     private func refreshBridgeScript() {

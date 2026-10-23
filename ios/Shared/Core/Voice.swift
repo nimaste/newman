@@ -562,7 +562,11 @@ struct ClipCapture {
 /// (web/src/wall/VoiceLayer.jsx and TeachVoice.jsx read them).
 enum VoiceEvent {
     static let wake = #"{"type":"wake"}"#
+    /// Listening for the answer to a question Newman asked (no wake word): the card keeps the question.
+    static let wakeFollowUp = #"{"type":"wake","followUp":true}"#
     static let cancel = #"{"type":"cancel"}"#
+    /// Nobody answered the question: let it go quietly.
+    static let cancelQuiet = #"{"type":"cancel","quiet":true}"#
     static let clipNone = #"{"type":"clip-none"}"#
 
     static func level(_ v: Float) -> String { #"{"type":"level","value":\#(fixed3(v))}"# }

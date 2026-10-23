@@ -102,8 +102,10 @@ struct WallShell: Equatable {
 /// JavaScript the iPad wall runs in the hub's page (the same window.NewmanWall as the Android wall's
 /// WallBridge.SCRIPT; messages go to the app's "newmanWall" handler).
 enum WallBridgeJS {
-    /// window.NewmanWall at document start; `dimmed`: whether the screen is dimmed as the page loads.
-    static func script(version: String, dimmed: Bool) -> String {
+    /// window.NewmanWall at document start; `dimmed`: whether the screen is dimmed as the page loads;
+    /// `micAllowed` and `ringSettings` (WallRinging.settingsJSON) as they are now - kept current by [state].
+    static func script(version: String, dimmed: Bool, micAllowed: Bool = true,
+                       ringSettings: String = WallRinging.settingsJSON(snooze: WallRinging.defaultSnooze, ring: WallRinging.defaultRing)) -> String {
         let v = version.replacingOccurrences(of: "\\", with: "").replacingOccurrences(of: "\"", with: "")
         return """
         (function () {
@@ -112,6 +114,8 @@ enum WallBridgeJS {
             try { window.webkit.messageHandlers.newmanWall.postMessage(m); } catch (e) {}
           };
           var dimmed = \(dimmed ? "true" : "false");
+          var mic = \(micAllowed ? "true" : "false");
+          var ringing = \(VoiceEvent.quoted(ringSettings));
           window.NewmanWall = Object.freeze({
             native: true,
             version: "\(v)",
@@ -122,7 +126,13 @@ enum WallBridgeJS {
             isDimmed: function () { return dimmed; },
             keepAwake: function (on) { post({ action: "keepAwake", value: on !== false }); },
             voiceConfig: function (json) { post({ action: "voiceConfig", value: String(json || "") }); },
-            voiceDone: function () { post({ action: "voiceDone" }); },
+            voiceDone: function (listen) { post({ action: "voiceDone", listen: listen === true }); },
+            ring: function (json) { post({ action: "ring", value: String(json || "") }); },
+            stopRing: function () { post({ action: "stopRing" }); },
+            ringSettings: function () { return ringing; },
+            micAllowed: function () { return mic; },
+            openMicSettings: function () { post({ action: "openMicSettings" }); },
+            _state: function (m, r) { mic = m === true; ringing = String(r || ringing); },
             openSettings: function () { post({ action: "openSettings" }); },
             openServer: function () { post({ action: "openServer" }); },
             setTheme: function (t) { t = t || {}; post({ action: "setTheme", background: String(t.background || ""), scheme: String(t.scheme || "") }); },
@@ -133,6 +143,13 @@ enum WallBridgeJS {
           try { window.dispatchEvent(new Event("newmanwall")); } catch (e) {}
         })();
         """
+    }
+
+    /// The wall is back in front (or its settings changed): NewmanWall.micAllowed() / ringSettings() answer
+    /// anew, and the page hears a 'newmanwall-resume' event (it asks again what it may).
+    static func state(micAllowed: Bool, ringSettings: String) -> String {
+        "(function(){try{var n=window.NewmanWall;if(n&&n._state)n._state(\(micAllowed ? "true" : "false"),\(VoiceEvent.quoted(ringSettings)));" +
+            "window.dispatchEvent(new Event('newmanwall-resume'));}catch(x){}})(); void 0;"
     }
 
     /// Tells the page the screen dimmed or woke: a cancelable "newmanwall-dim" event (detail.dimmed).

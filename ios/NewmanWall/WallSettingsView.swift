@@ -86,6 +86,33 @@ struct WallSettingsView: View {
                 }
 
                 Section {
+                    HStack {
+                        Picker("Alarm sound", selection: $model.alarmTone) {
+                            ForEach(WallTones.names, id: \.self) { Text($0).tag($0) }
+                        }
+                        Button("▶ Play") { WallRinger.shared.preview(model.alarmTone) }
+                            .buttonStyle(.borderless)
+                    }
+                    HStack {
+                        Picker("Timer sound", selection: $model.timerTone) {
+                            ForEach(WallTones.names, id: \.self) { Text($0).tag($0) }
+                        }
+                        Button("▶ Play") { WallRinger.shared.preview(model.timerTone) }
+                            .buttonStyle(.borderless)
+                    }
+                    Picker("Snooze for", selection: $model.snoozeMinutes) {
+                        ForEach(WallRinging.snoozeChoices, id: \.self) { Text("\($0) minutes").tag($0) }
+                    }
+                    Picker("Stop ringing after", selection: $model.ringMinutes) {
+                        ForEach(WallRinging.ringChoices, id: \.self) { Text("\($0) minutes").tag($0) }
+                    }
+                } header: {
+                    Text("Sound")
+                } footer: {
+                    Text("Newman's alarms and timers ringing, with Newman's own sounds, at the iPad's volume.")
+                }
+
+                Section {
                     Button("Sign the wall out of Newman…", role: .destructive) { confirmClear = true }
                 } footer: {
                     Text("Forgets the wall page's sign-in and stored data on this tablet. The certificate and server stay.")
