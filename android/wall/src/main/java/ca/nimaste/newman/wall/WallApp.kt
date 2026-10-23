@@ -13,6 +13,7 @@ import ca.nimaste.newman.core.net.HubHttp
 import ca.nimaste.newman.core.settings.ConnectionStore
 import ca.nimaste.newman.core.wall.ComeBack
 import ca.nimaste.newman.core.wall.WallBrightness
+import ca.nimaste.newman.core.wall.WallRinging
 import ca.nimaste.newman.core.wall.WallShell
 import ca.nimaste.newman.core.voice.AssistantReturn
 import okhttp3.OkHttpClient
@@ -28,6 +29,7 @@ class WallApp : Application() {
         BatteryAlarm.arm(this)
         BatteryWork.schedule(this)
         BatteryWork.watch(this)
+        AlarmBackup.arm(this) // (the coming alarms, kept as a backup: AlarmRinging.kt)
     }
 
     companion object {
@@ -90,6 +92,26 @@ class WallSettings(context: Context) {
     var comeBackOnWake: Boolean
         get() = prefs.getBoolean("come_back_on_wake", true)
         set(v) = prefs.edit().putBoolean("come_back_on_wake", v).apply()
+
+    /** Newman's alarms ringing: one of the tablet's alarm sounds (its address), "" = the tablet's default. */
+    var alarmTone: String
+        get() = prefs.getString("alarm_tone", "") ?: ""
+        set(v) = prefs.edit().putString("alarm_tone", v).apply()
+
+    /** Newman's timers ringing: the same choice, its own. */
+    var timerTone: String
+        get() = prefs.getString("timer_tone", "") ?: ""
+        set(v) = prefs.edit().putString("timer_tone", v).apply()
+
+    /** "Snooze for" (minutes, WallRinging.SNOOZE_CHOICES). */
+    var snoozeMinutes: Int
+        get() = WallRinging.snoozeSetting(prefs.getInt("snooze_minutes", WallRinging.DEFAULT_SNOOZE))
+        set(v) = prefs.edit().putInt("snooze_minutes", WallRinging.snoozeSetting(v)).apply()
+
+    /** "Stop ringing after" (minutes, WallRinging.RING_CHOICES). */
+    var ringMinutes: Int
+        get() = WallRinging.ringSetting(prefs.getInt("ring_minutes", WallRinging.DEFAULT_RING))
+        set(v) = prefs.edit().putInt("ring_minutes", WallRinging.ringSetting(v)).apply()
 }
 
 /**
@@ -103,6 +125,7 @@ class BootReceiver : BroadcastReceiver() {
         // (WallApp.onCreate set them as this process started; again here in case it was already running.)
         BatteryAlarm.arm(context)
         BatteryWork.schedule(context)
+        AlarmBackup.arm(context)
         val screenOn = context.getSystemService(PowerManager::class.java)?.isInteractive != false
         // Android 10+ may refuse a start from the background unless the app is the home app, the device
         // owner, or has "display over other apps" - see the README (bringWallToFront logs it).

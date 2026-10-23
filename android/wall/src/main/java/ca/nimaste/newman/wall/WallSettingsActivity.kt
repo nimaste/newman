@@ -16,6 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -64,6 +67,7 @@ import ca.nimaste.newman.core.wall.CheckInState
 import ca.nimaste.newman.core.wall.ComeBack
 import ca.nimaste.newman.core.wall.OverlayGrant
 import ca.nimaste.newman.core.wall.WallBrightness
+import ca.nimaste.newman.core.wall.WallRinging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -217,6 +221,13 @@ class WallSettingsActivity : ComponentActivity() {
         var media by remember { mutableFloatStateOf(openMedia.toFloat()) }
         var alarm by remember { mutableFloatStateOf(openAlarm.toFloat()) }
         var soundRefused by remember { mutableStateOf(false) }
+        // The tablet's alarm sounds (title, address) and the choices for alarms and timers ringing.
+        val tones = remember { sound.alarmTones().map { (title, uri) -> uri to title } }
+        val defaultTone = remember { sound.defaultAlarmTone() }
+        var alarmTone by remember { mutableStateOf(settings.alarmTone) }
+        var timerTone by remember { mutableStateOf(settings.timerTone) }
+        var snoozeMinutes by remember { mutableStateOf(settings.snoozeMinutes) }
+        var ringMinutes by remember { mutableStateOf(settings.ringMinutes) }
         fun setVolume(stream: Int, percent: Float) {
             if (!sound.set(stream, percent.roundToInt())) soundRefused = true
         }
@@ -239,6 +250,10 @@ class WallSettingsActivity : ComponentActivity() {
             settings.comeBackAfterLeaving = comeBackAfter
             settings.comeBackMinutes = comeBackMinutes
             settings.comeBackOnWake = comeBackOnWake
+            settings.alarmTone = alarmTone
+            settings.timerTone = timerTone
+            settings.snoozeMinutes = snoozeMinutes
+            settings.ringMinutes = ringMinutes
             return true
         }
 
@@ -278,10 +293,25 @@ class WallSettingsActivity : ComponentActivity() {
                 Slider(media, { media = it; setVolume(AudioManager.STREAM_MUSIC, it) }, valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
                 OutlinedButton(onClick = { sound.testMedia() }) { Text("Play a test sound") }
                 Text("Alarms & timers ${alarm.roundToInt()}%", color = Ink)
-                Text("Alexa's and Newman's timers and alarms ringing.", color = Muted)
+                Text("Newman's alarms and timers ringing.", color = Muted)
                 Slider(alarm, { alarm = it; setVolume(AudioManager.STREAM_ALARM, it) }, valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
-                OutlinedButton(onClick = { sound.testAlarm() }) { Text("Test alarm sound") }
+                OutlinedButton(onClick = { sound.testAlarm(alarmTone) }) { Text("Test alarm sound") }
                 if (soundRefused) Text("Android didn't allow that change - Do Not Disturb may be on.", color = Coral)
+                Text("Alarm sound", color = Ink)
+                Text("The tablet's own alarm sounds.", color = Muted)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Choice(tones, alarmTone.ifBlank { defaultTone }) { alarmTone = it }
+                    OutlinedButton(onClick = { sound.testAlarm(alarmTone) }) { Text("▶ Play") }
+                }
+                Text("Timer sound", color = Ink)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Choice(tones, timerTone.ifBlank { defaultTone }) { timerTone = it }
+                    OutlinedButton(onClick = { sound.testAlarm(timerTone) }) { Text("▶ Play") }
+                }
+                Text("Snooze for", color = Ink)
+                Choice(WallRinging.SNOOZE_CHOICES.map { "$it" to "$it minutes" }, "$snoozeMinutes") { snoozeMinutes = it.toInt() }
+                Text("Stop ringing after", color = Ink)
+                Choice(WallRinging.RING_CHOICES.map { "$it" to "$it minutes" }, "$ringMinutes") { ringMinutes = it.toInt() }
             }
 
             Section("Coming back to Newman") {
@@ -409,6 +439,27 @@ class WallSettingsActivity : ComponentActivity() {
                 confirmButton = { TextButton(onClick = { confirmRelease = false; finishWith(ACTION_RELEASE_OWNER) }) { Text("Stop", color = Coral) } },
                 dismissButton = { TextButton(onClick = { confirmRelease = false }) { Text("Cancel") } },
             )
+        }
+    }
+
+    /** A dropdown: [options] (value, words), the one [value] chosen shown on it. */
+    @Composable
+    private fun Choice(options: List<Pair<String, String>>, value: String, onPick: (String) -> Unit) {
+        var open by remember { mutableStateOf(false) }
+        Box {
+            OutlinedButton(onClick = { open = true }) {
+                // (a sound's address may carry a ?title=… on some tablets: the same sound either way)
+                val chosen = options.firstOrNull { it.first.substringBefore('?') == value.substringBefore('?') }
+                Text((chosen?.second ?: options.firstOrNull()?.second ?: "—") + "  ▾", color = Ink)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                for ((v, words) in options) {
+                    DropdownMenuItem(text = { Text(words) }, onClick = {
+                        open = false
+                        onPick(v)
+                    })
+                }
+            }
         }
     }
 

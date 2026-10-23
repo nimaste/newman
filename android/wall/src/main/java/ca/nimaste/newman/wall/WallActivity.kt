@@ -58,6 +58,7 @@ import ca.nimaste.newman.core.settings.ConnectionStore
 import ca.nimaste.newman.core.voice.VoicePageConfig
 import ca.nimaste.newman.core.wall.PinPrompt
 import ca.nimaste.newman.core.wall.WallBrightness
+import ca.nimaste.newman.core.wall.WallRinging
 import ca.nimaste.newman.core.wall.WallShell
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -89,6 +90,9 @@ class WallActivity : ComponentActivity() {
     private lateinit var dimOverlay: View
     private lateinit var errorView: LinearLayout
     private lateinit var errorText: TextView
+    private lateinit var ringView: LinearLayout
+    private lateinit var ringTitle: TextView
+    private lateinit var ringSnooze: Button
     /** The origin the WebView's start script was set up for. */
     private var webOrigin: String? = null
     private val main = Handler(Looper.getMainLooper())
@@ -198,6 +202,9 @@ class WallActivity : ComponentActivity() {
         createWebView()
         root.addView(errorView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.addView(dimOverlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        ringView = buildRingView()
+        root.addView(ringView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        AlarmRinger.listeners += ringChanged
         applyShell(settings.shell)
 
         // A kiosk has no "back out of the app": back goes back inside the page only.
@@ -273,6 +280,9 @@ class WallActivity : ComponentActivity() {
         voice.setForeground(true)
         userLeaveHint = false
         assistant.entered()
+        ringChanged() // (an alarm the app rang itself while away: its own Stop / Snooze, fully bright)
+        // The page asks again what it may (the microphone allowed meanwhile, the settings changed).
+        if (pageIsHub) web?.evaluateJavascript("try{window.dispatchEvent(new Event('newmanwall-resume'))}catch(e){}", null)
     }
 
     override fun onUserLeaveHint() {
@@ -307,6 +317,7 @@ class WallActivity : ComponentActivity() {
         } catch (e: Exception) {
             // not registered
         }
+        AlarmRinger.listeners -= ringChanged
         battery.stop()
         assistant.stop()
         comeBack.stop()
@@ -510,7 +521,106 @@ class WallActivity : ComponentActivity() {
         if (cfg.enabled && !hasMic()) askForMic()
     }
 
-    fun voiceDone() = voice.replyFinished()
+    /** From the page: the reply was spoken - listen for the wake word, or ([listen]) for the answer to its question. */
+    fun voiceDone(listen: Boolean) = voice.replyFinished(listen)
+
+    fun micAllowed(): Boolean = hasMic()
+
+    /**
+     * From the page's "Allow the microphone": Newman Wall's own screen in Android's settings (its
+     * permissions). A pinned or locked screen is let go for it; coming back pins / locks it again.
+     */
+    fun openMicSettings() {
+        if (getSystemService(ActivityManager::class.java)?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE) {
+            stopKiosk()
+            kioskTried = false // (device owner: locked again on the way back)
+        }
+        openingOwnScreen()
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't open the app's settings: $e")
+        }
+    }
+
+    // -- alarms and timers ringing (AlarmRinging.kt) -------------------------------------------------
+
+    /** From the page: something rings - the chosen sound on the alarm channel, the screen woken fully bright. */
+    fun ring(json: String?) {
+        val r = WallRinging.parseRing(json) ?: return
+        AlarmRinger.start(this, r, backup = false)
+    }
+
+    /** From the page: it was stopped, snoozed, or someone is talking to Newman over it. */
+    fun stopRing() {
+        if (AlarmRinger.current?.backup != true) AlarmRinger.stop()
+    }
+
+    fun ringSettings(): String = WallRinging.settingsJson(settings.snoozeMinutes, settings.ringMinutes)
+
+    fun alarmSchedule(json: String?) = AlarmBackup.save(this, json)
+
+    /** Ringing (or not) changed: full brightness and no dimming while it rings; the app's own Stop / Snooze for a backup ring. */
+    private val ringChanged: () -> Unit = {
+        val c = AlarmRinger.current
+        if (c != null) {
+            wake()
+            setWindowBrightness(1f)
+        } else if (!dimmed) {
+            setWindowBrightness(awakeLevel())
+        }
+        showBackupRing(c?.takeIf { it.backup }?.ring)
+    }
+
+    private fun showBackupRing(r: WallRinging.Ring?) {
+        if (r == null) {
+            ringView.visibility = View.GONE
+            return
+        }
+        ringTitle.text = r.title.ifBlank { "ALARM" }
+        ringSnooze.text = "Snooze ${settings.snoozeMinutes} min"
+        ringView.visibility = View.VISIBLE
+    }
+
+    /** The app's own ringing screen, for an alarm it rang itself (the page wasn't there to). */
+    private fun buildRingView(): LinearLayout {
+        val pad = (24 * resources.displayMetrics.density).toInt()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.rgb(11, 16, 38))
+            visibility = View.GONE
+            isClickable = true // (touches stop here)
+            ringTitle = TextView(this@WallActivity).apply {
+                textSize = 34f
+                setTextColor(Color.rgb(245, 185, 66))
+                gravity = Gravity.CENTER
+                setPadding(pad, pad, pad, pad)
+            }
+            addView(ringTitle)
+            val row = LinearLayout(this@WallActivity).apply { gravity = Gravity.CENTER }
+            ringSnooze = Button(this@WallActivity).apply {
+                textSize = 26f
+                isAllCaps = false
+                setOnClickListener {
+                    val c = AlarmRinger.current ?: return@setOnClickListener
+                    AlarmRinger.stop()
+                    AlarmBackup.snooze(this@WallActivity, c.ring, settings.snoozeMinutes)
+                }
+            }
+            row.addView(ringSnooze)
+            row.addView(Button(this@WallActivity).apply {
+                text = "Stop"
+                textSize = 26f
+                isAllCaps = false
+                setOnClickListener {
+                    AlarmRinger.current?.let { AlarmBackup.stopped(it.ring) }
+                    AlarmRinger.stop()
+                }
+            })
+            addView(row)
+        }
+    }
 
     /** From the page ("Teach Hey Newman"): record one clip with the microphone (ClipRecorder). */
     fun recordClip(maxMs: Int, fixed: Boolean) {
@@ -775,7 +885,7 @@ class WallActivity : ComponentActivity() {
     private val dimCheck = object : Runnable {
         override fun run() {
             val minutes = settings.dimMinutes
-            if (!dimmed && minutes > 0 && SystemClock.elapsedRealtime() - lastTouch > minutes * 60_000L) dim()
+            if (!dimmed && minutes > 0 && SystemClock.elapsedRealtime() - lastTouch > minutes * 60_000L && !AlarmRinger.isRinging) dim()
             syncSession()
             main.postDelayed(this, 10_000)
         }

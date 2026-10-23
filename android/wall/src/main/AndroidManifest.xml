@@ -112,6 +112,11 @@
             android:name=".BatteryAlarmReceiver"
             android:exported="false" />
 
+        <!-- Newman's alarms: the app rings one itself when nothing else did (AlarmBackup; AlarmManager only). -->
+        <receiver
+            android:name=".AlarmBackupReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".WallAdminReceiver"
             android:description="@string/admin_description"

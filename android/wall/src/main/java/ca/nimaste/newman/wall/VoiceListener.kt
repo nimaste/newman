@@ -69,13 +69,20 @@ class VoiceListener(
         update()
     }
 
-    /** The page finished answering (spoke the reply): listen for the wake word again. */
-    fun replyFinished() {
+    /**
+     * The page finished answering (spoke the reply): listen for the wake word again - or, when Newman asked
+     * a question ([listen]: "Which one: pasta or eggs?"), for the answer straight away, no wake word needed
+     * (a chime, "Listening…"; nobody speaking within FOLLOW_UP_MS lets it go quietly).
+     */
+    fun replyFinished(listen: Boolean = false) {
         synchronized(lock) {
+            followUp = listen
             replyDone = true
             lock.notifyAll()
         }
     }
+
+    @Volatile private var followUp = false
 
     val wanted: Boolean get() = config.enabled
 
@@ -152,6 +159,8 @@ class VoiceListener(
         private const val TAG = "NewmanVoice"
         private const val CHIME_FRAMES = 5 // 400 ms
         private const val REPLY_TIMEOUT_MS = 30_000L
+        /** How long it listens for the answer to a question before letting it go. */
+        private const val FOLLOW_UP_MS = 6_000
 
         /** The audio sessions of this app's own recordings (so AssistantWatch can tell them from other apps'). */
         val ourSessions: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -242,6 +251,17 @@ class VoiceListener(
         var frameNo = 0
         var sent = false
         val version = config.version
+        // The answer to a question Newman just asked: capturing from the start, no wake word.
+        val answering = followUp
+        followUp = false
+        var quietCancel = answering
+        if (answering) {
+            capturing = true
+            endpointer = Endpointer(noise.floor(), noSpeechMs = FOLLOW_UP_MS)
+            Chime.play()
+            main.post(onWake)
+            page("""{"type":"wake","followUp":true}""")
+        }
         try {
             while (alive() && !sent && (capturing || config.version == version)) { // a new model: load it
                 val n = rec.read(buf, 0, buf.size)
@@ -256,6 +276,7 @@ class VoiceListener(
                         trigger.threshold = config.threshold
                         val score = features.push(frame)
                         if (score != null && trigger.push(score)) {
+                            quietCancel = false
                             capturing = true
                             frameNo = 0
                             utterance.clear()
@@ -278,7 +299,9 @@ class VoiceListener(
                             sent = true
                         }
                         Endpointer.Result.NO_SPEECH -> {
-                            page("""{"type":"cancel"}""")
+                            // (no answer to a question: let it go quietly, back to the wake word)
+                            page(if (quietCancel) """{"type":"cancel","quiet":true}""" else """{"type":"cancel"}""")
+                            quietCancel = false
                             capturing = false
                             trigger.reset()
                         }

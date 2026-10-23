@@ -16,7 +16,16 @@ import java.lang.ref.WeakReference
  *   calls preventDefault() when it draws its own dimmed screen, otherwise the app darkens it.
  *   NewmanWall.keepAwake(bool)    keep the screen on (default) or let it sleep normally
  *   NewmanWall.voiceConfig(json)  voice: {"enabled", "threshold", "version"} - listen for "Hey Newman" or not
- *   NewmanWall.voiceDone()        the spoken reply finished: listen for the wake word again
+ *   NewmanWall.voiceDone(listen)  the spoken reply finished: listen for the wake word again - or, with
+ *                                 `listen` (Newman asked a question), for the answer without the wake word
+ *   NewmanWall.ring(json)         an alarm or timer rings: {"kind", "id", "title", "ringMs"} - the chosen
+ *                                 sound on the alarm channel, the screen fully bright (AlarmRinger)
+ *   NewmanWall.stopRing()         it was stopped (or snoozed)
+ *   NewmanWall.ringSettings()     {"snoozeMinutes", "ringMinutes"} from this app's settings
+ *   NewmanWall.alarmSchedule(json) the coming alarms [{"id", "at" (ms), "title"}] (AlarmBackup)
+ *   NewmanWall.micAllowed()       whether the app may use the microphone
+ *   NewmanWall.openMicSettings()  Newman Wall's permission screen in Android's settings
+ *   The app tells the page it's back in front with a window event 'newmanwall-resume'.
  *   NewmanWall.openSettings()     this app's settings (after the tablet's PIN), from the clock menu
  *   NewmanWall.openServer()       "Connect to your Newman" (which hub; address, certificate, token), from sign-in
  *   NewmanWall.setTheme({background, scheme})  the page's theme colour ("#rrggbb", "light" | "dark"): the app
@@ -62,7 +71,25 @@ class WallBridge(activity: WallActivity) {
     fun voiceConfig(json: String?) = onUi { it.voiceConfig(json) }
 
     @JavascriptInterface
-    fun voiceDone() = onUi { it.voiceDone() }
+    fun voiceDone(listen: Boolean) = onUi { it.voiceDone(listen) }
+
+    @JavascriptInterface
+    fun ring(json: String?) = onUi { it.ring(json) }
+
+    @JavascriptInterface
+    fun stopRing() = onUi { it.stopRing() }
+
+    @JavascriptInterface
+    fun ringSettings(): String = ref.get()?.takeIf { it.bridgeAllowed() }?.ringSettings() ?: ""
+
+    @JavascriptInterface
+    fun alarmSchedule(json: String?) = onUi { it.alarmSchedule(json) }
+
+    @JavascriptInterface
+    fun micAllowed(): Boolean = ref.get()?.let { it.bridgeAllowed() && it.micAllowed() } == true
+
+    @JavascriptInterface
+    fun openMicSettings() = onUi { it.openMicSettings() }
 
     @JavascriptInterface
     fun openSettings() = onUi { it.askForSettings() }
@@ -96,7 +123,13 @@ class WallBridge(activity: WallActivity) {
                 isDimmed: function () { return n.isDimmed() === true; },
                 keepAwake: function (on) { n.keepAwake(on !== false); },
                 voiceConfig: function (json) { n.voiceConfig(String(json || '')); },
-                voiceDone: function () { n.voiceDone(); },
+                voiceDone: function (listen) { n.voiceDone(listen === true); },
+                ring: function (json) { n.ring(String(json || '')); },
+                stopRing: function () { n.stopRing(); },
+                ringSettings: function () { return String(n.ringSettings() || ''); },
+                alarmSchedule: function (json) { n.alarmSchedule(String(json || '[]')); },
+                micAllowed: function () { return n.micAllowed() === true; },
+                openMicSettings: function () { n.openMicSettings(); },
                 openSettings: function () { n.openSettings(); },
                 openServer: function () { n.openServer(); },
                 setTheme: function (t) { t = t || {}; n.setTheme(String(t.background || ''), String(t.scheme || '')); },
