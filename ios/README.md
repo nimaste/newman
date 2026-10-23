@@ -525,14 +525,28 @@ Dynamic Island. Same idea as the Android phone's ongoing notification; nothing k
   (`NewmanWall.setTheme`, kept for the next start - `WallShell`; Midnight until a page says).
 - **Settings**: hold the **top-left corner for 3 seconds** (or the clock menu's *Tablet settings*), then
   Face ID / Touch ID / passcode: server (the Server screen), certificate, Cloudflare token, dim delay
-  (up to 60 min), the iPad's own brightness or a level, dimmed brightness (8-50%), reload, sign the wall out.
+  (up to 60 min), the iPad's own brightness or a level, dimmed brightness (8-50%), **Sound** (below),
+  reload, sign the wall out.
+- **Newman's alarms and timers ringing** (`WallRinger.swift`, sounds and rules in
+  `Shared/Core/WallRinging.swift`): the page calls `ring({kind, id, title, ringMs})` / `stopRing()`; the
+  app loops the chosen sound through its own audio at full player volume (the iPad's volume; the silent
+  switch doesn't mute it), wakes the screen fully bright and doesn't dim while it rings, and stops by
+  itself after `ringMs`. iOS lets no app use the iPad's alarm tones, so the wall makes four of its own in
+  code: **Beeps**, **Chimes** (the default), **Bell**, **Rising**. Settings → **Sound**: *Alarm sound* and
+  *Timer sound* (each with **▶ Play**), *Snooze for* (5 / 9 / 10 / 15 min) and *Stop ringing after* (5 / 10
+  / 15 / 30 min). It rings only while the wall is in front (iOS doesn't let an app ring by itself in the
+  background); the page itself rings an alarm the hub didn't (the hub unreachable).
 - **JavaScript bridge** - `window.NewmanWall` (injected at document start; fires a `newmanwall` event),
   the same as the Android wall's: `native` (true), `version` (string), `platform` ("ios"),
   `setBrightness(0..1)`, `wake()`, `dim()`, `isDimmed()`, `keepAwake(bool)` (default on),
   `openSettings()`, `openServer()` (the sign-in page's Server button), `setTheme({background, scheme})`;
   on dimming and waking the app dispatches a cancelable `newmanwall-dim` event (`detail.dimmed`) -
   `preventDefault()` means the page drew its dimmed screen, otherwise the app darkens it.
-  For voice `voiceConfig(json)`, `voiceDone()`, `recordClip(ms, fixed)`, `stopClip()` (see [Voice](#voice-hey-newman)).
+  For voice `voiceConfig(json)`, `voiceDone(listen)`, `recordClip(ms, fixed)`, `stopClip()` (see [Voice](#voice-hey-newman)).
+  For alarms and timers `ring(json)`, `stopRing()`, `ringSettings()` (`{"snoozeMinutes", "ringMinutes"}`);
+  `micAllowed()` and `openMicSettings()` (the iPad's Settings → Newman Wall) for the page's *Allow the
+  microphone*. Back in front (or its Sound settings changed) the app updates those and dispatches a
+  `newmanwall-resume` event.
   The app answers with `window.NewmanVoice.event({...})`, only while the hub's own page is showing.
 - **Battery reports** (`BatteryReporter`, rules in `Shared/Core/TabletBattery.swift`): while the wall
   is active, `POST /api/tablet/battery` at start once the page is signed in, every 5 minutes, and at
@@ -568,7 +582,9 @@ same page events, so `web/src/wall/VoiceLayer.jsx` and `TeachVoice.jsx` work unc
   speaking for 5 s = `cancel`, the page's "I didn't catch that"; 8 s at most). The PCM goes to the
   page (`{type: "audio", rate, pcm}`), which posts it to `api/voice/utterance`, ducks its music,
   shows and speaks the reply at the tablet's *reply volume* in its *reply voice*, and does the
-  action. The microphone is released until the page calls `voiceDone()` (30 s at most).
+  action. The microphone is released until the page calls `voiceDone()` (30 s at most). After a
+  question (`voiceDone(true)`: "Which one: pasta or eggs?") it listens for the answer at once - the
+  chime, no wake word, 6 s; nobody answering is a quiet `cancel`.
 - **Audio session** (`Voice/WallMic.swift`): `.playAndRecord`, mode `.measurement`, options
   `.defaultToSpeaker` + `.mixWithOthers` + `.allowBluetoothA2DP`; an `AVAudioEngine` input tap
   converted to 16 kHz mono Int16 with `AVAudioConverter`. `.measurement` = no iOS voice processing,

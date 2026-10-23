@@ -16,7 +16,7 @@
 - [Connections](#connections) — every device type, how it connects, what it needs (and [camera video settings](#camera-video-settings), [music from Navidrome](#music-navidrome), [recipes from Forkast](#recipes-forkast))
 - [Matter and Thread](#matter-and-thread) — the Matter server, the host's IPv6 settings (Unraid, Debian, TrueNAS, Synology), adding devices shared from Apple Home or Google Home
 - [Companion containers](#companion-containers) — Docker socket proxy, speech (Whisper, Piper, Kokoro), the wake-word trainer, Matter server, Zigbee (Zigbee2MQTT with an SLZB-06), Mosquitto
-- [Voice on the wall tablet](#voice-on-the-wall-tablet) — “Hey Newman”, what it understands, timers, teaching it your voices
+- [Voice on the wall tablet](#voice-on-the-wall-tablet) — “Hey Newman”, what it understands, alarms and timers, teaching it your voices
 - [Where people are](#where-people-are) — location sharing, places, the Household map
 - [Automations](#automations)
 - [Remotes and their Controls](#remotes-and-their-controls) — what a remote's buttons do, without automations
@@ -603,7 +603,7 @@ through `api/music/cover/<id>`, which the hub fetches from Navidrome.
 **How it plays**: the hub keeps each tablet's queue and tells that tablet (over its live connection) what
 to play; the wall page plays it in an `<audio>` element and reports back position, paused and ended, so
 *next* works and the device stays true (offline when the page hasn't reported for 3 minutes). Music goes
-quiet (ducks) while Newman listens or speaks, while a timer rings and while a wall alert sounds, then comes
+quiet (ducks) while Newman listens or speaks, while a timer or alarm rings and while a wall alert sounds, then comes
 back. While music plays (and for a minute after it is paused), a small **now-playing chip** (cover, song · artist, a play / pause button) sits
 with the status chips (in the top bar on other pages) — except on a page with a Music tile, which shows the
 same. Tapping it opens the **player**: a card over the page with the cover, progress, previous / play /
@@ -1474,13 +1474,32 @@ tablet (Newman Wall app)                     hub (Newman)                    spe
 | “What's on today?” | today's events, to-dos and heads-ups (the Today briefing) |
 | “What time is it?” · “What's the date?” · “What day is it?” | “It's 4:52 PM.” / “It's Tuesday, October 6th.” — in the hub's time zone (`TZ`) |
 | “Show the front porch camera” · “Show the cameras” · “Show Lights” · “Show Dante on the map” · “Show the weather” | full-screen camera, all cameras, a page of the tablet's dashboard, the person's live map, weather / calendar / to-do |
-| “Set a timer for 10 minutes” · “Set a pasta timer for 8 minutes” · “How much time is left (on the pasta timer)?” · “Cancel the timer” · “What timers do I have?” | timers kept on the hub per tablet (they survive the wall reloading), shown as countdown cards; one that ends beeps and says “Your pasta timer is done” until you tap it or say “Hey Newman, stop” |
-| “Stop” | stops a ringing timer and anything being said (with nothing ringing: pauses the music) |
+| “Set a timer for 10 minutes” · “Set a 2 minute timer” · “Set a pasta timer for 8 minutes” · “…for an hour and a half” · “How much time is left (on the pasta timer)?” · “Cancel the timer” · “What timers do I have?” | timers kept on the hub per tablet (they survive the wall reloading), shown as countdown cards; one that ends rings (see [Alarms and timers](#alarms-and-timers)) |
+| “Extend the timer by 4 minutes” · “Add 4 minutes to the pasta timer” · “Give it 2 more minutes” | “Okay, the pasta timer has 9 minutes left.” (a ringing one too: it runs again) |
+| “Take 2 minutes off the timer” · “Knock a minute off the eggs” | “Okay, the eggs timer has 3 minutes left.” (nothing left: it rings) |
+| “Pause the timer” · “Resume the pasta timer” | “Okay, paused with 6 minutes left.” / “Okay, the pasta timer is running again.” |
+| “Restart the timer” · “Change the timer to 15 minutes” · “Make the pasta timer 12 minutes” | back to its full time (“…is back to 8 minutes.”) / a new full time, from now (“…is now 12 minutes.”) |
+| “Cancel all timers” | “Okay, both timers are cancelled.” |
+| (several timers, none named) | “Which one: pasta or eggs?” — answer without “Hey Newman”: “eggs”, “the second one”, “the 10 minute one”, “both”. “The 10 minute timer” and “the second timer” (the order they were set) work as names anywhere |
+| “Set an alarm for 7” · “…for 6:30 tomorrow” · “Wake me up at 7 AM” · “Set a gym alarm for 5:45” | “Okay, alarm set for 7:00 AM tomorrow.” — no AM / PM and no day: the next 7 coming; with a day (“tomorrow” is always the next calendar day) or a repeat it asks “6:30 in the morning or the evening?” |
+| “…set an alarm for 6:30 on weekdays” · “…every Saturday at 8” · “…every day at 7” | “Okay, alarm set for 6:30 AM on weekdays.” |
+| “What alarms do I have?” | “You have 2 alarms: the gym alarm at 5:45 AM tomorrow, and 6:30 AM on weekdays.” and opens Alarms & timers |
+| “Cancel my 7 o'clock alarm” · “Cancel the gym alarm” · “Turn off my weekday alarm” · “Turn on my Saturday alarm” | cancels (deletes) / turns it off or on; a repeating one first asks “Just tomorrow, or every time?” (the real next day: “Just Monday…”) — “just tomorrow” skips that day only |
+| “Change my 7 o'clock alarm to 7:30” · “Skip my weekday alarm tomorrow” | the new time (the same half of the day unless said) / that one day skipped |
+| “Snooze” · “Snooze for 5 minutes” · “Another minute” (while something rings) | snoozes the alarm (the tablet's *Snooze for*) / gives the timer another minute |
+| “Stop” | stops what's ringing (timers and alarms) and anything being said (with nothing ringing: pauses the music) |
 | “Play Jump by Van Halen” · “Play the album 1984” · “Shuffle my road trip playlist” · “Pause the music” · “Next song” · “Set the volume to 40” · “What's playing?” | music from Navidrome on this tablet's own speaker — see [Music](#music-navidrome) |
 | “Pull up the pancakes” · “Next step” · “How much flour?” · “Double it” · “Close the recipe” | cook mode with your Forkast recipes — see [Recipes](#recipes-forkast) |
 
 Something it can't place gets an honest answer (“Sorry, I didn't catch a device called bedroom lamp.”,
-“Which one: Main Floor or Basement?”).
+“Which one: Main Floor or Basement?”). “Alarm” on its own is the security alarm (“Disarm the alarm”, “Turn
+off the alarm”); it's one of Newman's alarms when said with set / wake me / snooze, a time, a name, a day or
+a repeat, “my … alarm” or “alarms”, or while one rings.
+
+**Questions back** — when Newman asks something (“Which one: pasta or eggs?”, “Just tomorrow, or every
+time?”, “6:30 in the morning or the evening?”, “Did you mean Massimo?”), the wall listens for the answer
+straight away — a chime and *Listening…*, no wake word — for about 6 seconds; nobody answering lets it go
+quietly. “Hey Newman, eggs” within a minute works too; anything that isn't an answer is taken as a new request.
 
 **Misheard names** — Whisper sometimes spells a name the way it sounds (“back yard”, “good nite”, “ma
 seemo”). When a name isn't found as heard, Newman takes a second look against every name it knows —
@@ -1545,6 +1564,51 @@ source, so “Hey Google” should keep working — see [`android/README.md`](an
 what to check on a new tablet. The iPad wall app listens the same way: the same models through ONNX
 Runtime's iOS package, the same endpointing and the same page events, while the wall is on screen
 (iPadOS doesn't allow listening in the background) — see [`ios/README.md`](ios/README.md).
+
+**When it can't listen** the wall says so instead of silently not hearing: the microphone not allowed →
+a banner *Hey Newman can't hear you. Newman Wall isn't allowed to use the microphone.* with **Allow the
+microphone** (Newman Wall's own screen in Android's / the iPad's settings); speech not available on the
+hub → a plain line (*Hey Newman isn't available: the speech containers aren't running* / *speech isn't set
+up on the hub* / *the wake word is still downloading*). It starts listening by itself as soon as it can:
+the hub checks speech every 10 s while it's down (60 s while it's up) and tells the tablets, the wall asks
+again every 30 s while it can't listen, and the app checks the microphone whenever it comes back to the front.
+
+### Alarms and timers
+
+Newman's own **alarms** and **timers** on a wall tablet, by voice (above) or by touch, kept on the hub and
+belonging to the tablet they were set on — they still go off after the wall app, the tablet or the hub
+restarts (`GET /api/voice/alarms`, `/api/voice/timers`, see [API.md](API.md#voice)).
+
+- **On the wall**: the next alarm in the coming 24 hours shows as a card beside the timer cards
+  (*Alarm · weekdays · 6:30 AM · Tomorrow*); a snoozed alarm's card counts down to its next ring (✕ calls
+  the snooze off). Timer cards have ⏸ / ▶ beside the ✕, and a paused one says *Paused*. Tapping an alarm
+  card opens *Alarms & timers*; tapping a timer card opens that timer.
+- **Alarms & timers** (tap the big clock at the top of the wall, an alarm card, or ask “what alarms do I
+  have”): **Timers** first — each with its time left, *of* its full time, ⏸ / ▶ and **Open** — and
+  **+ New timer**; then **Alarms** — on / off and **Edit** — and **+ New alarm** (*No timers* / *No alarms*
+  when there are none). Holding the clock still shows who is signed in.
+- **A timer** (a card or Open): the big countdown; −1 min, +1 min, +5 min; Cancel, Restart, Pause / Resume.
+- **+ New timer**: 1, 3, 5, 10, 15, 30 min or 1 hour start one at once; or hours and minutes and a name,
+  then Start.
+- **New / Edit alarm**: the time (hour, minutes in fives plus the alarm's own minute, AM / PM), the days
+  it repeats (none = once, the next time it comes), a name; Delete, Cancel, Save.
+- **Ringing**: the wall wakes fully bright with a full-screen *ALARM 6:30* (or *PASTA TIMER · Done*) —
+  **Snooze 9 min** (the tablet's *Snooze for*) or **+1 min** for a timer, and **Stop** — or “Hey Newman,
+  stop” / “snooze” / “another minute”. It rings through the wall app on the tablet's **alarm volume**
+  (Android's alarm channel, the *Alarms & timers* slider), not the media volume, with the sound chosen in
+  the app's settings; music and Newman's speech go quiet meanwhile. A timer says “Your pasta timer is
+  done” once first. It rings until stopped, up to the app's *Stop ringing after*; a one-time alarm then
+  turns off, a repeating one waits for its next day, and a timer goes. Two at once: the first to ring
+  shows, Stop shows the next; “Hey Newman, stop” stops them all. The ringing screen is over everything,
+  wall alerts too.
+- **If the hub can't be reached** at an alarm's time, the wall page rings it itself 30 s later, and the
+  Android app rings it a minute late even without the page (its own *Stop* / *Snooze* over the wall) —
+  the page keeps it the coming alarms for that. In a plain browser the page beeps instead.
+- **Daylight saving**: an alarm's time is the hub's clock time (`TZ`), so 7:00 stays 7:00 when the clocks
+  change; a time the spring change skips rings when the clock shows the hour after (2:30 → 3:30).
+- **The iPad wall app** rings with Newman's own sounds (*Beeps*, *Chimes* — the default — *Bell*,
+  *Rising*; iOS lets no app use the iPad's alarm tones) at the iPad's volume, and only while the wall is in
+  front (iOS doesn't let an app ring by itself in the background).
 
 ### Setting voice up
 

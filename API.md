@@ -1169,7 +1169,9 @@ Wall tablets talk to Newman (README → Voice on the wall tablet). Any signed-in
 tablet's session may use all of these except the settings.
 
 `GET /api/voice` → `{"available": bool (speech-to-text configured), "speaks": bool (text-to-speech),
-"settings": VoiceSettings, "wakeword": WakeWord | null}` for the signed-in account.
+"settings": VoiceSettings, "wakeword": WakeWord | null, "reason": why "Hey Newman" can't be listened for
+("speech isn't set up on the hub" / "the speech containers aren't running" / "the wake word is still
+downloading"; "" when it can), "ringing": {"snoozeMinutes", "ringMinutes"}}` for the signed-in account.
 
 `POST /api/voice/utterance` — something said. Body: raw PCM (`Content-Type: audio/L16; rate=16000`,
 16-bit little-endian mono; `?rate=` also works), a WAV file (`audio/wav`), or `{"text": "…"}`
@@ -1187,8 +1189,11 @@ tablet's session may use all of these except the settings.
 `ask_state` · `ask_value` · `describe` · `where` · `today` · `show` (`show`: `camera` + `entityId` |
 `cameras` | `page` + `pageId` | `person` + `personId` | `home` | `weather` | `calendar` | `todo` | `lyrics` (the
 wall's player with the lyrics)) ·
-`timer_set` (`timerId`) · `timer_query` · `timer_cancel` (`cancelled`) · `timer_list` · `stop`
-(`stopped`: ringing timers stopped; with none ringing it pauses this tablet's music) · `music_play` (`music`:
+`timer_set` (`timerId`) · `timer_query` · `timer_cancel` (`cancelled`) · `timer_list` · `timer_add` /
+`timer_take` / `timer_pause` / `timer_resume` / `timer_restart` / `timer_change` (`timerId`) · `alarm_set`
+(`alarmId`) · `alarm_list` (`show`: `alarms` - the wall opens Alarms & timers) · `alarm_cancel` / `alarm_off` /
+`alarm_on` / `alarm_skip` / `alarm_change` (`alarmId`) · `snooze` (`snoozed`) · `another_minute` · `stop`
+(`stopped`: ringing timers and alarms stopped; with none ringing it pauses this tablet's music) · `music_play` (`music`:
 what was asked for - `title`/`artist`/`album`/`playlist`/`query`/`kind` (`song`)/`shuffle`/`random`; the
 reply says what plays, asks "Did you mean …?" when the name heard only fairly matches the library, or says
 "I couldn't find …") · `music_answer` (`yes`: the answer to that question - a yes within 2 minutes plays it) ·
@@ -1201,7 +1206,11 @@ name heard only fairly well: `name`, `slot` (`device` / `room` / `person` / `aut
 "yes" within 60 s does the corrected request, "no" → `{"type": "confirm", "yes": false}`) · `ambiguous` ·
 `unknown` · `none` (nothing was said; with `"retry": true` Whisper was restarting for a new hint and isn't
 back yet - `reply` "One moment, I'm just getting ready. Please ask me again in a few seconds."; a request
-during such a restart first waits up to 20 s for it). A request done with a misheard name put right has `action.corrected`
+during such a restart first waits up to 20 s for it). A reply that asks something back ("Which one: pasta or
+eggs?", "Just tomorrow, or every time?", "6:30 in the morning or the evening?", "Did you mean …?") has
+`action.listen: true` - the wall listens for the answer without the wake word; the next request within 60 s
+is taken as the answer when it is one ("eggs", "the second one", "every time", "in the morning"), anything
+else lets the question go. A request done with a misheard name put right has `action.corrected`
 (the name meant, e.g. "Backyard"). `audio` is
 null when text-to-speech isn't set up (or failed). 503 when speech-to-text isn't set up (audio sent),
 502 when a speech service can't be reached. Nothing about the audio is kept; Activity gets an entry
@@ -1226,13 +1235,35 @@ from `<name>.json`). `version` changes when any file, the chosen wake word or it
 (the wall page passes it to the app in `voiceConfig`; a new one makes the app download the files again). `GET /api/voice/wakeword/{name}.onnx`
 serves the files (from the data folder's `voice/`).
 
-**Timers** (per account): `GET /api/voice/timers` → `{"now": hub time, "timers": [Timer]}` ·
+**Timers** (per account): `GET /api/voice/timers` → `{"now": hub time, "timers": [Timer]}` (in the order
+they were set) · `POST /api/voice/timers` `{"seconds", "label"?}` → 201 Timer (the wall's + New timer) ·
+`PATCH /api/voice/timers/{id}` `{"do": "pause" | "resume" | "restart" | "add" | "take" | "set", "seconds"}`
+→ Timer (`add` / `take`: that much more / less - a ringing one given more runs again, one with nothing
+left rings; `set`: a new full time, from now; `restart`: back to its full time) ·
 `DELETE /api/voice/timers/{id}` (cancel / stop ringing) · `GET /api/voice/timers/{id}/done` →
 `{"text": "Your pasta timer is done.", "audio": {...} | null}`.
-Timer: `{"id", "label" ("pasta" or ""), "name" ("pasta timer" / "10 minute timer"), "seconds",
-"createdAt", "endsAt", "state": "running" | "ringing", "doneText"}`. Up to 10 per account, 24 h each; a
-ringing one nobody stops is cleared after an hour. Changes are pushed to that account's sockets as
-`{"type": "timers", "now", "timers"}`.
+Timer: `{"id", "label" ("pasta" or ""), "name" ("pasta timer" / "10 minute timer"), "seconds" (its full
+time), "createdAt", "endsAt", "state": "running" | "paused" | "ringing", "left" (paused: seconds it has
+left), "doneText"}`. Up to 10 per account, 24 h each; a ringing one nobody stops is removed after the
+tablet's *Stop ringing after*. Changes are pushed to that account's sockets as `{"type": "timers", "now", "timers"}`.
+
+**Alarms** (per account - the wall tablet they were set on): `GET /api/voice/alarms` → `{"now": hub time,
+"alarms": [Alarm]}` (by time of day) · `POST /api/voice/alarms` `{"hour" (0-23), "minute", "days" ([0 =
+Sunday … 6]; none = once, the next time it comes), "label"?}` → 201 Alarm · `PATCH /api/voice/alarms/{id}`
+with any of `hour` / `minute` / `days` / `label` / `enabled` → Alarm (a change clears a skipped day) ·
+`DELETE /api/voice/alarms/{id}` · `POST /api/voice/alarms/{id}/snooze` `{"minutes"?}` (the tablet's own
+*Snooze for* when left out) · `POST /api/voice/alarms/{id}/stop` (stop it ringing, or call off its
+snooze). Alarm: `{"id", "label", "name" ("gym alarm" / "7:00 AM alarm"), "hour", "minute", "days",
+"enabled", "state": "set" | "ringing" | "snoozed", "nextAt" (when it next rings, or null), "snoozeUntil",
+"ringingSince", "skip" (a day skipped once, "YYYY-MM-DD", or null), "time" ("6:30 AM"), "repeat"
+("Weekdays", "Saturdays", "Every day", "Mon Wed Fri", "" for once)}`. Times are the hub's clock (`TZ`):
+7:00 stays 7:00 across a daylight-saving change. Rings until stopped or the tablet's *Stop ringing after*;
+a one-time alarm then turns off, a repeating one waits for its next day; one missed by longer than that
+(the hub was off) is let go. Up to 20 per account. Pushed as `{"type": "alarms", "now", "alarms"}`.
+
+**Ringing settings** (the wall app's own *Snooze for* / *Stop ringing after*, which the wall page passes on):
+`PUT /api/voice/ringing` `{"snoozeMinutes": 5 | 9 | 10 | 15, "ringMinutes": 5 | 10 | 15 | 30}` → the
+saved pair (defaults 9 and 10), for the signed-in tablet.
 
 **Alexa timers** (any signed-in session; the wall tablets): `GET /api/alexa/timers` → `{"now": hub time,
 "timers": [{"id": "alexa:…", "name": "Pasta", "where": "Kitchen Echo", "endsAt", "seconds" (its full length),

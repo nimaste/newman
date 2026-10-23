@@ -609,12 +609,30 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
   `NewmanWall` *Come back: …*. The rule is `ComeBack` in `core/wall/` (`ComeBackTest`).
 - **Sound (wall settings):** two sliders for the tablet's own volumes, so a tablet in a case needs no
   buttons. *Volume* is Android's media stream (Alexa's voice, music, the chime, "Hey Newman" replies -
-  what the volume buttons change); *Alarms & timers* is the alarm stream (Alexa's and Newman's timers and
-  alarms ringing). Both apply live while dragging; *Play a test sound* plays the chime on the media
-  stream and *Test alarm sound* the default alarm tone for 2 s; Cancel or Back puts both back as they were
+  what the volume buttons change); *Alarms & timers* is the alarm stream (Newman's alarms and timers
+  ringing). Both apply live while dragging; *Play a test sound* plays the chime on the media
+  stream and *Test alarm sound* the chosen alarm sound for 2 s; Cancel or Back puts both back as they were
   when the screen opened, Save keeps them. Android may refuse while Do Not Disturb is on (a note says so).
   Percent ↔ step is `WallVolume` in `core/wall/` (`WallVolumeTest`); the sound itself is `WallSound`.
-  The iPad wall app has no equivalent: iOS doesn't let apps set the system volume.
+  Below them: **Alarm sound** and **Timer sound** (dropdowns of the tablet's own alarm sounds - Android's
+  `RingtoneManager.TYPE_ALARM`; on the Fire tablet Alarm Beep 01-03, Alarm Buzzer, Alarm Classic, Alarm
+  Rooster, Argon … Scandium - each with **▶ Play**, 2 s), **Snooze for** (5 / 9 / 10 / 15 minutes) and
+  **Stop ringing after** (5 / 10 / 15 / 30 minutes) - `alarm_tone`, `timer_tone`, `snooze_minutes`,
+  `ring_minutes` in `wall_settings`; the page passes the two times on to the hub (`PUT /api/voice/ringing`).
+  The iPad wall app has no volume sliders (iOS doesn't let apps set the system volume) but the same Sound
+  choices with Newman's own sounds.
+- **Newman's alarms and timers ringing** (`AlarmRinging.kt`): the page calls `NewmanWall.ring({kind, id,
+  title, ringMs})` / `stopRing()`; `AlarmRinger` loops the chosen sound with `USAGE_ALARM` (the alarm
+  volume), holds a wake lock, wakes the screen to full brightness and doesn't dim while it rings, and stops
+  by itself after `ringMs`. The page also hands over the coming alarms (`NewmanWall.alarmSchedule`):
+  `AlarmBackup` keeps them (set again at every start and restart) and, a minute after an alarm's time, rings
+  one nothing else rang - the page gone, the hub unreachable - bringing the wall back with its own *Snooze* /
+  *Stop* over it. The settings and the backup rule are `WallRinging` in `core/wall/` (`WallRingingTest`).
+- **The microphone**: `NewmanWall.micAllowed()` tells the page whether voice may listen; its *Allow the
+  microphone* calls `openMicSettings()` - Newman Wall's screen in Android's settings (a pinned / locked
+  screen is let go for it and pinned again on the way back). Back in front, the app sends the page a
+  `newmanwall-resume` event so it checks again. After a question (`voiceDone(true)`) the app listens for the
+  answer at once - a chime, no wake word, 6 s.
 - **The screen never stays off:** while the wall is in front it holds the screen on (`FLAG_KEEP_SCREEN_ON`;
   dimming only lowers the window brightness, never below `WallBrightness.FLOOR`). Any other app in front
   (Alexa's screen, Silk, Settings) gets Fire OS's own screen timeout instead — and a dark tablet falls into
