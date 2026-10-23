@@ -314,7 +314,6 @@ class WallSettingsActivity : ComponentActivity() {
                     })
                     Text("Keep the alarm volume at full", color = Ink)
                 }
-                Text("Puts the alarm volume straight back to full whenever anything turns it down (Alexa does each time her alarms and timers ring).", color = Muted)
                 OutlinedButton(onClick = { sound.testAlarm(alarmTone) }) { Text("Test alarm sound") }
                 if (soundRefused) Text("Android didn't allow that change - Do Not Disturb may be on.", color = Coral)
                 Text("Alarm sound", color = Ink)
