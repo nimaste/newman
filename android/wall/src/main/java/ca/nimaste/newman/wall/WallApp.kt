@@ -30,6 +30,7 @@ class WallApp : Application() {
         BatteryWork.schedule(this)
         BatteryWork.watch(this)
         AlarmBackup.arm(this) // (the coming alarms, kept as a backup: AlarmRinging.kt)
+        AlarmVolumeKeeper.start(this) // ("Keep the alarm volume at full", when it's on)
     }
 
     companion object {
@@ -112,6 +113,11 @@ class WallSettings(context: Context) {
     var ringMinutes: Int
         get() = WallRinging.ringSetting(prefs.getInt("ring_minutes", WallRinging.DEFAULT_RING))
         set(v) = prefs.edit().putInt("ring_minutes", WallRinging.ringSetting(v)).apply()
+
+    /** "Keep the alarm volume at full": put the alarm volume back to full whenever anything lowers it (AlarmVolumeKeeper). */
+    var keepAlarmFull: Boolean
+        get() = prefs.getBoolean("keep_alarm_full", false)
+        set(v) = prefs.edit().putBoolean("keep_alarm_full", v).apply()
 }
 
 /**

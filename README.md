@@ -1601,6 +1601,13 @@ restarts (`GET /api/voice/alarms`, `/api/voice/timers`, see [API.md](API.md#voic
   turns off, a repeating one waits for its next day, and a timer goes. Two at once: the first to ring
   shows, Stop shows the next; “Hey Newman, stop” stops them all. The ringing screen is over everything,
   wall alerts too.
+- **Keep the alarm volume at full** (Android wall app: settings › Sound, a switch under the *Alarms &
+  timers* slider, off by default): on a Fire tablet, Alexa turns the alarm volume down each time one of her
+  own alarms or timers rings, so they come out quiet. With the switch on, the wall app puts the alarm
+  volume straight back to full whenever anything lowers it, for as long as the app is running. It never
+  touches the other volumes and never turns anything down. While it's on, the *Alarms & timers* slider
+  stays at full; turning it off leaves the volume where it is. Not on the iPad: iOS doesn't let apps change
+  the volume, and there's no Alexa app ringing alarms there.
 - **If the hub can't be reached** at an alarm's time, the wall page rings it itself 30 s later, and the
   Android app rings it a minute late even without the page (its own *Stop* / *Snooze* over the wall) —
   the page keeps it the coming alarms for that. In a plain browser the page beeps instead.

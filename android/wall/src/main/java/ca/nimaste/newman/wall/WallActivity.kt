@@ -281,6 +281,7 @@ class WallActivity : ComponentActivity() {
         userLeaveHint = false
         assistant.entered()
         ringChanged() // (an alarm the app rang itself while away: its own Stop / Snooze, fully bright)
+        AlarmVolumeKeeper.check() // (lowered while the wall was away and nothing said so)
         // The page asks again what it may (the microphone allowed meanwhile, the settings changed).
         if (pageIsHub) web?.evaluateJavascript("try{window.dispatchEvent(new Event('newmanwall-resume'))}catch(e){}", null)
     }

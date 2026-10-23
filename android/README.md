@@ -614,6 +614,20 @@ adb shell appops set ca.nimaste.newman.wall SYSTEM_ALERT_WINDOW allow
   stream and *Test alarm sound* the chosen alarm sound for 2 s; Cancel or Back puts both back as they were
   when the screen opened, Save keeps them. Android may refuse while Do Not Disturb is on (a note says so).
   Percent ↔ step is `WallVolume` in `core/wall/` (`WallVolumeTest`); the sound itself is `WallSound`.
+  **Keep the alarm volume at full** (a switch under the *Alarms & timers* slider, off by default;
+  `keep_alarm_full` in `wall_settings`): Alexa on a Fire tablet turns the alarm volume down each time one of
+  her alarms or timers rings (25 to 17, again every ~6 s round), so her alarms come out quiet even with the
+  tablet and the Alexa app at full. With the switch on, the wall app puts the alarm volume straight back to
+  full whenever anything lowers it (`AlarmVolumeKeeper`): it listens for Android's volume-changed broadcast
+  for the alarm stream, watches the volume settings as a backup, and checks again whenever the app starts
+  or the wall comes back to the front, and when the switch is turned on. It only ever raises the alarm
+  volume - no other volume, and it never lowers or mutes anything. While it's on the slider shows full and
+  can't be moved; turning it off leaves the volume where it is; Cancel or Back puts the switch back as it
+  was. It works whenever the Newman Wall app is running (no extra permission, no background service).
+  Each time it's logged at warning level as `NewmanWall` *Alarm volume put back to full (was N)*, at most
+  one line a minute (with how many more since). Do Not Disturb may refuse it: that's logged too. The rule
+  is `AlarmVolumeKeep` in `core/wall/` (`AlarmVolumeKeepTest`). The iPad wall app has no such switch: iOS
+  doesn't let apps change the volume, and there's no Alexa app ringing alarms there.
   Below them: **Alarm sound** and **Timer sound** (dropdowns of the tablet's own alarm sounds - Android's
   `RingtoneManager.TYPE_ALARM`; on the Fire tablet Alarm Beep 01-03, Alarm Buzzer, Alarm Classic, Alarm
   Rooster, Argon … Scandium - each with **▶ Play**, 2 s), **Snooze for** (5 / 9 / 10 / 15 minutes) and

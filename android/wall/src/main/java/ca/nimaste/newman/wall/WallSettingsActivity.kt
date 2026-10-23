@@ -221,6 +221,9 @@ class WallSettingsActivity : ComponentActivity() {
         var media by remember { mutableFloatStateOf(openMedia.toFloat()) }
         var alarm by remember { mutableFloatStateOf(openAlarm.toFloat()) }
         var soundRefused by remember { mutableStateOf(false) }
+        // "Keep the alarm volume at full": applied live like the volumes; Cancel (or Back) puts it back too.
+        val openKeep = remember { settings.keepAlarmFull }
+        var keepFull by remember { mutableStateOf(openKeep) }
         // The tablet's alarm sounds (title, address) and the choices for alarms and timers ringing.
         val tones = remember { sound.alarmTones().map { (title, uri) -> uri to title } }
         val defaultTone = remember { sound.defaultAlarmTone() }
@@ -233,6 +236,7 @@ class WallSettingsActivity : ComponentActivity() {
         }
         fun cancel() {
             sound.stopAlarm()
+            settings.keepAlarmFull = openKeep
             sound.set(AudioManager.STREAM_MUSIC, openMedia)
             sound.set(AudioManager.STREAM_ALARM, openAlarm)
             finishWith(null)
@@ -254,6 +258,7 @@ class WallSettingsActivity : ComponentActivity() {
             settings.timerTone = timerTone
             settings.snoozeMinutes = snoozeMinutes
             settings.ringMinutes = ringMinutes
+            settings.keepAlarmFull = keepFull // (already set live; kept here with the rest)
             return true
         }
 
@@ -292,9 +297,24 @@ class WallSettingsActivity : ComponentActivity() {
                 Text("Alexa's voice, music, the chime and “Hey Newman” replies — the same as the tablet's volume buttons.", color = Muted)
                 Slider(media, { media = it; setVolume(AudioManager.STREAM_MUSIC, it) }, valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
                 OutlinedButton(onClick = { sound.testMedia() }) { Text("Play a test sound") }
-                Text("Alarms & timers ${alarm.roundToInt()}%", color = Ink)
+                val alarmShown = if (keepFull) 100f else alarm
+                Text("Alarms & timers ${alarmShown.roundToInt()}%", color = Ink)
                 Text("Newman's alarms and timers ringing.", color = Muted)
-                Slider(alarm, { alarm = it; setVolume(AudioManager.STREAM_ALARM, it) }, valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
+                Slider(alarmShown, { alarm = it; setVolume(AudioManager.STREAM_ALARM, it) }, enabled = !keepFull,
+                    valueRange = 0f..100f, modifier = Modifier.widthIn(max = 640.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Switch(keepFull, { on ->
+                        keepFull = on
+                        settings.keepAlarmFull = on
+                        if (on) {
+                            AlarmVolumeKeeper.check()
+                            if (sound.percent(AudioManager.STREAM_ALARM) < 100) soundRefused = true
+                        }
+                        alarm = sound.percent(AudioManager.STREAM_ALARM).toFloat() // (off: left where it is)
+                    })
+                    Text("Keep the alarm volume at full", color = Ink)
+                }
+                Text("Puts the alarm volume straight back to full whenever anything turns it down (Alexa does each time her alarms and timers ring).", color = Muted)
                 OutlinedButton(onClick = { sound.testAlarm(alarmTone) }) { Text("Test alarm sound") }
                 if (soundRefused) Text("Android didn't allow that change - Do Not Disturb may be on.", color = Coral)
                 Text("Alarm sound", color = Ink)
