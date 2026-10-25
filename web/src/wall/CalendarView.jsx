@@ -203,7 +203,7 @@ export default function CalendarView({ day, cals, onBack }) {
   let lastHeading = null;
 
   return (
-    <div className="wcal">
+    <div className="wcal wcal--month">
       <div className="wcal-main">
         <div className="wt-cams-head wcal-head">
           <button type="button" className="wt-back" onClick={onBack}>

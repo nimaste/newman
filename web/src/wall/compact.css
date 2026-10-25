@@ -1,10 +1,13 @@
 /* The wall's compact layout (Compact.jsx; short screens, like an Echo Show 5's 960 x 480). Sizes are
    in --u, one 480th of the screen's height, so every short screen gets the same proportions as its
    mockup; colours and fonts stay the dashboard's theme (wall.css / theme.css tokens). The big
-   tablets never get .wall--compact, and full screens (a camera, the calendar…) drop it. */
+   tablets never get .wall--short / .wall--compact; full screens (a camera, the calendar…) drop
+   .wall--compact and keep .wall--short, for their own short-screen layouts at the end of this file. */
 
-.wall--compact {
+.wall--short {
   --u: calc(100vh / 480);
+}
+.wall--compact {
   padding: 0;
   gap: calc(10 * var(--u));
 }
@@ -510,4 +513,397 @@
 }
 .wt-dial--side .wt-dial-value {
   font-size: calc(64 * var(--u));
+}
+
+/* ================= full screens on short screens (.wall--short, without .wall--compact) =================
+   The same parts as on a big tablet, rearranged and sized to fit (their mockup is 960 x 480 too). The
+   wall's own padding (wall.css: 20 x 24 px, 16 x 18 up to 1200 px wide) is evened out to the
+   mockup's margins (20 x 22 units). */
+.wall--short {
+  --wt-pad-y: 20px;
+  --wt-pad-x: 24px;
+}
+@media (max-width: 1200px) {
+  .wall--short {
+    --wt-pad-y: 16px;
+    --wt-pad-x: 18px;
+  }
+}
+
+/* ---- shared: Back, the round buttons, the title ---- */
+.wall--short :is(.wcal--month, .wwx--short) {
+  margin: calc(20 * var(--u) - var(--wt-pad-y)) calc(22 * var(--u) - var(--wt-pad-x));
+}
+.wall--short :is(.wcal--month, .wwx--short) .wcal-head {
+  height: calc(60 * var(--u));
+  min-height: 0;
+  gap: calc(12 * var(--u));
+}
+.wall--short :is(.wcal--month, .wwx--short) .wt-back {
+  height: calc(60 * var(--u));
+  padding: 0 calc(24 * var(--u)) 0 calc(16 * var(--u));
+  gap: calc(8 * var(--u));
+  font-size: calc(21 * var(--u));
+}
+.wall--short :is(.wcal--month, .wwx--short) .wt-back svg {
+  width: calc(22 * var(--u));
+  height: calc(22 * var(--u));
+}
+
+/* ---- calendar: one top row across the screen; the month on the left, the day on the right below it ---- */
+.wall--short .wcal--month {
+  display: grid;
+  grid-template-columns: calc(484 * var(--u)) minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  column-gap: calc(20 * var(--u));
+  row-gap: calc(12 * var(--u));
+}
+.wall--short .wcal--month > .wcal-main {
+  display: contents;
+}
+.wall--short .wcal--month .wcal-head {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.wall--short .wcal--month .wcal-head > .wt-back + .wcal-gap {
+  display: none;
+}
+.wall--short .wcal--month .wcal-key {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: calc(4 * var(--u));
+  gap: calc(4 * var(--u)) calc(18 * var(--u));
+}
+.wall--short .wcal--month .wcal-week {
+  grid-column: 1;
+  grid-row: 3;
+  gap: calc(8 * var(--u));
+}
+.wall--short .wcal--month .wcal-grid {
+  grid-column: 1;
+  grid-row: 4;
+  gap: calc(8 * var(--u));
+}
+.wall--short .wcal--month .wcal-side {
+  grid-column: 2;
+  grid-row: 2 / 5;
+  width: auto;
+  padding: calc(18 * var(--u)) calc(20 * var(--u));
+  border-radius: calc(28 * var(--u));
+  gap: calc(14 * var(--u));
+}
+.wall--short .wcal--month :is(.wcal-round, .wcal-today, .wcal-add) {
+  height: calc(60 * var(--u));
+}
+.wall--short .wcal--month .wcal-round {
+  width: calc(60 * var(--u));
+}
+.wall--short .wcal--month .wcal-round svg {
+  width: calc(22 * var(--u));
+  height: calc(22 * var(--u));
+}
+.wall--short .wcal--month .wcal-month {
+  min-width: 0;
+  padding: 0 calc(10 * var(--u));
+  font-size: calc(24 * var(--u));
+}
+.wall--short .wcal--month .wcal-today {
+  padding: 0 calc(18 * var(--u));
+  font-size: calc(21 * var(--u));
+}
+.wall--short .wcal--month .wcal-add {
+  padding: 0 calc(22 * var(--u));
+  gap: calc(8 * var(--u));
+  font-size: calc(21 * var(--u));
+}
+.wall--short .wcal--month .wcal-add svg {
+  width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+}
+.wall--short .wcal--month .wcal-key-item {
+  gap: calc(7 * var(--u));
+  font-size: calc(17 * var(--u));
+}
+.wall--short .wcal--month .wcal-key-sq {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+}
+.wall--short .wcal--month .wcal-week span {
+  font-size: calc(15 * var(--u));
+  text-align: center;
+}
+.wall--short .wcal--month .wcal-day {
+  min-height: 0;
+  border-radius: calc(13 * var(--u));
+  padding: calc(5 * var(--u)) calc(7 * var(--u));
+  gap: calc(3 * var(--u));
+}
+.wall--short .wcal--month .wcal-n {
+  font-size: calc(22 * var(--u));
+}
+.wall--short .wcal--month :is(.wcal-sub, .wcal-line) {
+  font-size: calc(15 * var(--u));
+}
+.wall--short .wcal--month .wcal-line-bar {
+  height: calc(14 * var(--u));
+}
+.wall--short .wcal--month .wcal-more {
+  right: calc(5 * var(--u));
+  top: calc(5 * var(--u));
+  min-width: calc(24 * var(--u));
+  height: calc(24 * var(--u));
+  padding: 0 calc(6 * var(--u));
+  font-size: calc(15 * var(--u));
+}
+.wall--short .wcal--month .wcal-side-title {
+  font-size: calc(26 * var(--u));
+}
+.wall--short .wcal--month .wcal-side-sub {
+  font-size: calc(17 * var(--u));
+}
+.wall--short .wcal--month .wcal-toggle {
+  padding: calc(5 * var(--u));
+}
+.wall--short .wcal--month .wcal-toggle button {
+  height: calc(48 * var(--u));
+  font-size: calc(18 * var(--u));
+}
+.wall--short .wcal--month :is(.wcal-ev-title) {
+  font-size: calc(21 * var(--u));
+}
+.wall--short .wcal--month :is(.wcal-ev-sub, .wcal-heading) {
+  font-size: calc(16 * var(--u));
+}
+.wall--short .wcal--month .wcal-empty {
+  font-size: calc(18 * var(--u));
+}
+
+/* ---- weather: the left column scrolls (now, the next hours, the days); the warnings beside it ---- */
+.wall--short .wwx--short {
+  gap: calc(20 * var(--u));
+}
+.wall--short .wwx--short > .wcal-main {
+  flex: 0 0 calc(484 * var(--u));
+  gap: calc(16 * var(--u));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.wall--short .wwx--short > .wcal-main::-webkit-scrollbar {
+  display: none;
+}
+.wall--short .wwx--short > .wcal-main > * {
+  flex-shrink: 0;
+}
+.wall--short .wwx--short .wt-cams-title {
+  font-size: calc(26 * var(--u));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wall--short .wwx--short .wwx-now {
+  min-height: calc(150 * var(--u));
+  box-sizing: border-box;
+  margin-top: calc(4 * var(--u));
+  padding: calc(12 * var(--u)) calc(26 * var(--u));
+  gap: calc(20 * var(--u));
+  border-radius: calc(28 * var(--u));
+}
+.wall--short .wwx--short .wwx-now > svg {
+  flex: none;
+  width: calc(84 * var(--u));
+  height: calc(84 * var(--u));
+}
+.wall--short .wwx--short .wwx-temp {
+  font-size: calc(84 * var(--u));
+}
+.wall--short .wwx--short .wwx-now-text {
+  gap: 0;
+  font-size: calc(19 * var(--u));
+  line-height: 1.45;
+  white-space: nowrap;
+}
+.wall--short .wwx--short .wwx-cond {
+  font-size: calc(28 * var(--u));
+  line-height: 1.2;
+}
+.wwx-more {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6 * var(--u));
+  padding: 0 calc(8 * var(--u));
+  font-size: calc(17 * var(--u));
+  font-weight: 700;
+}
+.wwx-more .wwx-sun {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: calc(4 * var(--u)) calc(16 * var(--u));
+  font-size: inherit;
+  text-align: left;
+}
+.wall--short .wwx--short .wwx-hours {
+  padding: calc(16 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(28 * var(--u));
+  gap: calc(8 * var(--u));
+}
+.wall--short .wwx--short .wwx-h {
+  font-size: calc(19 * var(--u));
+}
+.wall--short .wwx--short .wwx-hgrid {
+  display: flex;
+  gap: calc(6 * var(--u));
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+.wall--short .wwx--short .wwx-hgrid::-webkit-scrollbar {
+  display: none;
+}
+.wall--short .wwx--short .wwx-hour {
+  flex: 0 0 calc(64 * var(--u));
+  gap: calc(4 * var(--u));
+  padding: calc(8 * var(--u)) 0;
+  border-radius: calc(16 * var(--u));
+}
+.wall--short .wwx--short .wwx-hour > svg {
+  width: calc(26 * var(--u));
+  height: calc(26 * var(--u));
+}
+.wall--short .wwx--short .wwx-ht,
+.wall--short .wwx--short .wwx-htemp {
+  font-size: calc(16 * var(--u));
+}
+.wall--short .wwx--short .wwx-rainbar {
+  height: calc(24 * var(--u));
+  width: calc(8 * var(--u));
+}
+.wall--short .wwx--short .wwx-rain {
+  min-height: calc(15 * var(--u));
+  font-size: calc(13 * var(--u));
+}
+.wall--short .wwx--short .wwx-days {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: calc(10 * var(--u)) calc(18 * var(--u));
+  border-radius: calc(28 * var(--u));
+}
+.wall--short .wwx--short .wwx-day {
+  grid-template-columns: calc(100 * var(--u)) minmax(0, 1fr) calc(44 * var(--u)) calc(80 * var(--u)) calc(76 * var(--u));
+  gap: calc(8 * var(--u));
+  min-height: calc(46 * var(--u));
+  font-size: calc(16 * var(--u));
+}
+.wall--short .wwx--short .wwx-drain {
+  font-size: calc(15 * var(--u));
+}
+.wall--short .wwx--short .wcal-side {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: calc(22 * var(--u)) calc(20 * var(--u));
+  border-radius: calc(28 * var(--u));
+}
+.wall--short .wwx--short .wwx-side-title {
+  font-size: calc(22 * var(--u));
+}
+.wall--short .wwx--short .wcal-empty {
+  font-size: calc(18 * var(--u));
+}
+.wall--short .wwx--short .wtodo-foot {
+  font-size: calc(15 * var(--u));
+  line-height: 1.4;
+}
+.wall--short .wwx--short .wtodo-foot.wwx-source {
+  margin-top: calc(-4 * var(--u));
+  font-size: calc(14 * var(--u));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- one camera: the picture on the left at full height, the dots under it, Recent on the right ---- */
+.wall--short .lv.lv--wall {
+  display: grid;
+  grid-template-columns: calc(576 * var(--u)) minmax(0, 1fr);
+  grid-template-rows: auto calc(324 * var(--u)) minmax(0, 1fr);
+  column-gap: calc(18 * var(--u));
+  row-gap: calc(18 * var(--u));
+  padding: calc(20 * var(--u)) calc(22 * var(--u));
+  overflow: hidden;
+}
+.wall--short .lv--wall > .lv-main {
+  display: contents;
+}
+.wall--short .lv--wall .lv-bar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+.wall--short .lv--wall .lv-stage-wrap {
+  grid-column: 1;
+  grid-row: 2;
+}
+.wall--short .lv--wall .lv-stage {
+  max-width: none;
+  border-radius: calc(24 * var(--u));
+}
+.wall--short .lv--wall .lv-arrow {
+  width: calc(60 * var(--u));
+  height: calc(60 * var(--u));
+  margin-top: calc(-30 * var(--u));
+}
+.wall--short .lv--wall .lv-arrow--prev {
+  left: calc(14 * var(--u));
+}
+.wall--short .lv--wall .lv-arrow--next {
+  right: calc(14 * var(--u));
+}
+.wall--short .lv--wall .lv-dots {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: start;
+  margin-top: calc(-4 * var(--u));
+  gap: calc(9 * var(--u));
+}
+.wall--short .lv--wall .lv-dot {
+  width: calc(9 * var(--u));
+  height: calc(9 * var(--u));
+}
+.wall--short .lv--wall .lv-dot.is-on {
+  width: calc(26 * var(--u));
+}
+.wall--short .lv--wall .lv-side {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  width: auto;
+  min-height: 0;
+  padding: calc(16 * var(--u));
+  border-radius: calc(28 * var(--u));
+  gap: calc(10 * var(--u));
+}
+.wall--short .lv--wall .lv-side-title {
+  font-size: calc(20 * var(--u));
+}
+.wall--short .lv--wall .lv-side-count,
+.wall--short .lv--wall .lv-item-time,
+.wall--short .lv--wall .lv-item-where,
+.wall--short .lv--wall .lv-day,
+.wall--short .lv--wall .lv-day-none {
+  font-size: calc(15 * var(--u));
+}
+.wall--short .lv--wall .lv-toggle button {
+  height: calc(46 * var(--u));
+  font-size: calc(16 * var(--u));
+}
+.wall--short .lv--wall .lv-item {
+  gap: calc(12 * var(--u));
+  padding: calc(8 * var(--u));
+}
+.wall--short .lv--wall .lv-thumb {
+  width: calc(96 * var(--u));
+  height: calc(54 * var(--u));
+}
+.wall--short .lv--wall .lv-item-what {
+  font-size: calc(18 * var(--u));
 }

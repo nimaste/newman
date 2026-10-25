@@ -7,6 +7,15 @@ import { Icon } from '../icons.jsx';
 import { stateLabelOf } from '../model.js';
 import { WeatherIcon } from './WeatherIcon.jsx';
 import { DaySheet } from './WeatherDay.jsx';
+import { useCompactScreen } from './Compact.jsx';
+
+/** Daytime at `iso` by today's sunrise / sunset (minutes); day when they're unknown. */
+function dayAt(iso, sunrise, sunset) {
+  if (!sunrise || !sunset) return true;
+  const mins = (d) => d.getHours() * 60 + d.getMinutes();
+  const m = mins(new Date(iso));
+  return m >= mins(new Date(sunrise)) && m < mins(new Date(sunset));
+}
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const deg = (v) => (num(v) ? Math.round(v) + '°' : '–');
@@ -21,6 +30,8 @@ export default function WeatherView({ onBack }) {
   const { entities, kindsById } = useHub();
   const root = useRef(null);
   const [day, setDay] = useState(null);
+  // Short screens (compact.css): the same parts, rearranged to fit - the left column scrolls.
+  const short = useCompactScreen();
   const e = (entities || []).find((x) => x.attrs && Array.isArray(x.attrs.forecast));
   if (!e) {
     return (
@@ -51,36 +62,63 @@ export default function WeatherView({ onBack }) {
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const alerts = (Array.isArray(a.alerts) ? a.alerts : []).filter((x) => !x.expires || new Date(x.expires).getTime() > now);
 
+  const source = (
+    <>
+      {a.source || 'Open-Meteo'}
+      {a.alerts ? ' · warnings from Environment Canada' : ''}
+    </>
+  );
+  const wind = [num(a.wind) ? `Wind ${Math.round(a.wind)} km/h` : '', num(a.gusts) ? `gusts ${Math.round(a.gusts)}` : '', num(a.humidity) ? `humidity ${Math.round(a.humidity)}%` : ''].filter(Boolean).join(' · ');
+  const sun = (
+    <span className="wwx-sun">
+      {a.sunrise ? <span>Sunrise {clock(a.sunrise)}</span> : null}
+      {a.sunset ? <span>Sunset {clock(a.sunset)}</span> : null}
+      {num(a.uv) ? <span>UV {Math.round(a.uv)}</span> : null}
+    </span>
+  );
+
   return (
-    <div className="wcal wwx" ref={root}>
+    <div className={'wcal wwx' + (short ? ' wwx--short' : '')} ref={root}>
       <div className="wcal-main">
         <div className="wt-cams-head wcal-head">
           <button type="button" className="wt-back" onClick={onBack}>
             <Icon name="chevronLeft" size={26} strokeWidth={2.4} /> Back
           </button>
           <span className="wt-cams-title">Weather · {e.name}</span>
-          <span className="wt-dim-text">{a.source || 'Open-Meteo'}{a.alerts ? ' · warnings from Environment Canada' : ''}</span>
+          {short ? null : <span className="wt-dim-text">{source}</span>}
         </div>
 
         <section className="wwx-now">
           <WeatherIcon condition={e.state} isDay={a.isDay !== false} size={88} strokeWidth={1.4} />
           <span className="wwx-temp">{deg(a.temperature)}</span>
-          <span className="wwx-now-text">
-            <span className="wwx-cond">{label}</span>
-            <span className="wwx-dim">
-              {num(a.feelsLike) ? `Feels like ${deg(a.feelsLike)} · ` : ''}H {deg(a.high)} L {deg(a.low)}
+          {short ? (
+            <span className="wwx-now-text">
+              <span className="wwx-cond">{label}</span>
+              {num(a.feelsLike) ? <span className="wwx-dim">Feels like {deg(a.feelsLike)}</span> : null}
+              <span className="wwx-dim">
+                H {deg(a.high)} L {deg(a.low)}
+              </span>
             </span>
-            <span className="wwx-dim">
-              {[num(a.wind) ? `Wind ${Math.round(a.wind)} km/h` : '', num(a.gusts) ? `gusts ${Math.round(a.gusts)}` : '', num(a.humidity) ? `humidity ${Math.round(a.humidity)}%` : ''].filter(Boolean).join(' · ')}
-            </span>
-          </span>
-          <span className="wcal-gap" />
-          <span className="wwx-sun">
-            {a.sunrise ? <span>Sunrise {clock(a.sunrise)}</span> : null}
-            {a.sunset ? <span>Sunset {clock(a.sunset)}</span> : null}
-            {num(a.uv) ? <span>UV {Math.round(a.uv)}</span> : null}
-          </span>
+          ) : (
+            <>
+              <span className="wwx-now-text">
+                <span className="wwx-cond">{label}</span>
+                <span className="wwx-dim">
+                  {num(a.feelsLike) ? `Feels like ${deg(a.feelsLike)} · ` : ''}H {deg(a.high)} L {deg(a.low)}
+                </span>
+                <span className="wwx-dim">{wind}</span>
+              </span>
+              <span className="wcal-gap" />
+              {sun}
+            </>
+          )}
         </section>
+        {short ? (
+          <div className="wwx-more">
+            {wind ? <span className="wwx-dim">{wind}</span> : null}
+            {sun}
+          </div>
+        ) : null}
 
         <section className="wwx-hours" aria-label="Next hours">
           <span className="wwx-h">Next 12 hours</span>
@@ -90,6 +128,7 @@ export default function WeatherView({ onBack }) {
               return (
                 <div key={h.time} className={'wwx-hour' + (i === 0 ? ' is-now' : '')}>
                   <span className="wwx-ht">{i === 0 ? 'Now' : new Date(h.time).toLocaleTimeString([], { hour: 'numeric' }).replace(/:00|\s?[AP]M/g, '')}</span>
+                  {short ? <WeatherIcon condition={h.condition} isDay={dayAt(h.time, a.sunrise, a.sunset)} size={26} strokeWidth={1.8} /> : null}
                   <span className="wwx-htemp">{deg(h.temperature)}</span>
                   <span className="wwx-rainbar">
                     <span style={{ height: Math.max(0, Math.min(100, p)) + '%' }} />
@@ -136,6 +175,7 @@ export default function WeatherView({ onBack }) {
           ))}
         </div>
         <span className="wtodo-foot">A new warning also shows in Today's Heads-up, and can start an automation.</span>
+        {short ? <span className="wtodo-foot wwx-source">{source}</span> : null}
       </aside>
       {day ? <DaySheet place={e.name} attrs={a} date={day} host={root.current && root.current.closest('.wall')} onClose={() => setDay(null)} /> : null}
     </div>

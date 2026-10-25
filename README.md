@@ -1330,6 +1330,13 @@ screen looks the same, with bigger text and buttons to tap. Colours and fonts ar
   there turns the page, so the buttons pick the camera. The dial's page has the name, the reading now,
   what it's set to and the mode buttons beside the dial. The weather shows the next days side by side.
   Every other tile keeps its usual look.
+- **Full screens fit too, with everything they show on a big tablet, rearranged.** The **calendar** has
+  one top row: Back, ‹, the month, ›, Today, then + New event. The month is on the left, and the chosen
+  day's panel is on the right, below that row. The **weather** screen's left column scrolls: now (the
+  condition, *Feels like*, and *H / L* on their own lines), then wind and sunrise / sunset / UV, the next
+  12 hours, and the days. The hours are cells (hour, icon, temperature, rain) that slide sideways. The
+  source note is at the bottom of the Warnings panel. **One camera** has its picture on the left at full
+  height, with the dots under it, and *Recent* on the right, scrolling inside its panel.
 
 **Themes.** Each dashboard has a look, picked in the dashboard editor's side panel → **Theme**:
 - **Midnight** (the default): the deep blue night look the wall has always had.

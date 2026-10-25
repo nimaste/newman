@@ -385,7 +385,7 @@ function WallScreens({ auth, signOut }) {
 
   const full = FULL.includes(parts[0]);
   return (
-    <div className={'wall' + (compact && !full ? ' wall--compact' : '')}>
+    <div className={'wall' + (compact ? ' wall--short' : '') + (compact && !full ? ' wall--compact' : '')}>
       {festive && !compact && xmas.place === 'background' && hasCast(xmas) ? <Backdrop xmas={xmas} dashId={d.id} /> : null}
       {!full ? <TopBar pages={pages} current={page && page.id} tabNames={d && d.tabNames} decor={deco.decor} decorRuler={deco.ruler} decorKey={deco.fit} onDecorRoom={festive && !compact ? setDecorRoom : undefined} onDim={() => setDim(true)} user={auth.user} onSignOut={signOut} skewMin={skew} musicChip={!page || page.id !== home.page} compact={compact} /> : null}
       <NamedHub names={d && d.names}>
