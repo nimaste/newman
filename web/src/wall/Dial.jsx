@@ -4,7 +4,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { stateChoices, stateLabelOf } from '../model.js';
+import { deviceIcon, stateChoices, stateLabelOf } from '../model.js';
+import { Icon } from '../icons.jsx';
 import { formatPropValue } from '../automation.js';
 import { useWallCommand } from './PinPad.jsx';
 
@@ -33,7 +34,7 @@ export function arc(a0, a1) {
   return `M ${p0[0].toFixed(1)} ${p0[1].toFixed(1)} A ${R} ${R} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${p1[0].toFixed(1)} ${p1[1].toFixed(1)}`;
 }
 
-export default function Dial({ entity: e, kind, config, compact, tall }) {
+export default function Dial({ entity: e, kind, config, compact, tall, side }) {
   const { run } = useWallCommand();
   const cmd = ((kind && kind.commands) || []).find((c) => c.id === config.command) || null;
   const modeCmd = config.modeCommand ? ((kind && kind.commands) || []).find((c) => c.id === config.modeCommand) : null;
@@ -144,7 +145,7 @@ export default function Dial({ entity: e, kind, config, compact, tall }) {
           {word}
         </span>
         <span className="wt-dial-value">{off || typeof shown !== 'number' ? '—' : `${shown.toFixed(decimals)}${unit.startsWith('°') ? '°' : ''}`}</span>
-        {nowLine ? <span className="wt-dial-now">{nowLine}</span> : null}
+        {nowLine && !side ? <span className="wt-dial-now">{nowLine}</span> : null}
       </div>
     </div>
   );
@@ -162,6 +163,41 @@ export default function Dial({ entity: e, kind, config, compact, tall }) {
         </button>
       );
     });
+
+  if (side) {
+    // The compact wall's page of its own: the name, now, what it's set to and the modes beside the dial.
+    const value = off || typeof shown !== 'number' ? null : `${shown.toFixed(decimals)} ${unit}`.trim();
+    const doing = activity && activity.value ? formatPropValue(activity, activity.value).toLowerCase() : '';
+    return (
+      <div className="wt-dial wt-dial--side">
+        <div className="wt-dial-info">
+          <div className="wt-tile-head">
+            <span className="wc-head">
+              <Icon name={deviceIcon(e, kind)} size={22} />
+              {e.name}
+            </span>
+          </div>
+          {nowLine ? <span className="wt-dial-line wt-dim-text">{nowLine}</span> : null}
+          <span className="wt-dial-line">
+            {word}
+            {value ? (
+              <>
+                {' '}
+                <b>{value}</b>
+              </>
+            ) : null}
+            {doing ? ` · ${doing}` : ''}
+          </span>
+          {modes.length ? (
+            <div className="wt-modes" role="group" aria-label={modeCmd.label}>
+              {modeButtons(false)}
+            </div>
+          ) : null}
+        </div>
+        <div className="wt-dial-box">{ring}</div>
+      </div>
+    );
+  }
 
   if (compact) {
     // The small Overview dial: the mode label opens a sheet with the modes and −/+; a tall tile

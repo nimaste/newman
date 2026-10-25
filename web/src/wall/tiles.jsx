@@ -28,6 +28,7 @@ import { roomOf } from '../model.js';
 import { lookOf, useWidth } from './look.js';
 import { useMoreAfter } from './fade.js';
 import { useTileActions } from './tileActions.js';
+import { useCompactWall } from './compactContext.js';
 
 
 function useEnts(ids) {
@@ -74,6 +75,8 @@ function eatNextClick() {
 }
 
 function CameraTile({ tile }) {
+  // The compact wall's pages swipe sideways: there the picture leaves swipes to them (the buttons pick a camera).
+  const swipes = !useCompactWall();
   const cams = useEnts(tile.config.entities);
   const [pick, setPick] = useState(null);
   const cam = cams.find((c) => c.id === pick) || cams[0];
@@ -105,9 +108,9 @@ function CameraTile({ tile }) {
         href={'#/wall/camera/' + enc(cam.id)}
         aria-label={`Watch ${cam.name} full screen`}
         draggable={false}
-        onPointerDown={(ev) => (swipe.current = { x: ev.clientX, y: ev.clientY })}
-        onPointerUp={swipeEnd}
-        onPointerCancel={() => (swipe.current = null)}
+        onPointerDown={swipes ? (ev) => (swipe.current = { x: ev.clientX, y: ev.clientY }) : undefined}
+        onPointerUp={swipes ? swipeEnd : undefined}
+        onPointerCancel={swipes ? () => (swipe.current = null) : undefined}
       >
         <LiveVideo key={cam.id} entity={cam} quality="sub" stillHeight={480} showNote={false} className="wt-cam-video" />
         <span className="wt-cam-name">
@@ -186,7 +189,7 @@ function AlertsTile({ tile }) {
 /* ---------------- devices ---------------- */
 
 /** The action a list row offers: a command that isn't the current state (Lock/Unlock, Open/Close). */
-function nextAction(e, kind) {
+export function nextAction(e, kind) {
   const plain = plainCommands(kind);
   // A device with a single action (a button's "Press") just offers it.
   return plain.find((c) => c.confirmsTo && c.confirmsTo !== e.state) || (plain.length === 1 ? plain[0] : null);
@@ -530,6 +533,7 @@ export function Tile({ tile, phone, dash }) {
   const sec = useRef(null);
   const width = useWidth(sec);
   const acts = useTileActions(tile, phone ? null : dash);
+  const wc = useCompactWall();
   if (phone) {
     return (
       <section
@@ -551,7 +555,8 @@ export function Tile({ tile, phone, dash }) {
       break;
     case 'dial': {
       const e = entitiesById[tile.config.entity];
-      body = <Dial entity={e} kind={e && kindsById[e.kind]} config={tile.config} compact={tile.w < 8 || tile.h < 8} tall={tile.h >= 8} />;
+      // The compact wall gives it a page of its own: the text and modes beside the dial.
+      body = wc ? <Dial entity={e} kind={e && kindsById[e.kind]} config={tile.config} side /> : <Dial entity={e} kind={e && kindsById[e.kind]} config={tile.config} compact={tile.w < 8 || tile.h < 8} tall={tile.h >= 8} />;
       break;
     }
     case 'devices':

@@ -42,19 +42,21 @@ PICTURE_ID = re.compile(r"^[0-9a-f]{16}$")
 # "fit" = every name when they all fit, otherwise the same as "current" (web/src/wall/tabfit.js).
 TAB_NAMES = ("current", "fit")
 
+# `ownPage`: the tile needs more than half of a short screen (the wall's compact layout, web/src/wall/
+# compact.js) - it gets a swipe page to itself there instead of sharing one.
 # Settings field types: "entities"/"entity" (devices matching `filter`), "command" (a command of the
 # chosen device, matching `filter`), "property" (one of its reported values), "number", "text", "select",
 # "people" (person ids from the household).
 TILE_TYPES: list[dict[str, Any]] = [
     {"type": "camera", "name": "Camera", "description": "Live video from your favourite cameras; tap for full screen.",
-     "min": [3, 3], "default": [5, 4],
+     "min": [3, 3], "default": [5, 4], "ownPage": True,
      "fields": [{"key": "entities", "label": "Cameras", "type": "entities", "filter": "picture", "required": True}]},
     {"type": "alerts", "name": "Recent alerts", "description": "The latest camera alerts; tap one to play it.",
      "min": [3, 2], "default": [5, 3],
      "fields": [{"key": "entities", "label": "Only these cameras (empty = all)", "type": "entities", "filter": "alerts"},
                 {"key": "limit", "label": "How many", "type": "number", "default": 4, "min": 1, "max": 12}]},
     {"type": "dial", "name": "Dial", "description": "A round dial for anything you set to a number - like a thermostat.",
-     "min": [3, 3], "default": [4, 4],
+     "min": [3, 3], "default": [4, 4], "ownPage": True,
      "fields": [{"key": "entity", "label": "Device", "type": "entity", "filter": "number-command", "required": True},
                 {"key": "command", "label": "What the dial sets", "type": "command", "filter": "number", "required": True},
                 {"key": "modeCommand", "label": "Mode buttons", "type": "command", "filter": "state"}]},

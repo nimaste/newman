@@ -1309,6 +1309,28 @@ keep their room first, then the music chip and dim button; the tabs sit at the c
 there's space on both sides, otherwise right after the clock, and with more pages than fit even as icons
 the row scrolls sideways (the current tab kept in view) - none is ever cut off.
 
+**Short screens (the compact layout).** On a screen less than 600 px tall (CSS pixels: an Echo Show 5's
+960 × 480 display is about 788 × 394 of them; a phone held sideways is short too) the wall switches by itself to a
+compact layout; bigger tablets never change. Everything is sized to the screen's height, so every short
+screen looks the same, with bigger text and buttons to tap. Colours and fonts are the dashboard's theme.
+- **The top bar is one line**: the clock (a tap opens Alarms & timers, a hold shows who is signed in, as
+  usual), every tab as its icon, one **alerts chip** and the dim button. The chip shows the first
+  problem and how many there are: devices that aren't secure, a weather warning, devices that need
+  attention, and the tablet's clock being off. These are the same things the home page's chips show, in the same order. A tap
+  lists them all with the house mode, each with its own button where it has one (*Lock*, *Close*…); a
+  device that needs attention opens its sheet, and a weather warning opens its text. With no problems
+  there is no chip. The weather and now-playing chips and the Christmas greeting and characters are left
+  out; automation alerts still appear over the wall as usual.
+- **The body is pages you swipe sideways**, with dots under them. The current tab's tiles come in
+  reading order (row by row on the dashboard's grid, then left to right), two to a page. A tile type that
+  needs the room gets a page to itself. That is the `ownPage` flag in the tile catalog
+  (`GET /api/dashboards/tiles`): the camera and the dial. A tile left without a partner fills its page's width, and a list too long for
+  its card scrolls inside it. Swiping stays within the tab; the tabs change pages.
+- On a camera page the picture fills the card, with the camera buttons and *All cameras* over it. A swipe
+  there turns the page, so the buttons pick the camera. The dial's page has the name, the reading now,
+  what it's set to and the mode buttons beside the dial. The weather shows the next days side by side.
+  Every other tile keeps its usual look.
+
 **Themes.** Each dashboard has a look, picked in the dashboard editor's side panel → **Theme**:
 - **Midnight** (the default): the deep blue night look the wall has always had.
 - **Glass**: light, iOS-style frosted panels over a soft colour wallpaper, rounder corners, Apple's

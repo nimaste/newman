@@ -84,6 +84,8 @@ class CatalogTests(unittest.TestCase):
             self.assertTrue(t["min"][0] <= t["default"][0] <= D.GRID_COLS and t["min"][1] <= t["default"][1] <= D.GRID_ROWS)
         self.assertEqual({t["type"] for t in D.TILE_TYPES if t.get("lists")}, {"climate", "devices", "values"})
         self.assertNotIn("own", [o["value"] for o in D.HOLD["options"]])
+        # The wall's compact layout gives these a swipe page of their own (web/src/wall/compact.js).
+        self.assertEqual({t["type"] for t in D.TILE_TYPES if t.get("ownPage")}, {"camera", "dial"})
 
     def test_starter_fits_the_grid(self):
         from test_dashboard_home import Hub

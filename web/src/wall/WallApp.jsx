@@ -36,6 +36,8 @@ import { currentHome, homeOf, useHomeSchedule } from './home.js';
 import { WallTime, wallDay } from './clock.jsx';
 import WallTabs from './tabs.jsx';
 import { Backdrop, DimGreeting, Snow, hasCast, useDecor, useWallTheme } from './Theme.jsx';
+import { CompactAlerts, CompactPages, CompactTabs, useCompactScreen } from './Compact.jsx';
+import './compact.css';
 
 export function isWallUrl() {
   const path = window.location.pathname.replace(/\/+$/, '');
@@ -151,7 +153,7 @@ function useNow() {
   return now;
 }
 
-function TopBar({ pages, current, tabNames, decor = null, decorRuler = null, decorKey = '', onDecorRoom, onDim, user, onSignOut, skewMin, musicChip }) {
+function TopBar({ pages, current, tabNames, decor = null, decorRuler = null, decorKey = '', onDecorRoom, onDim, user, onSignOut, skewMin, musicChip, compact }) {
   const now = useNow();
   const [menu, setMenu] = useState(false);
   const press = useRef(null);
@@ -175,15 +177,21 @@ function TopBar({ pages, current, tabNames, decor = null, decorRuler = null, dec
     if (held.current || menu || (e.target.closest && e.target.closest('.wt-menu'))) return;
     window.dispatchEvent(new Event('newman-alarms'));
   };
-  return (
-    <header className="wt-top">
-      <div className="wt-clock" onPointerDown={down} onPointerUp={up} onPointerLeave={up} onClick={tap} onContextMenu={(e) => e.preventDefault()}>
-        <WallTime date={now} />
+  const dimButton = (
+    <button type="button" className="wt-round" aria-label="Dim the screen" onClick={onDim}>
+      <Icon name="moon" size={22} />
+    </button>
+  );
+  const clock = (
+    <div className="wt-clock" onPointerDown={down} onPointerUp={up} onPointerLeave={up} onClick={tap} onContextMenu={(e) => e.preventDefault()}>
+      <WallTime date={now} />
+      {compact ? null : (
         <div className="wt-date">
           <span>{day}</span>
           <span className="wt-dim-text">{date}</span>
         </div>
-        {menu ? (
+      )}
+      {menu ? (
           <div className="wt-menu" role="dialog" aria-label="Signed in">
             <span>
               Signed in as <b>{user.name}</b>
@@ -201,7 +209,22 @@ function TopBar({ pages, current, tabNames, decor = null, decorRuler = null, dec
             </button>
           </div>
         ) : null}
-      </div>
+    </div>
+  );
+  if (compact) {
+    // The compact layout's one line (Compact.jsx): the clock note joins the alerts list.
+    return (
+      <header className="wt-top wc-top">
+        {clock}
+        <CompactTabs pages={pages} current={current} />
+        <CompactAlerts skewMin={skewMin} />
+        {dimButton}
+      </header>
+    );
+  }
+  return (
+    <header className="wt-top">
+      {clock}
       {/* Width goes to the clock, then the right side, then the tabs (tabfit.js). A decoration for
           the bar goes here, as <div className="wt-decor">: it only gets what the tabs leave over. */}
       {decor ? <div className="wt-decor">{decor}</div> : null}
@@ -210,9 +233,7 @@ function TopBar({ pages, current, tabNames, decor = null, decorRuler = null, dec
       <div className="wt-top-right">
         {musicChip ? <NowPlayingChip className="mu-chip--top" /> : null}
         {skewMin ? <span className="wt-skew">Tablet clock is {skewMin} min off</span> : null}
-        <button type="button" className="wt-round" aria-label="Dim the screen" onClick={onDim}>
-          <Icon name="moon" size={22} />
-        </button>
+        {dimButton}
       </div>
     </header>
   );
@@ -298,7 +319,9 @@ function WallScreens({ auth, signOut }) {
   const { theme, xmas } = useWallTheme(d);
   const festive = theme === 'christmas';
   const [decorRoom, setDecorRoom] = useState(null);
-  const deco = useDecor(xmas, d && d.id, festive, decorRoom);
+  // Short screens (an Echo Show 5): the compact layout (Compact.jsx) - no Christmas decoration in its bar.
+  const compact = useCompactScreen();
+  const deco = useDecor(xmas, d && d.id, festive && !compact, decorRoom);
   const FULL = ['camera', 'cameras', 'calendar', 'todo', 'weather'];
   const pageId = parts[0] && !FULL.includes(parts[0]) ? parts[0] : null;
   // Where the wall rests: the dashboard's home page (Today in the mornings, if it's set up that way).
@@ -338,6 +361,8 @@ function WallScreens({ auth, signOut }) {
     body = <div className="wt-loading">{dash.error ? "Couldn't load this tablet's dashboard. Retrying…" : 'Loading…'}</div>;
   } else if (!page) {
     body = <div className="wt-loading">This dashboard has no pages yet.</div>;
+  } else if (compact) {
+    body = <CompactPages page={page} dashId={d.id} />;
   } else {
     body = (
       <>
@@ -360,9 +385,9 @@ function WallScreens({ auth, signOut }) {
 
   const full = FULL.includes(parts[0]);
   return (
-    <div className="wall">
-      {festive && xmas.place === 'background' && hasCast(xmas) ? <Backdrop xmas={xmas} dashId={d.id} /> : null}
-      {!full ? <TopBar pages={pages} current={page && page.id} tabNames={d && d.tabNames} decor={deco.decor} decorRuler={deco.ruler} decorKey={deco.fit} onDecorRoom={festive ? setDecorRoom : undefined} onDim={() => setDim(true)} user={auth.user} onSignOut={signOut} skewMin={skew} musicChip={!page || page.id !== home.page} /> : null}
+    <div className={'wall' + (compact && !full ? ' wall--compact' : '')}>
+      {festive && !compact && xmas.place === 'background' && hasCast(xmas) ? <Backdrop xmas={xmas} dashId={d.id} /> : null}
+      {!full ? <TopBar pages={pages} current={page && page.id} tabNames={d && d.tabNames} decor={deco.decor} decorRuler={deco.ruler} decorKey={deco.fit} onDecorRoom={festive && !compact ? setDecorRoom : undefined} onDim={() => setDim(true)} user={auth.user} onSignOut={signOut} skewMin={skew} musicChip={!page || page.id !== home.page} compact={compact} /> : null}
       <NamedHub names={d && d.names}>
         {/* Dimmed, only the time shows: the page's tiles (camera pictures, weather, calendar…) stop until it wakes. */}
         {dim ? null : body}

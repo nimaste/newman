@@ -258,6 +258,8 @@ aren't stored; a missing page / screen / automation / device is a 400 ("When tap
 Types with `"lists": true` (climate, devices, values) also have `look` (field type `"look"`): `"auto"`
 (the default: cards when the tile is wide, rows when it's narrow), `"tiles"` or `"list"`; a devices tile's
 `style` follows it (`"list"` / `"tiles"`) for the phone apps.
+Types with `"ownPage": true` (camera, dial) get a swipe page to themselves in the wall's compact layout
+(screens under 600 CSS px tall, like an Echo Show 5); the others go two to a page.
 `POST /api/dashboards/{id}/tiles/{tileId}/run` `{"which": "tap" | "hold"}` → the automation run - only
 when that tile's `tap` / `hold` is `{"do": "automation"}`; the dashboard's owner (a wall tablet too),
 the tablet it's chosen for, or an admin (404 otherwise).

@@ -6,9 +6,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
-import { entityLabel } from '../model.js';
+import { deviceIcon, entityLabel } from '../model.js';
 import { WeatherIcon } from './WeatherIcon.jsx';
 import { DaySheet } from './WeatherDay.jsx';
+import { useCompactWall } from './compactContext.js';
+import { useWidth } from './look.js';
+import { UNITS } from './compact.js';
 
 export { WeatherIcon };
 
@@ -109,7 +112,7 @@ function AlertSheet({ place, alerts, onClose, host }) {
 }
 
 /** A coloured bar (or chip) naming the worst alert; tap for the full text. */
-function AlertButton({ place, alerts, className, children }) {
+export function AlertButton({ place, alerts, className, children }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const top = worst(alerts);
@@ -216,7 +219,35 @@ function rainLine(a, now) {
   return `${what} ${Math.round(best.precipChance)}% ${when}`;
 }
 
+/** The compact wall's weather: the next days (or hours) side by side, as many as fit across. */
+function WcAcross({ forecast, hourly, hours, now, win, onOpen }) {
+  const ref = useRef(null);
+  const width = useWidth(ref);
+  const unit = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight / UNITS : 1;
+  const count = width ? Math.max(3, Math.min(7, Math.floor(width / (96 * unit)))) : 4;
+  const today = localDay(new Date(now));
+  return (
+    <div className="wc-days" ref={ref}>
+      {hours ? (
+        <HoursRow hourly={hourly} now={now} count={count + 2} win={win} onOpen={onOpen} />
+      ) : (
+        forecast
+          .filter((d) => d.date > today)
+          .slice(0, count)
+          .map((d) => (
+            <button key={d.date} type="button" className="wc-day" onClick={() => onOpen(d.date)} aria-label={`${d.day}: ${deg(d.high)} / ${deg(d.low)}, details`}>
+              <span className="wx-dim">{d.day}</span>
+              <b>{deg(d.high)}</b>
+              <span className="wx-dim">{deg(d.low)}</span>
+            </button>
+          ))
+      )}
+    </div>
+  );
+}
+
 export function WeatherTile({ tile }) {
+  const wc = useCompactWall();
   const { entities, entitiesById, kindsById } = useHub();
   const now = useNow();
   const [sheet, setSheet] = useState(null); // { date, hour } of the open day sheet
@@ -276,6 +307,31 @@ export function WeatherTile({ tile }) {
           <span className="wx-dim">{alerts.length ? (alerts[0].name || 'Weather warning') : rainLine(a, now) || `Feels like ${deg(a.feelsLike)}`}</span>
         </span>
       </a>
+    );
+  }
+
+  if (wc) {
+    // The wall's compact layout: the tile's name, now (big), then as many days (or hours) as fit across the bottom.
+    const spec = wc.types.find((t) => t.type === tile.type);
+    return (
+      <div ref={rootRef} className={'wx wx--wc' + (e.available === false ? ' is-stale' : '')} aria-label={`${e.name}: ${deg(a.temperature)} ${label}`}>
+        <div className="wt-tile-head">
+          <span className="wc-head">
+            <Icon name={deviceIcon(e, kind)} size={22} />
+            {spec ? spec.name : e.name}
+          </span>
+        </div>
+        {banner}
+        <div className="wx-now">
+          {nowButton(84, false)}
+          <span className="wx-sub">
+            <span>{label}</span>
+            <span className="wx-dim">{hl}</span>
+          </span>
+        </div>
+        <WcAcross forecast={forecast} hourly={hourly} hours={hours} now={now} win={win} onOpen={open} />
+        {daySheet}
+      </div>
     );
   }
 
@@ -476,12 +532,19 @@ export function WeatherChip() {
 }
 
 /** The active weather warning (tap for its text). */
-export function WeatherWarningChip() {
+/** The active weather warning: { e (the place), warnings, top (the worst) }, or null. */
+export function useWeatherWarning() {
   const { entities } = useHub();
   const e = (entities || []).find((x) => hasForecast(x) && Array.isArray(x.attrs.alerts) && x.attrs.alerts.some((a) => a.type === 'warning'));
   if (!e) return null;
   const warnings = e.attrs.alerts.filter((a) => a.type === 'warning');
-  const top = worst(warnings);
+  return { e, warnings, top: worst(warnings) };
+}
+
+export function WeatherWarningChip() {
+  const w = useWeatherWarning();
+  if (!w) return null;
+  const { e, warnings, top } = w;
   return (
     <AlertButton place={e.name} alerts={warnings} className="wt-chip wx-chip-alert">
       <Icon name="alert" size={18} strokeWidth={2.2} />
