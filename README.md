@@ -384,7 +384,7 @@ gets no calendar device.
 
 Every calendar shows as a calendar device, in its own colour, on the calendar tile, the Today page and in
 automations ("event starts"), the same as iCal-link calendars. Calendars the account may only view show
-without **Edit**, and with only those, the calendar screen has no **+ New event**.
+without **Edit**, and with only those, the calendar screen's **+ New ▾** has no *Event*.
 
 **Changes show at once.** Put Newman's address (e.g. `10.1.1.2:8093`) in GCloud's *Admin → Calendars →
 Newman address*, and an event or task added on a phone is on the wall within seconds. Any other server can do the
@@ -396,7 +396,7 @@ every*, under *More settings*).
 - On the calendar screen, tap an event for its card: when, where, notes, and a QR code for its link (scan
   it with your phone). **Edit** opens the form filled in; for a repeating event it asks *This event* or
   *All events*. Events of past and later months open and edit the same way.
-- **+ New event** on the calendar screen adds an event, starting on the day picked there: what (needed),
+- **+ New ▾ › Event** on the calendar screen adds an event, starting on the day picked there: what (needed),
   which calendar, all day, starts and ends (a big month calendar for dates; hour and minute wheels with AM / PM for times), and repeats (including
   *Custom…*: every few days, weeks, months or years, on chosen days, until a date or a number of times).
   Moving the start moves the end with it; an end before the start can't be saved. Save closes the form and
@@ -1260,6 +1260,15 @@ wall and on every phone.
 - **Tomorrow** hides a task from To do until the next day, on Newman only (GCloud doesn't change).
 - **+ Add** on a phone's Today makes a new task in GCloud: what needs doing, when it's due, how often it
   comes back, who it belongs to, and which calendar (those Newman may write).
+- **On the wall's calendar** tasks show on their day with a tick box in the calendar's colour (coral when
+  late; ticked, faded and struck through when done - a repeating task is ticked on each day it was done),
+  and in the day's list with **Done**. **+ New ▾** offers *Event* or *Task*. New task (and a task's
+  **Edit**) has what, calendar, due (and *At a set time*), repeats (Never, Every day / week / month / 3
+  months / 6 months / year, Custom… - every so many days, weeks, months or years, ending on a day or after
+  a number of times), counted from, belongs to, *Ask who did it*, coming up and the evening-before heads-up,
+  in GCloud's own words. Tapping a task opens its card: belongs to, repeats, last done, notes, *Done before*,
+  and Done (asking who when it says so), Edit, Delete (asks first), Close. On an Echo Show 5 the forms and
+  the card fill the screen, in two columns.
 
 Changes made in GCloud show within seconds when GCloud has Newman's address (see the Calendar server
 section), else at the connection's next check.
@@ -1294,8 +1303,8 @@ same). Every tile also has, in the dashboard editor:
 tapping anywhere on it opens the calendar screen with the tile's calendars. That screen is a month,
 Sunday to Saturday (days of the months either side dimmed; tap one to go there): **‹ ›** or a swipe go a
 month back or on — past months too — **Today** comes back, and the chosen day's events are on the right
-(*This day* / *Everything* coming up). **+ New event** (calendars Newman may change) adds one on the chosen
-day. Months outside what a calendar keeps ready (yesterday to *days ahead*) are fetched from the calendar
+(*This day* / *Everything* coming up), tasks with them. **+ New ▾** (calendars Newman may change) adds an
+event or a task on the chosen day. Months outside what a calendar keeps ready (yesterday to *days ahead*) are fetched from the calendar
 when shown (`GET /api/calendars/{id}/events`, see API.md) — a calendar server, or an iCal link's feed.
 
 **Camera replays.** Until an alert's clip can play, its snapshot shows under a veil with *Loading the
@@ -1356,8 +1365,9 @@ screen looks the same, with bigger text and buttons to tap. Colours and fonts ar
   what it's set to and the mode buttons beside the dial. The weather shows the next days side by side.
   Every other tile keeps its usual look.
 - **Full screens fit too, with everything they show on a big tablet, rearranged.** The **calendar** has
-  one top row: Back, ‹, the month, ›, Today, then + New event. The month is on the left, and the chosen
-  day's panel is on the right, below that row. The **weather** screen's left column scrolls: now (the
+  one top row: Back, ‹, the month, ›, Today, then + New ▾. The month is on the left (one line a day, then
+  +N), and the chosen day's panel is on the right, below that row. New event, New task and a task's card fill
+  the screen, two columns, without scrolling. The **weather** screen's left column scrolls: now (the
   condition, *Feels like*, and *H / L* on their own lines), then wind and sunrise / sunset / UV, the next
   12 hours, and the days. The hours are cells (hour, icon, temperature, rain) that slide sideways. The
   source note is at the bottom of the Warnings panel. **One camera** has its picture on the left at full

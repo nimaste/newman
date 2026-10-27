@@ -907,3 +907,234 @@
 .wall--short .lv--wall .lv-item-what {
   font-size: calc(18 * var(--u));
 }
+/* ---- calendar tasks and + New ▾ (Show5Calendar board) ---- */
+.wall--short .wcal--month .wcal-caret {
+  font-size: calc(21 * var(--u));
+}
+.wall--short .wcal--month .wcal-menu {
+  top: calc(100% + 8 * var(--u));
+  width: calc(240 * var(--u));
+  padding: calc(8 * var(--u));
+  gap: calc(4 * var(--u));
+  border-radius: calc(22 * var(--u));
+}
+.wall--short .wcal--month .wcal-menu button {
+  height: calc(64 * var(--u));
+  border-radius: calc(16 * var(--u));
+  gap: calc(14 * var(--u));
+  padding: 0 calc(16 * var(--u));
+  font-size: calc(22 * var(--u));
+}
+.wall--short .wcal--month .wcal-menu svg {
+  width: calc(24 * var(--u));
+  height: calc(24 * var(--u));
+}
+.wall--short .wcal--month .wcal-line .tk-box {
+  width: calc(13 * var(--u));
+  height: calc(13 * var(--u));
+  font-size: calc(9 * var(--u));
+}
+.wall--short .wcal--month .tk-box--row {
+  width: calc(26 * var(--u));
+  height: calc(26 * var(--u));
+  border-width: calc(3 * var(--u));
+  border-radius: calc(7 * var(--u));
+  font-size: calc(17 * var(--u));
+}
+.wall--short .wcal--month .wcal-task-done {
+  height: calc(52 * var(--u));
+  min-width: calc(76 * var(--u));
+  border-radius: calc(14 * var(--u));
+  font-size: calc(18 * var(--u));
+}
+
+/* ---- the forms and the task card fill a short screen (Show5NewTask / Show5TaskCard; New event too) ---- */
+.ce-portal--short {
+  --u: calc(100vh / 480);
+}
+.ce-portal--short .tk-full {
+  background: #141d3b;
+}
+.ce-portal--short .tk-full > .ce-form {
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  padding: calc(18 * var(--u)) calc(22 * var(--u));
+  gap: calc(14 * var(--u));
+  overflow: hidden;
+}
+.ce-portal--short .tk-form--short .ce-form-head {
+  gap: calc(12 * var(--u));
+}
+.ce-portal--short .tk-form--short .ce-form-title {
+  font-size: calc(26 * var(--u));
+}
+.ce-portal--short .tk-full .ce-btn {
+  height: calc(52 * var(--u));
+  padding: 0 calc(24 * var(--u));
+  border-radius: calc(26 * var(--u));
+  font-size: calc(19 * var(--u));
+}
+.ce-portal--short .tk-cols {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(12 * var(--u)) calc(22 * var(--u));
+  align-content: start;
+}
+.ce-portal--short .tk-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(5 * var(--u));
+}
+.ce-portal--short .tk-full .ce-label {
+  font-size: calc(14 * var(--u));
+}
+.ce-portal--short .tk-form--short :is(.ce-input, .ce-pick) {
+  height: calc(52 * var(--u));
+  min-width: 0;
+  padding: 0 calc(16 * var(--u));
+  border-radius: calc(14 * var(--u));
+  font-size: calc(19 * var(--u));
+}
+.ce-portal--short .tk-form--short .ce-pick {
+  padding: 0 calc(10 * var(--u));
+}
+.ce-portal--short .tk-form--short .tk-row {
+  gap: calc(10 * var(--u));
+}
+.ce-portal--short .tk-form.tk-form--short .tk-row > .ce-pick.tk-date,
+.ce-portal--short .tk-form.tk-form--short .tk-row > .ce-select {
+  flex: none;
+  width: calc(190 * var(--u));
+}
+.ce-portal--short .tk-form.tk-form--short .tk-row > .ce-pick.tk-date:has(+ .tk-time) {
+  width: calc(150 * var(--u));
+}
+.ce-portal--short .tk-form.tk-form--short .tk-row > .tk-time {
+  flex: none;
+  width: calc(112 * var(--u));
+}
+.ce-portal--short .tk-form--short .tk-check {
+  gap: calc(10 * var(--u));
+  padding: 0;
+  font-size: calc(18 * var(--u));
+}
+.ce-portal--short .tk-form--short .tk-check--box {
+  height: calc(52 * var(--u));
+}
+.ce-portal--short .tk-form--short .tk-check input {
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+}
+.ce-portal--short .tk-form--short .ce-bad {
+  font-size: calc(17 * var(--u));
+}
+.ce-portal--short .tk-full > .ce-card {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  padding: calc(20 * var(--u)) calc(22 * var(--u));
+  gap: calc(22 * var(--u));
+  overflow: hidden;
+}
+.ce-portal--short .tk-card .ce-card-main {
+  gap: calc(16 * var(--u));
+}
+.ce-portal--short .tk-card .ce-card-head {
+  gap: calc(14 * var(--u));
+}
+.ce-portal--short .tk-card .tk-box--card {
+  width: calc(32 * var(--u));
+  height: calc(32 * var(--u));
+  margin-top: calc(3 * var(--u));
+  border-width: calc(3 * var(--u));
+  border-radius: calc(8 * var(--u));
+  font-size: calc(20 * var(--u));
+}
+.ce-portal--short .tk-card .ce-card-heading {
+  gap: calc(3 * var(--u));
+}
+.ce-portal--short .tk-card .ce-card-title {
+  font-size: calc(30 * var(--u));
+}
+.ce-portal--short .tk-card .ce-card-when {
+  font-size: calc(19 * var(--u));
+}
+.ce-portal--short .tk-card .tk-facts {
+  gap: calc(14 * var(--u)) calc(20 * var(--u));
+}
+.ce-portal--short .tk-card .ce-field {
+  gap: calc(3 * var(--u));
+}
+.ce-portal--short .tk-card .ce-value {
+  font-size: calc(19 * var(--u));
+}
+.ce-portal--short .tk-card .ce-notes {
+  font-size: calc(18 * var(--u));
+  line-height: 1.4;
+}
+.ce-portal--short .tk-card .ce-card-btns {
+  margin-top: auto;
+  gap: calc(10 * var(--u));
+}
+.ce-portal--short .tk-card .ce-btn {
+  height: calc(56 * var(--u));
+  padding: 0 calc(22 * var(--u));
+  border-radius: calc(28 * var(--u));
+}
+.ce-portal--short .tk-card .ce-btn.is-primary.tk-done {
+  padding: 0 calc(30 * var(--u));
+  font-size: calc(20 * var(--u));
+}
+.ce-portal--short .tk-card .tk-hist {
+  width: calc(240 * var(--u));
+  padding: calc(18 * var(--u));
+  gap: calc(12 * var(--u));
+  border-radius: calc(22 * var(--u));
+}
+.ce-portal--short .tk-card .tk-hist-row {
+  font-size: calc(18 * var(--u));
+}
+.ce-portal--short .tk-who {
+  gap: calc(10 * var(--u));
+  padding: calc(14 * var(--u));
+  border-radius: calc(18 * var(--u));
+}
+.ce-portal--short .tk-who-q {
+  font-size: calc(20 * var(--u));
+}
+.ce-portal--short .tk-who-grid {
+  gap: calc(10 * var(--u)) calc(20 * var(--u));
+}
+.ce-portal--short .tk-person {
+  gap: calc(5 * var(--u));
+  font-size: calc(15 * var(--u));
+}
+.ce-portal--short .tk-circle {
+  width: calc(56 * var(--u));
+  height: calc(56 * var(--u));
+  font-size: calc(22 * var(--u));
+}
+.ce-portal--short .tk-who-btns {
+  gap: calc(10 * var(--u));
+}
+/* One line per day here: no "Today" / "Oct" beside the number (Show5Calendar board), and a smaller +N. */
+.wall--short .wcal--month .wcal-sub {
+  display: none;
+}
+.wall--short .wcal--month .wcal-day.has-more .wcal-num {
+  max-width: none;
+}
+.wall--short .wcal--month .wcal-more {
+  right: calc(4 * var(--u));
+  top: calc(4 * var(--u));
+  min-width: calc(20 * var(--u));
+  height: calc(20 * var(--u));
+  padding: 0 calc(5 * var(--u));
+  font-size: calc(13 * var(--u));
+}

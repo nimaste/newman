@@ -16,6 +16,7 @@ import { useLive } from '../live.js';
 import { QrCode } from '../components/ConnectDevice.jsx';
 import { playSound, unlockAudioOnFirstTouch } from './sounds.js';
 import { WEEKDAYS, customOf, customRule, dateKey, describeCustom, presetOf, presets, shortDate, shortWords } from './rrule.js';
+import { TaskCard, TaskForm } from './CalendarTasks.jsx';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const ITEM = 88; // a wheel row
@@ -56,16 +57,19 @@ function whenLong(ev) {
   return `${day(s)} · ${clock(s)} – ${clock(e)}`;
 }
 
-/** The overlays a calendar tile (or the full calendar) opens: {openEvent(ev), newEvent(), ui}. */
+/** The overlays a calendar tile (or the full calendar) opens: {openEvent(ev), newEvent(), openTask(task,
+ * ctx), newTask(day, ctx), ui}. `ctx` for tasks: {calendars, people, today, onChanged} (useTasks). On a short
+ * screen (an Echo Show 5) the forms and the task card fill the screen. */
 export function useCalendarSheets() {
   const [sheet, setSheet] = useState(null);
+  const short = typeof document !== 'undefined' && !!document.querySelector('.wall.wall--short');
   // React passes clicks inside a portal up to the tile that opened it (whose own tap opens the calendar
   // screen): keep them in here.
   const stop = (e) => e.stopPropagation();
   const ui = sheet
     ? createPortal(
-        <div className="ce-portal" onClick={stop} onPointerDown={stop} onPointerUp={stop} onKeyDown={stop}>
-          <Sheets sheet={sheet} setSheet={setSheet} />
+        <div className={'ce-portal' + (short ? ' ce-portal--short' : '')} onClick={stop} onPointerDown={stop} onPointerUp={stop} onKeyDown={stop}>
+          <Sheets sheet={sheet} setSheet={setSheet} short={short} />
         </div>,
         document.body,
       )
@@ -73,12 +77,33 @@ export function useCalendarSheets() {
   return {
     openEvent: (ev) => setSheet({ kind: 'event', ev }),
     newEvent: (day) => setSheet({ kind: 'form', day: day instanceof Date ? day : null }), // day: the one it starts on
+    openTask: (task, ctx, asking = false) => setSheet({ kind: 'task', task, ctx, asking }),
+    newTask: (day, ctx) => setSheet({ kind: 'taskForm', day, ctx }),
     ui,
   };
 }
 
-function Sheets({ sheet, setSheet }) {
+function Sheets({ sheet, setSheet, short }) {
   const close = () => setSheet(null);
+  if (sheet.kind === 'task') {
+    const { ctx } = sheet;
+    return (
+      <TaskCard
+        task={sheet.task}
+        people={ctx.people}
+        today={ctx.today}
+        short={short}
+        asking={sheet.asking}
+        onClose={close}
+        onChanged={ctx.onChanged}
+        onEdit={() => setSheet({ kind: 'taskForm', task: sheet.task, ctx })}
+      />
+    );
+  }
+  if (sheet.kind === 'taskForm') {
+    const { ctx } = sheet;
+    return <TaskForm task={sheet.task} day={sheet.day} calendars={ctx.calendars} people={ctx.people} short={short} onClose={close} onSaved={ctx.onChanged} />;
+  }
   if (sheet.kind === 'event') {
     return (
       <EventCard
@@ -109,7 +134,7 @@ function Sheets({ sheet, setSheet }) {
       </div>
     );
   }
-  return <EventForm ev={sheet.ev} day={sheet.day} scope={sheet.scope || 'all'} onClose={close} />;
+  return <EventForm ev={sheet.ev} day={sheet.day} scope={sheet.scope || 'all'} short={short} onClose={close} />;
 }
 
 /* ---------------- the card ---------------- */
@@ -177,7 +202,7 @@ function firstStart(day) {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate(), n.getHours(), 0);
 }
 
-export function EventForm({ ev, day, scope, onClose }) {
+export function EventForm({ ev, day, scope, short, onClose }) {
   const { entities } = useHub();
   const cals = writableCalendars(entities);
   const editing = !!(ev && ev.href);
@@ -288,9 +313,50 @@ export function EventForm({ ev, day, scope, onClose }) {
     (cal ? ' · ' + cal.name : '') +
     (rule && scope !== 'this' ? ' · repeats ' + (preset === 'custom' ? shortWords(rule, start) : (choices.find((c) => c.id === preset) || {}).label.toLowerCase()) : '');
 
+  // The pieces the short screen's two columns use (the big tablet's form spells them out below).
+  const repeatSelect = (
+    <select className="ce-input ce-select" value={preset} onChange={(e) => onRepeat(e.target.value)} disabled={!loaded || scope === 'this'} aria-label="Repeats">
+      {choices.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.label}
+        </option>
+      ))}
+      <option value="custom">{preset === 'custom' && rule ? 'Custom: ' + shortWords(rule, start) : 'Custom…'}</option>
+    </select>
+  );
+  const calSelect = (
+    <select className="ce-input ce-select" value={calId} onChange={(e) => setCalId(e.target.value)} disabled={!loaded || scope === 'this'} aria-label="Calendar">
+      {cals.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+  );
+  const startDate = (
+    <button type="button" className="ce-pick tk-date" onClick={() => setPicker('startDate')} disabled={!loaded}>
+      {shortDate(start)}
+    </button>
+  );
+  const startTime = allDay ? null : (
+    <button type="button" className="ce-pick ce-time tk-time" onClick={() => setPicker('startTime')} disabled={!loaded}>
+      {clock(start)}
+    </button>
+  );
+  const endDate = (
+    <button type="button" className={'ce-pick tk-date' + (backwards ? ' is-bad' : '')} onClick={() => setPicker('endDate')} disabled={!loaded}>
+      {shortDate(end)}
+    </button>
+  );
+  const endTime = allDay ? null : (
+    <button type="button" className={'ce-pick ce-time tk-time' + (backwards ? ' is-bad' : '')} onClick={() => setPicker('endTime')} disabled={!loaded}>
+      {clock(end)}
+    </button>
+  );
+
   return (
-    <div className="wt-overlay ce-shade" role="dialog" aria-modal="true" aria-label={editing ? 'Edit event' : 'New event'}>
-      <div className="ce-form">
+    <div className={'wt-overlay ce-shade' + (short ? ' tk-full' : '')} role="dialog" aria-modal="true" aria-label={editing ? 'Edit event' : 'New event'}>
+      <div className={'ce-form' + (short ? ' tk-form--short' : '')}>
         <div className="ce-form-head">
           <span className="ce-form-title">{editing ? 'Edit event' : 'New event'}</span>
           <span className="ce-gap" />
@@ -302,61 +368,101 @@ export function EventForm({ ev, day, scope, onClose }) {
           </button>
         </div>
 
+        {short ? (
+          <div className="tk-cols">
+            <label className="tk-field">
+              <span className="ce-label">WHAT</span>
+              <input className="ce-input ce-what" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What’s happening?" disabled={!loaded} />
+            </label>
+            <label className="tk-field">
+              <span className="ce-label">REPEATS</span>
+              {repeatSelect}
+            </label>
+            <label className="tk-field">
+              <span className="ce-label">CALENDAR</span>
+              {calSelect}
+            </label>
+            <div className="tk-field">
+              <span className="ce-label">ALL DAY</span>
+              <label className="tk-check tk-check--box">
+                <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} disabled={!loaded} />
+                All day
+              </label>
+            </div>
+            <div className="tk-field">
+              <span className="ce-label">STARTS</span>
+              <div className="tk-row">
+                {startDate}
+                {startTime}
+              </div>
+            </div>
+            <div className="tk-field">
+              <span className="ce-label">ENDS</span>
+              <div className="tk-row">
+                {endDate}
+                {endTime}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="ce-top">
-          <label className="ce-col">
-            <span className="ce-label">WHAT</span>
-            <input className="ce-input ce-what" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What’s happening?" disabled={!loaded} />
+            <label className="ce-col">
+              <span className="ce-label">WHAT</span>
+              <input className="ce-input ce-what" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What’s happening?" disabled={!loaded} />
+            </label>
+            <label className="ce-col ce-calcol">
+              <span className="ce-label">CALENDAR</span>
+              <select className="ce-input ce-select" value={calId} onChange={(e) => setCalId(e.target.value)} disabled={!loaded || scope === 'this'}>
+                {cals.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+  
+          <label className="ce-allday">
+            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} disabled={!loaded} />
+            All day
           </label>
-          <label className="ce-col ce-calcol">
-            <span className="ce-label">CALENDAR</span>
-            <select className="ce-input ce-select" value={calId} onChange={(e) => setCalId(e.target.value)} disabled={!loaded || scope === 'this'}>
-              {cals.map((c) => (
+  
+          <div className="ce-grid">
+            <span className="ce-label">STARTS</span>
+            <button type="button" className="ce-pick" onClick={() => setPicker('startDate')} disabled={!loaded}>
+              {shortDate(start)}
+            </button>
+            {allDay ? <span /> : (
+              <button type="button" className="ce-pick ce-time" onClick={() => setPicker('startTime')} disabled={!loaded}>
+                {clock(start)}
+              </button>
+            )}
+            <span className="ce-label">ENDS</span>
+            <button type="button" className={'ce-pick' + (backwards ? ' is-bad' : '')} onClick={() => setPicker('endDate')} disabled={!loaded}>
+              {shortDate(end)}
+            </button>
+            {allDay ? <span /> : (
+              <button type="button" className={'ce-pick ce-time' + (backwards ? ' is-bad' : '')} onClick={() => setPicker('endTime')} disabled={!loaded}>
+                {clock(end)}
+              </button>
+            )}
+            <span className="ce-label">REPEATS</span>
+            <select className="ce-input ce-select ce-repeat" value={preset} onChange={(e) => onRepeat(e.target.value)} disabled={!loaded || scope === 'this'} aria-label="Repeats">
+              {choices.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {c.label}
                 </option>
               ))}
+              <option value="custom">{preset === 'custom' && rule ? 'Custom: ' + shortWords(rule, start) : 'Custom…'}</option>
             </select>
-          </label>
-        </div>
-
-        <label className="ce-allday">
-          <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} disabled={!loaded} />
-          All day
-        </label>
-
-        <div className="ce-grid">
-          <span className="ce-label">STARTS</span>
-          <button type="button" className="ce-pick" onClick={() => setPicker('startDate')} disabled={!loaded}>
-            {shortDate(start)}
-          </button>
-          {allDay ? <span /> : (
-            <button type="button" className="ce-pick ce-time" onClick={() => setPicker('startTime')} disabled={!loaded}>
-              {clock(start)}
-            </button>
-          )}
-          <span className="ce-label">ENDS</span>
-          <button type="button" className={'ce-pick' + (backwards ? ' is-bad' : '')} onClick={() => setPicker('endDate')} disabled={!loaded}>
-            {shortDate(end)}
-          </button>
-          {allDay ? <span /> : (
-            <button type="button" className={'ce-pick ce-time' + (backwards ? ' is-bad' : '')} onClick={() => setPicker('endTime')} disabled={!loaded}>
-              {clock(end)}
-            </button>
-          )}
-          <span className="ce-label">REPEATS</span>
-          <select className="ce-input ce-select ce-repeat" value={preset} onChange={(e) => onRepeat(e.target.value)} disabled={!loaded || scope === 'this'} aria-label="Repeats">
-            {choices.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-            <option value="custom">{preset === 'custom' && rule ? 'Custom: ' + shortWords(rule, start) : 'Custom…'}</option>
-          </select>
-        </div>
+          </div>
+          </>
+        )}
 
         {backwards ? <div className="ce-bad" role="alert">It ends before it starts — pick a later end.</div> : null}
         {tried && noName ? <div className="ce-bad" role="alert">Give it a name first.</div> : null}
-        <div className="ce-summary">{summary}</div>
+        {!short ? <div className="ce-summary">{summary}</div> : null}
       </div>
 
       {picker === 'startDate' || picker === 'endDate' || picker === 'untilDate' ? (
@@ -518,7 +624,9 @@ export function TimePicker({ value, onChange, onDone }) {
   );
 }
 
-export function CustomRepeat({ value: c, onChange, onPickDate, onDone }) {
+/** Custom repeat. `forTask`: GCloud's tasks repeat every N days / weeks / months / years only (no weekdays),
+ * in GCloud's task form's words. */
+export function CustomRepeat({ value: c, forTask, onChange, onPickDate, onDone }) {
   const set = (patch) => onChange({ ...c, ...patch });
   return (
     <div className="ce-layer">
@@ -540,7 +648,7 @@ export function CustomRepeat({ value: c, onChange, onPickDate, onDone }) {
             <option value="years">years</option>
           </select>
         </div>
-        {c.unit === 'weeks' ? (
+        {c.unit === 'weeks' && !forTask ? (
           <div className="ce-cu-days">
             <span className="ce-label">ON</span>
             <div className="ce-cu-dayrow">
@@ -559,7 +667,7 @@ export function CustomRepeat({ value: c, onChange, onPickDate, onDone }) {
           <span className="ce-label ce-cu-ends">ENDS</span>
           <select className="ce-input ce-select" value={c.ends} onChange={(e) => set({ ends: e.target.value, until: c.until || null })} aria-label="Ends">
             <option value="never">Never</option>
-            <option value="date">On a date</option>
+            <option value="date">{forTask ? 'On a day' : 'On a date'}</option>
             <option value="count">After a number of times</option>
           </select>
           {c.ends === 'date' ? (
@@ -579,7 +687,7 @@ export function CustomRepeat({ value: c, onChange, onPickDate, onDone }) {
             </span>
           ) : null}
         </div>
-        <div className="ce-cu-sentence">{describeCustom(c)}</div>
+        <div className="ce-cu-sentence">{describeCustom(forTask ? { ...c, days: [] } : c)}</div>
         <button type="button" className={'ce-btn is-primary ce-done' + (c.ends === 'date' && !c.until ? ' is-off' : '')} onClick={() => !(c.ends === 'date' && !c.until) && onDone()}>
           Done
         </button>

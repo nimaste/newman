@@ -292,8 +292,41 @@ def _escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\r", "").replace("\n", "\\n")
 
 
+RULE_FREQS = ("DAILY", "WEEKLY", "MONTHLY", "YEARLY")
+
+
+def clean_rule(text: str) -> str:
+    """A repeat as GCloud keeps it: FREQ, INTERVAL, then UNTIL or COUNT ("" = doesn't repeat)."""
+    p: dict[str, str] = {}
+    for part in str(text or "").strip().removeprefix("RRULE:").split(";"):
+        k, _, v = part.partition("=")
+        if k and v:
+            p[k.strip().upper()] = v.strip().upper()
+    if not p:
+        return ""
+    if p.get("FREQ") not in RULE_FREQS:
+        raise ValueError("That repeat isn't one GCloud keeps")
+    try:
+        n = int(p.get("INTERVAL") or 1)
+        count = int(p["COUNT"]) if "COUNT" in p else None
+    except ValueError as e:
+        raise ValueError("That repeat isn't one GCloud keeps") from e
+    if not 1 <= n <= 999 or (count is not None and count < 1):
+        raise ValueError("That repeat isn't one GCloud keeps")
+    out = [f"FREQ={p['FREQ']}"] + ([f"INTERVAL={n}"] if n > 1 else [])
+    if p.get("UNTIL"):
+        if not p["UNTIL"][:8].isdigit():
+            raise ValueError("That repeat isn't one GCloud keeps")
+        out.append(f"UNTIL={p['UNTIL'][:8]}")
+    elif count is not None:
+        out.append(f"COUNT={count}")
+    return ";".join(out)
+
+
 def task_fields(data: dict[str, Any]) -> dict[str, Any]:
-    """What a phone's "+ Add" sends → checked: {title, due (date), every (0 = once), unit, owner (username)}."""
+    """A task as the wall's form or a phone's "+ Add" sends it → checked values: {title, due (date),
+    time ("HH:MM" local, or ""), rrule, repeatFrom ("due"|"done"), owner (a GCloud user name), lead (days),
+    eveningBefore, askWho}. A phone sends "every" + "unit" instead of "rrule"."""
     title = str(data.get("title") or "").strip()
     if not title:
         raise ValueError("Say what needs doing first.")
@@ -301,34 +334,94 @@ def task_fields(data: dict[str, Any]) -> dict[str, Any]:
         due = date.fromisoformat(str(data.get("due") or "")[:10])
     except ValueError as e:
         raise ValueError("Pick when it's due.") from e
+    time_ = str(data.get("time") or "").strip()
+    if time_:
+        try:
+            datetime.strptime(time_, "%H:%M")
+        except ValueError as e:
+            raise ValueError("Use a time like 09:30") from e
+    if "rrule" in data:
+        rule = clean_rule(str(data.get("rrule") or ""))
+    else:
+        try:
+            every = int(data.get("every") or 0)
+        except (TypeError, ValueError) as e:
+            raise ValueError("How often must be a whole number") from e
+        unit = str(data.get("unit") or "days")
+        if unit not in UNITS:
+            raise ValueError("How often is in days, weeks or months")
+        if not 0 <= every <= 999:
+            raise ValueError("How often is 1 to 999")
+        rule = clean_rule(f"FREQ={UNITS[unit]};INTERVAL={every}") if every else ""
     try:
-        every = int(data.get("every") or 0)
+        lead = int(data.get("lead") if data.get("lead") not in (None, "") else DEFAULT_LEAD)
     except (TypeError, ValueError) as e:
-        raise ValueError("How often must be a whole number") from e
-    unit = str(data.get("unit") or "days")
-    if unit not in UNITS:
-        raise ValueError("How often is in days, weeks or months")
-    if not 0 <= every <= 999:
-        raise ValueError("How often is 1 to 999")
-    return {"title": title[:MAX_TITLE], "due": due, "every": every, "unit": unit,
-            "owner": str(data.get("owner") or "").strip()}
+        raise ValueError("Coming up is a number of days") from e
+    if not 0 <= lead <= 365:
+        raise ValueError("Coming up is 0 to 365 days before")
+    owner = str(data.get("owner") or "").strip()
+    return {"title": title[:MAX_TITLE], "due": due, "time": time_, "rrule": rule,
+            "repeatFrom": "done" if data.get("repeatFrom") == "done" and rule else "due",
+            "owner": owner, "lead": lead, "eveningBefore": bool(data.get("eveningBefore")),
+            "askWho": bool(data.get("askWho")) and not owner}
 
 
-def new_task(f: dict[str, Any], now: datetime | None = None, uid: str | None = None) -> tuple[str, str]:
+def _due_lines(f: dict[str, Any], zone: Any = None) -> tuple[str, str]:
+    """(DUE line, DTSTART line): a date, or - at a set time - that local time as UTC."""
+    if f.get("time"):
+        hh, mm = (int(x) for x in f["time"].split(":"))
+        local = datetime(f["due"].year, f["due"].month, f["due"].day, hh, mm, tzinfo=zone)
+        if zone is None:
+            local = local.astimezone()  # the hub's own time zone
+        v = local.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        return f"DUE:{v}", f"DTSTART:{v}"
+    day = f["due"].strftime("%Y%m%d")
+    return f"DUE;VALUE=DATE:{day}", f"DTSTART;VALUE=DATE:{day}"
+
+
+# What the form sets: these lines are written from it (and dropped when it says nothing).
+FORM_PROPS = {"SUMMARY", "DUE", "DTSTART", "RRULE", "X-GCLOUD-REPEAT-FROM", "X-GCLOUD-OWNER", "X-GCLOUD-LEAD-DAYS",
+              "X-GCLOUD-EVENING-BEFORE", "X-GCLOUD-ASK-WHO"}
+
+
+def _form_lines(f: dict[str, Any], zone: Any = None) -> list[str]:
+    due, start = _due_lines(f, zone)
+    lines = ["SUMMARY:" + _escape(f["title"]), due, start]
+    if f.get("rrule"):
+        lines.append("RRULE:" + f["rrule"])
+        if f.get("repeatFrom") == "done":
+            lines.append("X-GCLOUD-REPEAT-FROM:DONE")
+    if f.get("owner"):
+        lines.append("X-GCLOUD-OWNER:" + _escape(f["owner"]))
+    if f.get("lead", DEFAULT_LEAD) != DEFAULT_LEAD:
+        lines.append(f"X-GCLOUD-LEAD-DAYS:{f['lead']}")
+    if f.get("eveningBefore"):
+        lines.append("X-GCLOUD-EVENING-BEFORE:TRUE")
+    if f.get("askWho") and not f.get("owner"):
+        lines.append("X-GCLOUD-ASK-WHO:TRUE")
+    return lines
+
+
+def new_task(f: dict[str, Any], now: datetime | None = None, uid: str | None = None, zone: Any = None) -> tuple[str, str]:
     """(uid, VCALENDAR text) for a new task in GCloud's format."""
     now = now or datetime.now(timezone.utc)
     uid = uid or f"{uuid.uuid4()}@newman"
-    stamp, day = _utc(now), f["due"].strftime("%Y%m%d")
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Newman//Tasks//EN", "BEGIN:VTODO",
-             f"UID:{uid}", f"DTSTAMP:{stamp}", f"CREATED:{stamp}", f"LAST-MODIFIED:{stamp}",
-             "SUMMARY:" + _escape(f["title"]), f"DUE;VALUE=DATE:{day}", f"DTSTART;VALUE=DATE:{day}",
-             "STATUS:NEEDS-ACTION"]
-    if f["every"]:
-        lines.append(f"RRULE:FREQ={UNITS[f['unit']]};INTERVAL={f['every']}")
-    if f["owner"]:
-        lines.append("X-GCLOUD-OWNER:" + _escape(f["owner"]))
-    lines += ["END:VTODO", "END:VCALENDAR"]
+    stamp = _utc(now)
+    f = {"time": "", "repeatFrom": "due", "lead": DEFAULT_LEAD, "eveningBefore": False, "askWho": False, **f}
+    if "rrule" not in f:
+        f["rrule"] = clean_rule(f"FREQ={UNITS[f['unit']]};INTERVAL={f['every']}") if f.get("every") else ""
+    lines = (["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Newman//Tasks//EN", "BEGIN:VTODO",
+              f"UID:{uid}", f"DTSTAMP:{stamp}", f"CREATED:{stamp}", f"LAST-MODIFIED:{stamp}"]
+             + _form_lines(f, zone) + ["STATUS:NEEDS-ACTION", "END:VTODO", "END:VCALENDAR"])
     return uid, _fold(lines)
+
+
+def edit_task(text: str, f: dict[str, Any], now: datetime | None = None, zone: Any = None) -> str:
+    """The task changed to the form's values. Everything the form doesn't show - notes, history, done or
+    not, reminders, other apps' properties - stays as it was."""
+    stamp = _utc(now or datetime.now(timezone.utc))
+    return _edit(text, FORM_PROPS | {"LAST-MODIFIED", "DTSTAMP"},
+                 _form_lines(f, zone) + [f"LAST-MODIFIED:{stamp}", f"DTSTAMP:{stamp}"])
 
 
 # --- who's who ------------------------------------------------------------------------------------------

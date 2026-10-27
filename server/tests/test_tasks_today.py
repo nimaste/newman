@@ -152,6 +152,39 @@ class FormatTests(unittest.TestCase):
         self.assertNotIn("RRULE", once)
         self.assertNotIn("X-GCLOUD-OWNER", once)
 
+    def test_form_fields(self):
+        self.assertEqual(TK.clean_rule("RRULE:freq=weekly;interval=1;byday=MO"), "FREQ=WEEKLY")
+        self.assertEqual(TK.clean_rule("FREQ=YEARLY;INTERVAL=2;UNTIL=20300101T000000Z"), "FREQ=YEARLY;INTERVAL=2;UNTIL=20300101")
+        self.assertEqual(TK.clean_rule("FREQ=DAILY;COUNT=5"), "FREQ=DAILY;COUNT=5")
+        self.assertEqual(TK.clean_rule(""), "")
+        with self.assertRaisesRegex(ValueError, "repeat"):
+            TK.clean_rule("FREQ=HOURLY")
+        f = TK.task_fields({"title": "Pills", "due": "2026-10-28", "time": "21:00", "rrule": "FREQ=DAILY", "repeatFrom": "done",
+                            "owner": "marlina", "lead": 0, "askWho": True})
+        self.assertEqual((f["rrule"], f["repeatFrom"], f["lead"], f["askWho"]), ("FREQ=DAILY", "done", 0, False))  # owned: nobody asked
+        once = TK.task_fields({"title": "x", "due": "2026-10-28", "rrule": "", "repeatFrom": "done"})
+        self.assertEqual(once["repeatFrom"], "due")  # only a repeat is counted from anything
+        with self.assertRaisesRegex(ValueError, "time"):
+            TK.task_fields({"title": "x", "due": "2026-10-28", "time": "25:00"})
+        with self.assertRaisesRegex(ValueError, "Coming up"):
+            TK.task_fields({"title": "x", "due": "2026-10-28", "lead": 400})
+        # A phone's every + unit still works.
+        self.assertEqual(TK.task_fields({"title": "x", "due": "2026-10-28", "every": 2, "unit": "weeks"})["rrule"], "FREQ=WEEKLY;INTERVAL=2")
+
+    def test_edit_keeps_what_the_form_doesnt_show(self):
+        f = TK.task_fields({"title": "Clean the dryer vent", "due": "2026-11-01", "rrule": "FREQ=YEARLY", "owner": ""})
+        out = TK.edit_task(DRYER, f, now=datetime(2026, 10, 27, 12, tzinfo=timezone.utc))
+        self.assertIn("RRULE:FREQ=YEARLY\r\n", out)
+        self.assertIn("DUE;VALUE=DATE:20261101\r\n", out)
+        self.assertNotIn("X-GCLOUD-REPEAT-FROM", out)
+        self.assertNotIn("X-GCLOUD-ASK-WHO", out)
+        self.assertIn("X-GCLOUD-DONE:20260424T140000Z;Chris;20260420\r\n", out)  # history kept, as written
+        self.assertIn("BEGIN:VALARM\r\n", out)
+        self.assertIn("UID:dryer\r\n", out)
+        self.assertEqual(out.count("SUMMARY:"), 1)
+        [t] = TK.parse_tasks(out, "/x")
+        self.assertEqual((t["due"], t["every"], t["repeatFrom"], t["askWho"]), ("2026-11-01", "1 year", "due", False))
+
     def test_who_is_who(self):
         people = [{"id": "p1", "name": "Chris", "usernames": ["cgarito"]}, {"id": "p2", "name": "Marlina", "usernames": []}]
         self.assertEqual(TK.owner_person("CGarito", people)["id"], "p1")
@@ -426,8 +459,46 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         r = await wall.post("/api/tasks/done", json={"id": salt, "who": "Nobody"}, headers=hdr)
         self.assertEqual((await r.json())["who"], "Hallway tablet")
         await wall.post("/api/tasks/undo", json={"id": salt}, headers=hdr)
-        r = await wall.post("/api/tasks", json={"calendar": self.home, "title": "x", "due": "2026-10-30"}, headers=hdr)
-        self.assertEqual(r.status, 403)  # no adding from a wall tablet
+        # The wall's New task: every field of GCloud's format.
+        r = await wall.post("/api/tasks", json={"calendar": self.home, "title": "Change the furnace filter", "due": "2026-10-30",
+                                                "rrule": "FREQ=MONTHLY;INTERVAL=3", "repeatFrom": "done", "owner": "",
+                                                "lead": 3, "eveningBefore": True, "askWho": True}, headers=hdr)
+        self.assertEqual(r.status, 200, await r.text())
+        put = self.server.puts[-1]
+        for line in ("SUMMARY:Change the furnace filter", "DUE;VALUE=DATE:20261030", "DTSTART;VALUE=DATE:20261030",
+                     "RRULE:FREQ=MONTHLY;INTERVAL=3", "X-GCLOUD-REPEAT-FROM:DONE", "X-GCLOUD-LEAD-DAYS:3",
+                     "X-GCLOUD-EVENING-BEFORE:TRUE", "X-GCLOUD-ASK-WHO:TRUE"):
+            self.assertIn(line + "\r\n", put)
+        listing = await (await wall.get("/api/tasks", headers=hdr)).json()
+        furnace = next(t for t in listing["tasks"] if t["title"] == "Change the furnace filter")
+        self.assertEqual((furnace["due"], furnace["every"], furnace["repeatFrom"], furnace["lead"], furnace["eveningBefore"],
+                          furnace["askWho"], furnace["writable"], furnace["calendar"]),
+                         ("2026-10-30", "3 months", "done", 3, True, True, True, "Home"))
+        self.assertEqual(sorted(c["name"] for c in listing["calendars"]), ["Home", "Kids"])
+        # Edit: at a set time, belongs to Chris now, no repeat; its history stays.
+        chris = next(p for p in listing["people"] if p["name"] == "Chris")
+        r = await wall.post("/api/tasks/change", json={"id": furnace["id"], "task": {
+            "title": "Change the furnace filter (MERV 11)", "due": "2026-11-02", "time": "09:30", "rrule": "",
+            "owner": chris["id"], "lead": 7, "askWho": True}}, headers=hdr)
+        self.assertEqual(r.status, 200, await r.text())
+        put = self.server.puts[-1]
+        self.assertIn("SUMMARY:Change the furnace filter (MERV 11)\r\n", put)
+        self.assertIn("DUE:20261102T143000Z\r\n", put)  # 9:30 in Toronto
+        self.assertIn("X-GCLOUD-OWNER:chris\r\n", put)
+        for gone in ("RRULE", "X-GCLOUD-REPEAT-FROM", "X-GCLOUD-LEAD-DAYS", "X-GCLOUD-ASK-WHO", "X-GCLOUD-EVENING-BEFORE"):
+            self.assertNotIn(gone, put)
+        listing = await (await wall.get("/api/tasks", headers=hdr)).json()
+        changed = next(t for t in listing["tasks"] if t["id"] == furnace["id"])
+        self.assertEqual((changed["dueAt"], changed["owner"], changed["ownerUser"]), ("2026-11-02T09:30:00", "Chris", "chris"))
+        # Keeping an owner who isn't a Newman person: "=".
+        r = await wall.post("/api/tasks/change", json={"id": furnace["id"], "task": {"title": "x", "due": "2026-11-02", "owner": "="}}, headers=hdr)
+        self.assertIn("X-GCLOUD-OWNER:chris\r\n", self.server.puts[-1])
+        r = await wall.post("/api/tasks/delete", json={"id": furnace["id"]}, headers=hdr)
+        self.assertEqual(r.status, 200, await r.text())
+        listing = await (await wall.get("/api/tasks", headers=hdr)).json()
+        self.assertNotIn(furnace["id"], [t["id"] for t in listing["tasks"]])
+        r = await wall.post("/api/tasks/change", json={"id": furnace["id"], "task": {"title": "x", "due": "2026-11-02"}}, headers=hdr)
+        self.assertEqual(r.status, 400)
         r = await wall.post("/api/tasks/snooze", json={"id": salt}, headers=hdr)
         self.assertEqual(r.status, 200)
         today = await (await wall.get("/api/today", headers=hdr)).json()

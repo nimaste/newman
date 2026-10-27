@@ -920,9 +920,35 @@ class CalDavIntegration(Integration):
         c = self._calendar(key, change=True)
         if not c.get("tasks"):
             raise CommandError(f"{c['name']} doesn't take tasks")
-        uid, text = TK.new_task(f)
+        uid, text = TK.new_task(f, zone=self.zone)
         await self._write("PUT", c["href"] + uid.replace("@", "-") + ".ics", text, {"If-None-Match": "*"})
         await self.fetch(key, force=True)
         await self._publish()
         await self._tasks_changed()
         return {"calendar": c["name"], "uid": uid}
+
+    async def edit_task(self, key: str, uid: str, f: dict[str, Any], move_to: str | None = None) -> dict[str, Any]:
+        """The wall's Edit: the form's values written over the task (`move_to`: another calendar of this
+        server - put there, then removed here)."""
+        c, o = self._task(key, uid)
+        text = await asyncio.to_thread(TK.edit_task, o["ics"], f, None, self.zone)
+        if move_to and move_to != key:
+            target = self._calendar(move_to, change=True)
+            if not target.get("tasks"):
+                raise CommandError(f"{target['name']} doesn't take tasks")
+            await self._write("PUT", target["href"] + uid.replace("@", "-") + ".ics", text, {"If-None-Match": "*"})
+            await self._write("DELETE", o["href"], None, {"If-Match": o["etag"]} if o["etag"] else {})
+            await asyncio.gather(self.fetch(key, force=True), self.fetch(move_to, force=True))
+            await self._publish()
+            await self._tasks_changed()
+            return {"calendar": target["name"]}
+        await self._put_task(key, o["href"], o["etag"], text)
+        return {"calendar": c["name"]}
+
+    async def delete_task(self, key: str, uid: str) -> dict[str, Any]:
+        c, o = self._task(key, uid)
+        await self._write("DELETE", o["href"], None, {"If-Match": o["etag"]} if o["etag"] else {})
+        await self.fetch(key, force=True)
+        await self._publish()
+        await self._tasks_changed()
+        return {"calendar": c["name"]}

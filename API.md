@@ -1424,9 +1424,21 @@ Calendar's to-dos (VTODO) from the calendar server connections; the format is GC
 - `POST /api/tasks/undo` `{"id"}` — takes back a Done: the previous due date from the newest `X-GCLOUD-DONE` line
   (one from the last 12 hours), that line removed, open again.
 - `POST /api/tasks/snooze` `{"id", "days"?: 1}` — Tomorrow: hidden from To do until the next day, on Newman only.
-- `POST /api/tasks` `{"calendar", "title", "due": "YYYY-MM-DD", "every": n (0 = once), "unit": "days"|"weeks"|"months",
-  "owner": person id | ""}` → `{"ok", "calendar", "uid"}` — anyone signed in except a wall tablet (403). The owner
-  is written as the person's Newman user name (else their name in lower case).
+- `GET /api/tasks` → `{"tasks": [...], "calendars", "people"}` — every task Newman sees (the wall's calendar):
+  `{"id", "uid", "title", "notes", "due", "dueAt" (local, when at a set time), "done", "completed", "rrule", "every",
+  "repeatFrom", "owner" (a person's name, else the GCloud user name), "ownerId", "ownerUser", "lead", "eveningBefore",
+  "askWho", "history": [{"at", "who"}], "calendar", "calendarId", "colour", "writable", "from"}`.
+- `POST /api/tasks` — a new task (the wall's New task, a phone's "+ Add"): `{"calendar", "title", "due":
+  "YYYY-MM-DD", "time"?: "HH:MM" (at a set time; written as UTC), "rrule"?: "FREQ=DAILY|WEEKLY|MONTHLY|YEARLY[;INTERVAL=n]
+  [;UNTIL=YYYYMMDD|;COUNT=n]" (other parts are dropped, as GCloud keeps only these), "repeatFrom"?: "due"|"done",
+  "owner": person id | "", "lead"?: days (0-365, 7 by default), "eveningBefore"?, "askWho"? (only without an owner)}`
+  → `{"ok", "calendar", "uid"}`. A phone may send `"every": n, "unit": "days"|"weeks"|"months"` instead of `rrule`.
+  The owner is written as the person's Newman user name (else their name in lower case).
+- `POST /api/tasks/change` `{"id", "task": {as POST /api/tasks; "owner": "=" keeps an owner who isn't a Newman
+  person}, "calendar"?: another calendar on the same server}` — the wall's Edit. Only the form's lines change;
+  notes, history, reminders and other apps' properties stay.
+- `POST /api/tasks/delete` `{"id"}` — deleted from GCloud.
+  Wall tablets may add, change, delete and do tasks; a phone and the dashboard too.
 - `POST /api/today/dismiss` `{"id"}` — hides an appliance's need until it's reported again.
 - `GET /api/today/settings` → `{"todayRainThreshold", "todayEveningFrom", "taskCalendars": [names]}`;
   `PATCH /api/today/settings` (admin) `{"todayRainThreshold": 0-100, "todayEveningFrom": "HH:MM"}`.

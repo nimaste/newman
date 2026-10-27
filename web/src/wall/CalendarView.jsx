@@ -1,7 +1,8 @@
 // The wall's full-screen calendar (#/wall/calendar, approved TabletCalendar board): a month, Sunday to
 // Saturday (‹ › or a swipe for the month before / after, Today back to this one; days of the months either
-// side dimmed), the chosen day's events on the right, or everything coming up; + New event on calendars
-// Newman may change. Data as the Calendar tile: calendar devices' attrs.upcoming / attrs.colour (only `cals`
+// side dimmed), the chosen day's events on the right, or everything coming up; + New ▾ (Event / Task) on
+// calendars Newman may change. GCloud tasks (CalendarTasks.jsx) show on their days with a tick box, and in
+// the day's list with Done. Data as the Calendar tile: calendar devices' attrs.upcoming / attrs.colour (only `cals`
 // if given) while the month is inside what upcoming holds (attrs.upcomingUntil), else the hub's
 // GET api/calendars/{id}/events?from=&to= for the weeks shown - asked again when the calendar was read
 // again (attrs.fetchedAt); a calendar that can't answer it shows what upcoming has.
@@ -11,6 +12,7 @@ import { api, enc } from '../api.js';
 import { useHub } from '../hooks.js';
 import { Icon } from '../icons.jsx';
 import { useCalendarSheets, writableCalendars } from './CalendarEvents.jsx';
+import { TaskBox, markTaskDone, taskState, tasksOn, useTasks } from './CalendarTasks.jsx';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SWIPE_PX = 60; // further than this sideways (and more sideways than down) moves a month
@@ -112,6 +114,30 @@ function eventsOn(events, day) {
   return events.filter((ev) => ev.s.getTime() < end && (ev.e.getTime() > start || (ev.e.getTime() === ev.s.getTime() && ev.s.getTime() >= start)));
 }
 
+/** A task in the day's list: its tick box, "Task · Home · Chris", and Done. */
+function TaskRow({ item, today, onOpen, onDone }) {
+  const t = item.task;
+  const state = item.done ? 'done' : taskState(t, today);
+  return (
+    <div className={'wcal-ev wcal-task' + (state === 'done' ? ' is-done' : '')}>
+      <button type="button" className="wcal-task-open" onClick={() => onOpen(t)}>
+        <TaskBox task={t} state={state} size="row" />
+        <span className="wcal-ev-text">
+          <span className="wcal-ev-title">{t.title}</span>
+          <span className="wcal-ev-sub">
+            Task · {t.calendar} · {item.done && item.who ? item.who : t.owner || 'Everyone'}
+          </span>
+        </span>
+      </button>
+      {state !== 'done' && t.writable ? (
+        <button type="button" className="wcal-task-done" onClick={() => onDone(t)}>
+          Done
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function EventRow({ ev, now, onOpen }) {
   const on = !ev.allDay && ev.s.getTime() <= now && now < ev.e.getTime();
   return (
@@ -149,7 +175,18 @@ export default function CalendarView({ day, cals, onBack }) {
   const until = addDays(start, rows * 7);
   const range = useMemo(() => [start, until], [dayKey(start), rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const { calendars, upcoming: coming, events } = useEvents(cals, today, range[0], range[1], now);
-  const canAdd = writableCalendars(calendars).length > 0;
+  const tasks = useTasks();
+  // A short screen's day cells have room for one line (Show5Calendar board), the big tablet's for two.
+  const maxLines = typeof document !== 'undefined' && document.querySelector('.wall.wall--short') ? 1 : 2;
+  const canEvent = writableCalendars(calendars).length > 0;
+  const canTask = tasks.calendars.some((c) => c.writable);
+  const [menu, setMenu] = useState(false);
+  const taskCtx = { calendars: tasks.calendars, people: tasks.people, today, onChanged: tasks.reload };
+  const openTask = (t) => sheets.openTask(t, taskCtx);
+  const doneTask = async (t) => {
+    if (t.askWho && tasks.people.length) sheets.openTask(t, taskCtx, true);
+    else if (await markTaskDone(t, null)) tasks.reload();
+  };
 
   // Opening without ?day on a month with nothing today: the first day this month with events coming up.
   const looked = useRef(!!asked);
@@ -196,8 +233,19 @@ export default function CalendarView({ day, cals, onBack }) {
   const cells = Array.from({ length: rows * 7 }, (_, i) => addDays(start, i));
   const selDate = parseKey(sel) || today;
   const dayEvents = eventsOn(events, selDate);
+  const dayTasks = tasksOn(tasks.tasks, selDate);
+  // Everything: open tasks in the next 31 days (overdue ones under today) with the events.
+  const horizon = addDays(today, 31);
+  const comingTasks = tasks.tasks
+    .filter((t) => !t.done && t.due && parseKey(t.due) < horizon)
+    .map((t) => ({ t, on: parseKey(t.due) < today ? today : parseKey(t.due) }));
   // Everything: each event once, under the day it starts (or today, if it started before).
-  const upcoming = coming.map((ev) => ({ ev, on: ev.s < today ? today : new Date(ev.s.getFullYear(), ev.s.getMonth(), ev.s.getDate()) })).sort((a, b) => a.on - b.on || order(a.ev, b.ev));
+  const upcoming = [
+    ...comingTasks.map(({ t, on }) => ({ task: t, on })),
+    ...coming.map((ev) => ({ ev, on: ev.s < today ? today : new Date(ev.s.getFullYear(), ev.s.getMonth(), ev.s.getDate()) })),
+  ].sort((a, b) => a.on - b.on || (a.task ? -1 : b.task ? 1 : order(a.ev, b.ev)));
+  const nEvents = (n) => `${n} ${n === 1 ? 'event' : 'events'}`;
+  const nTasks = (n) => `${n} ${n === 1 ? 'task' : 'tasks'}`;
   const n = Math.round((selDate - today) / 86400e3);
   const rel = n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n === -1 ? 'Yesterday' : n < 0 ? `${-n} days ago` : `In ${n} days`;
   let lastHeading = null;
@@ -221,10 +269,37 @@ export default function CalendarView({ day, cals, onBack }) {
             Today
           </button>
           <span className="wcal-gap" />
-          {canAdd ? (
-            <button type="button" className="wcal-add" onClick={() => sheets.newEvent(selDate)}>
-              <Icon name="plus" size={22} strokeWidth={2.6} /> New event
-            </button>
+          {canEvent || canTask ? (
+            <span className="wcal-new">
+              <button type="button" className="wcal-add" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
+                <Icon name="plus" size={22} strokeWidth={2.6} /> New <span className="wcal-caret">▾</span>
+              </button>
+              {menu ? (
+                <>
+                  <span className="wcal-menu-shade" onClick={() => setMenu(false)} />
+                  <span className="wcal-menu" role="menu">
+                    {canEvent ? (
+                      <button type="button" role="menuitem" onClick={() => (setMenu(false), sheets.newEvent(selDate))}>
+                        <svg viewBox="0 0 24 24" fill="none" strokeWidth="2.2" aria-hidden="true">
+                          <rect x="3" y="5" width="18" height="16" rx="2" />
+                          <path d="M3 10h18M8 3v4M16 3v4" />
+                        </svg>
+                        Event
+                      </button>
+                    ) : null}
+                    {canTask ? (
+                      <button type="button" role="menuitem" onClick={() => (setMenu(false), sheets.newTask(selDate, taskCtx))}>
+                        <svg viewBox="0 0 24 24" fill="none" strokeWidth="2.2" aria-hidden="true">
+                          <rect x="4" y="4" width="16" height="16" rx="3" />
+                          <path d="m8.5 12 2.5 2.5 4.5-5" />
+                        </svg>
+                        Task
+                      </button>
+                    ) : null}
+                  </span>
+                </>
+              ) : null}
+            </span>
           ) : null}
         </div>
         {calendars.length > 1 ? (
@@ -259,28 +334,37 @@ export default function CalendarView({ day, cals, onBack }) {
             const k = dayKey(d);
             const out = d.getMonth() !== view.getMonth();
             const evs = eventsOn(events, d);
+            const tks = tasksOn(tasks.tasks, d);
+            const lines = [...tks.map((x) => ({ kind: 'task', x })), ...evs.map((ev) => ({ kind: 'event', ev }))];
             const isToday = k === dayKey(today);
             const selected = !all && k === sel;
             return (
               <button
                 key={k}
                 type="button"
-                className={'wcal-day' + (out ? ' is-out' : '') + (isToday ? ' is-today' : '') + (selected ? ' is-sel' : '') + (evs.length > 2 ? ' has-more' : '')}
+                className={'wcal-day' + (out ? ' is-out' : '') + (isToday ? ' is-today' : '') + (selected ? ' is-sel' : '') + (lines.length > maxLines ? ' has-more' : '')}
                 aria-pressed={selected}
-                aria-label={`${longDay(d)}${evs.length ? `, ${evs.length} ${evs.length === 1 ? 'event' : 'events'}` : ', nothing on'}`}
+                aria-label={`${longDay(d)}${lines.length ? `, ${[evs.length ? nEvents(evs.length) : '', tks.length ? nTasks(tks.length) : ''].filter(Boolean).join(', ')}` : ', nothing on'}`}
                 onClick={() => pick(d)}
               >
                 <span className="wcal-num">
                   <span className="wcal-n">{d.getDate()}</span>
                   {isToday ? <span className="wcal-sub is-today">Today</span> : d.getDate() === 1 ? <span className="wcal-sub">{d.toLocaleDateString([], { month: 'short' })}</span> : null}
                 </span>
-                {evs.slice(0, 2).map((ev) => (
-                  <span key={ev.key} className="wcal-line">
-                    <span className="wcal-line-bar" style={{ background: ev.colour }} />
-                    <span className="wcal-line-title">{ev.title}</span>
-                  </span>
-                ))}
-                {evs.length > 2 ? <span className="wcal-more">+{evs.length - 2}</span> : null}
+                {lines.slice(0, maxLines).map((l) =>
+                  l.kind === 'event' ? (
+                    <span key={l.ev.key} className="wcal-line">
+                      <span className="wcal-line-bar" style={{ background: l.ev.colour }} />
+                      <span className="wcal-line-title">{l.ev.title}</span>
+                    </span>
+                  ) : (
+                    <span key={l.x.key} className={'wcal-line wcal-line--task is-' + (l.x.done ? 'done' : taskState(l.x.task, today))}>
+                      <TaskBox task={l.x.task} state={l.x.done ? 'done' : taskState(l.x.task, today)} />
+                      <span className="wcal-line-title">{l.x.task.title}</span>
+                    </span>
+                  ),
+                )}
+                {lines.length > maxLines ? <span className="wcal-more">+{lines.length - maxLines}</span> : null}
               </button>
             );
           })}
@@ -291,7 +375,9 @@ export default function CalendarView({ day, cals, onBack }) {
         <div className="wcal-side-head">
           <span className="wcal-side-title">{all ? 'Everything coming up' : longDay(selDate)}</span>
           <span className="wcal-side-sub">
-            {all ? `${upcoming.length} ${upcoming.length === 1 ? 'event' : 'events'} in the next 31 days` : `${rel} · ${dayEvents.length === 1 ? '1 event' : dayEvents.length + ' events'}`}
+            {all
+              ? `${nEvents(upcoming.filter((u) => u.ev).length)} · ${nTasks(comingTasks.length)} in the next 31 days`
+              : `${rel} · ${nEvents(dayEvents.length)} · ${nTasks(dayTasks.length)}`}
           </span>
         </div>
         <div className="wcal-toggle" role="group" aria-label="Which events">
@@ -307,26 +393,33 @@ export default function CalendarView({ day, cals, onBack }) {
             !upcoming.length ? (
               <div className="wcal-empty">Nothing in the next 31 days.</div>
             ) : (
-              upcoming.map(({ ev, on }) => {
+              upcoming.map(({ ev, task, on }) => {
                 const k = dayKey(on);
                 const heading = k !== lastHeading ? longDay(on) : null;
                 lastHeading = k;
                 return (
-                  <div key={ev.key} className="wcal-item">
+                  <div key={ev ? ev.key : task.id} className="wcal-item">
                     {heading ? <span className="wcal-heading">{heading}</span> : null}
-                    <EventRow ev={ev} now={now} onOpen={sheets.openEvent} />
+                    {ev ? <EventRow ev={ev} now={now} onOpen={sheets.openEvent} /> : <TaskRow item={{ task, done: false }} today={today} onOpen={openTask} onDone={doneTask} />}
                   </div>
                 );
               })
             )
-          ) : !dayEvents.length ? (
+          ) : !dayEvents.length && !dayTasks.length ? (
             <div className="wcal-empty">Nothing on this day.</div>
           ) : (
-            dayEvents.map((ev) => (
-              <div key={ev.key} className="wcal-item">
-                <EventRow ev={ev} now={now} onOpen={sheets.openEvent} />
-              </div>
-            ))
+            <>
+              {dayTasks.map((x) => (
+                <div key={x.key} className="wcal-item">
+                  <TaskRow item={x} today={today} onOpen={openTask} onDone={doneTask} />
+                </div>
+              ))}
+              {dayEvents.map((ev) => (
+                <div key={ev.key} className="wcal-item">
+                  <EventRow ev={ev} now={now} onOpen={sheets.openEvent} />
+                </div>
+              ))}
+            </>
           )}
         </div>
       </aside>

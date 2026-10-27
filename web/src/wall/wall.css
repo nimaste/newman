@@ -4351,11 +4351,16 @@ button.wt-chip {
 button.wcal-ev {
   width: 100%;
   border: 0;
-  background: none;
+  background: rgba(var(--wt-fg, 255, 255, 255), 0.04);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+/* A button's flex items don't stretch to its height in every engine: the event's colour bar does. */
+button.wcal-ev .wcal-ev-bar {
+  align-self: stretch;
+  min-height: 2.6em;
 }
 .ce-shade {
   --ce-accent: #7fb8ff;
@@ -4885,4 +4890,246 @@ button.wcal-ev {
   font-size: 17px;
   font-weight: 700;
   color: #c9d2ef;
+}
+
+/* ---- tasks on the full calendar (WallCalendar / WallNewTask / WallTaskCard boards; CalendarTasks.jsx) ---- */
+.wcal-new {
+  position: relative;
+  flex: none;
+}
+.wcal-caret {
+  font-size: 13px;
+}
+.wcal-menu-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+}
+.wcal-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 6;
+  width: 260px;
+  box-sizing: border-box;
+  border-radius: 22px;
+  background: #141d3b;
+  border: 1px solid #2b3766;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wall .wcal-menu button {
+  height: 64px;
+  border-radius: 16px;
+  border: 0;
+  background: transparent;
+  color: #eef2ff;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.wall .wcal-menu button:is(:hover, :active, :focus-visible) {
+  background: rgba(255, 255, 255, 0.08);
+}
+.wcal-menu svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  stroke: #a9b4d6;
+}
+.tk-box {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 13px;
+  height: 13px;
+  border: 2px solid;
+  border-radius: 4px;
+  color: #0b1026;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+.tk-box--row {
+  width: 22px;
+  height: 22px;
+  border-width: 2.5px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.tk-box--card {
+  width: 34px;
+  height: 34px;
+  margin-top: 4px;
+  border-width: 3px;
+  border-radius: 9px;
+  font-size: 22px;
+}
+.wcal-line--task.is-late .wcal-line-title {
+  color: #ff8a6b;
+}
+.wcal-line--task.is-done .wcal-line-title,
+.wcal-task.is-done .wcal-ev-title,
+.tk-struck {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.wcal-task {
+  align-items: center;
+}
+.wall .wcal-task-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wall .wcal-task-done {
+  flex: none;
+  height: 44px;
+  min-width: 64px;
+  padding: 0 14px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 0;
+  background: #eef2ff;
+  color: #0b1026;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tk-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 24px;
+}
+.tk-card .ce-card-btns {
+  margin-top: 8px;
+}
+.tk-card .ce-btn.is-primary.tk-done {
+  padding: 0 30px;
+}
+.tk-delete {
+  color: #ff8a6b !important;
+}
+.ce-qr.tk-hist {
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.tk-hist-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.tk-hist-who {
+  color: #a9b4d6;
+}
+.tk-who {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(60, 207, 180, 0.1);
+  border: 1px solid rgba(60, 207, 180, 0.35);
+}
+.tk-who-q {
+  font-size: 22px;
+  font-weight: 800;
+  color: #ff8a6b;
+}
+.tk-who-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+}
+.tk-person {
+  border: 0;
+  background: transparent;
+  color: #eef2ff;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tk-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 99px;
+  color: #05070f;
+  display: grid;
+  place-items: center;
+  font-family: var(--wt-font-num, Sora, Manrope, sans-serif);
+  font-size: 26px;
+  font-weight: 600;
+}
+.tk-pname {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tk-who-btns {
+  display: flex;
+  gap: 12px;
+}
+.tk-grid {
+  grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr);
+}
+.tk-grid .ce-input {
+  height: 64px;
+}
+.tk-wide {
+  grid-column: 2 / 4;
+}
+.tk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.tk-row > .ce-pick {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.tk-check {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-left: 8px;
+  font-size: 20px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.tk-check input {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  accent-color: #7fb8ff;
 }

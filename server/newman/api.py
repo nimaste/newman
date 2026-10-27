@@ -286,7 +286,8 @@ def build_app(h: "Newman") -> web.Application:
         # Using the house (a device command, an alert's button) - which family and wall tablets may do.
         command = (p.startswith("/api/entities/") and (p.endswith("/command") or "/mute" in p)) or \
             (p.startswith("/api/runs/") and p.endswith("/press")) or \
-            p in ("/api/tasks/done", "/api/tasks/undo", "/api/tasks/snooze") or \
+            p in ("/api/tasks", "/api/tasks/done", "/api/tasks/undo", "/api/tasks/snooze", "/api/tasks/change",
+                  "/api/tasks/delete") or \
             (p.startswith("/api/dashboards/") and p.endswith("/run")) or \
             p in ("/api/today/dismiss", "/api/tablet/battery", "/api/music/report", "/api/music/play", "/api/cook") or \
             (p.startswith("/api/voice/") and not p.startswith("/api/voice/settings")) or \
@@ -310,8 +311,7 @@ def build_app(h: "Newman") -> web.Application:
             return not (p.startswith("/api/test/") or p.startswith("/api/users"))
         # Their own location sharing / profile, and refreshing someone on the map (checked inside).
         own = p.startswith("/api/me/") or follow
-        # A new GCloud task from a phone's Today "+ Add": anyone signed in (not a wall tablet).
-        return command or own or p in ("/api/devices/register", "/api/widgets/push-token", "/api/live/tokens", "/api/tasks")
+        return command or own or p in ("/api/devices/register", "/api/widgets/push-token", "/api/live/tokens")
 
     @web.middleware
     async def auth_middleware(req: web.Request, handler: Any) -> web.StreamResponse:
@@ -2175,25 +2175,96 @@ def build_app(h: "Newman") -> web.Application:
         return web.json_response({"calendars": cals,
                                   "people": [{"id": p["id"], "name": p["name"]} for p in h.store.people()]})
 
+    def task_json(t: dict[str, Any], people: list[dict[str, Any]], writable: bool) -> dict[str, Any]:
+        """A task as the wall's calendar shows, opens and edits it."""
+        person = TK.owner_person(t.get("owner") or "", people)
+        return {"id": TK.task_id(t["calendarKey"], t["uid"]), "uid": t["uid"], "title": t["title"], "notes": t["notes"],
+                "due": t["due"], "dueAt": t["dueAt"], "done": t["status"] == "COMPLETED", "completed": t["completed"],
+                "rrule": t["rrule"], "every": t["every"], "repeatFrom": t["repeatFrom"],
+                "owner": person["name"] if person else t.get("owner") or "", "ownerId": person["id"] if person else "",
+                "ownerUser": t.get("owner") or "", "lead": t["lead"], "eveningBefore": t["eveningBefore"],
+                "askWho": t["askWho"], "history": [{"at": d["at"], "who": d["who"]} for d in t.get("history") or []],
+                "calendar": t["calendar"], "calendarId": t["calendarKey"], "colour": t["colour"], "writable": writable,
+                "from": f"{t.get('connection') or 'GCloud'} · {t['calendar']}"}
+
+    @r.get("/api/tasks")
+    async def task_list(_: web.Request) -> web.Response:
+        """Every task Newman sees (the wall's calendar), with the calendars that hold tasks and the household."""
+        people = TK.household(h.store)
+        out, cals = [], []
+        for inst in task_servers():
+            cs = inst.task_calendars()
+            cals += cs
+            can = {c["id"]: c["writable"] for c in cs}
+            out += [task_json(t, people, can.get(t["calendarKey"], False)) for t in inst.tasks()]
+        out.sort(key=lambda t: (t["due"] or "9999", t["title"].lower()))
+        return web.json_response({"tasks": out, "calendars": sorted(cals, key=lambda c: c["name"].lower()),
+                                  "people": [{"id": p["id"], "name": p["name"]} for p in h.store.people()]})
+
+    def task_form(data: dict[str, Any], keep_owner: str = "") -> dict[str, Any]:
+        """The form's values checked; "owner" is a person's id ("" = everyone), written as their GCloud user
+        name - or "=" to keep the task's own (an owner who isn't a Newman person)."""
+        people = TK.household(h.store)
+        owner = str(data.get("owner") or "")
+        if owner == "=":
+            user = keep_owner
+        elif owner:
+            if not any(p["id"] == owner for p in people):
+                raise ValueError("That person isn't in the household")
+            user = TK.owner_username(owner, people)
+        else:
+            user = ""
+        return TK.task_fields({**data, "owner": user})
+
     @r.post("/api/tasks")
     async def task_add(req: web.Request) -> web.Response:
-        """A phone's "+ Add": {"calendar", "title", "due": "YYYY-MM-DD", "every": n (0 = once),
-        "unit": "days"|"weeks"|"months", "owner": a person's id or ""} → a GCloud task in that calendar."""
+        """A new GCloud task, from the wall's New task or a phone's "+ Add": {"calendar", "title", "due":
+        "YYYY-MM-DD", "time"?: "HH:MM", "rrule"? (or a phone's "every" + "unit"), "repeatFrom"?, "owner": a person's
+        id or "", "lead"?, "eveningBefore"?, "askWho"?}."""
         data = await body(req)
         key = str(data.get("calendar") or "")
         inst = task_server(key)
         if not inst:
             return _err(400, "Pick a calendar for it")
-        people = TK.household(h.store)
-        owner = str(data.get("owner") or "")
-        if owner and not any(p["id"] == owner for p in people):
-            return _err(400, "That person isn't in the household")
         try:
-            f = TK.task_fields({**data, "owner": TK.owner_username(owner, people) if owner else ""})
+            f = task_form(data)
             out = await inst.add_task(key, f)
         except (CommandError, ValueError) as e:
             return _err(400, str(e))
         h.store.log_event("command", f"Added the task “{f['title']}” to {out['calendar']}", f"By {req['user']['name']}")
+        return web.json_response({"ok": True, **out})
+
+    @r.post("/api/tasks/change")
+    async def task_change(req: web.Request) -> web.Response:
+        """The wall's Edit: {"id", "task": the form's values (as POST /api/tasks), "calendar"?: another calendar
+        on the same server to move it to}."""
+        data = await body(req)
+        try:
+            inst, key, uid, t = find_task(str(data.get("id") or ""))
+            if t is None:
+                raise CommandError("That task isn't on the calendar any more")
+            move = str(data.get("calendar") or "") or None
+            if move and move != key and task_server(move) is not inst:
+                raise ValueError("It can only move to another calendar on the same server")
+            f = task_form(data.get("task") or {}, keep_owner=t.get("owner") or "")
+            out = await inst.edit_task(key, uid, f, move)
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+        h.store.log_event("command", f"Changed the task “{f['title']}”", f"By {req['user']['name']}")
+        return web.json_response({"ok": True, **out})
+
+    @r.post("/api/tasks/delete")
+    async def task_delete(req: web.Request) -> web.Response:
+        """{"id"} → the task is deleted from GCloud."""
+        data = await body(req)
+        try:
+            inst, key, uid, t = find_task(str(data.get("id") or ""))
+            if t is None:
+                raise CommandError("That task isn't on the calendar any more")
+            out = await inst.delete_task(key, uid)
+        except (CommandError, ValueError) as e:
+            return _err(400, str(e))
+        h.store.log_event("command", f"Deleted the task “{t['title']}” from {out['calendar']}", f"By {req['user']['name']}")
         return web.json_response({"ok": True, **out})
 
     @r.post("/api/tasks/{op:done|undo|snooze}")
