@@ -325,12 +325,16 @@ class AppViewModel @Inject constructor(
         false
     }
 
-    /** Admin: a to-do from Today's "+ Add" - an upkeep item first due today, repeating every [every] [unit]. */
-    suspend fun addTodo(name: String, every: Int, unit: String): Boolean = try {
-        val today = java.time.LocalDate.now()
-        val last = when (unit) { "weeks" -> today.minusWeeks(every.toLong()); "months" -> today.minusMonths(every.toLong()); else -> today.minusDays(every.toLong()) }
-        api.addUpkeep(JsonObject(mapOf("name" to JsonPrimitive(name), "every" to JsonPrimitive(every), "unit" to JsonPrimitive(unit),
-            "lastDone" to JsonPrimitive(last.toString())))).orThrow()
+    /** The calendars a new task can go in and the household, for Today's "+ Add"; null when the hub can't say. */
+    suspend fun taskCalendars(): ca.nimaste.newman.core.today.TaskCalendars? = try {
+        api.taskCalendars()
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Today's "+ Add" (anyone signed in): a GCloud task in [calendar], due [due], repeating every [every] [unit]. */
+    suspend fun addTask(calendar: String, title: String, due: java.time.LocalDate, every: Int, unit: String, owner: String): Boolean = try {
+        api.addTask(ca.nimaste.newman.core.today.NewTask(calendar, title, due.toString(), every, unit, owner)).orThrow()
         this.today.refresh()
         toast("Added")
         true

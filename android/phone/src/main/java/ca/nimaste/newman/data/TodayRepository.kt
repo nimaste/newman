@@ -8,7 +8,7 @@ import ca.nimaste.newman.core.api.orThrow
 import ca.nimaste.newman.core.hub.HubRepository
 import ca.nimaste.newman.core.live.LiveMessage
 import ca.nimaste.newman.core.today.DismissRequest
-import ca.nimaste.newman.core.today.SnoozeRequest
+import ca.nimaste.newman.core.today.TaskRequest
 import ca.nimaste.newman.core.today.TodayBriefing
 import ca.nimaste.newman.core.today.TodayItem
 import ca.nimaste.newman.core.today.TodayView
@@ -23,7 +23,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Today's briefing (GET /api/today) and its actions: Done / Undo / Remind tomorrow for upkeep,
+ * Today's briefing (GET /api/today) and its actions: Done / Undo / Remind tomorrow for GCloud tasks,
  * dismissing an appliance's need. The hub records the signed-in person as who did it. Reloaded
  * when devices change (at most every 15 s) and when the Today card is shown.
  */
@@ -72,26 +72,25 @@ class TodayRepository @Inject constructor(
 
     private fun now() = System.currentTimeMillis() / 1000.0
 
-    /** Done (upkeep) or dismiss (an appliance's need). Null, or the hub's words when it failed. */
+    /** Done (a GCloud task) or dismiss (an appliance's need). Null, or the hub's words when it failed. */
     suspend fun done(item: TodayItem): String? = act {
         if (item.action == "dismiss") {
             api.todayDismiss(DismissRequest(item.id)).orThrow()
             _done.value = _done.value + (item.id to TodayView.Done(item, null, now()))
         } else {
-            val id = TodayView.upkeepId(item)
-            api.upkeepDone(id).orThrow()
-            _done.value = _done.value + (item.id to TodayView.Done(item, id, now()))
+            api.taskDone(TaskRequest(item.id)).orThrow()
+            _done.value = _done.value + (item.id to TodayView.Done(item, item.id, now()))
         }
     }
 
     suspend fun undo(item: TodayItem): String? = act {
-        _done.value[item.id]?.upkeepId?.let { api.upkeepUndo(it).orThrow() }
+        _done.value[item.id]?.taskId?.let { api.taskUndo(TaskRequest(it)).orThrow() }
         _done.value = _done.value - item.id
     }
 
     /** Remind tomorrow. */
     suspend fun snooze(item: TodayItem): String? = act {
-        api.upkeepSnooze(TodayView.upkeepId(item), SnoozeRequest(1)).orThrow()
+        api.taskSnooze(TaskRequest(item.id, days = 1)).orThrow()
     }
 
     private suspend fun act(block: suspend () -> Unit): String? = try {

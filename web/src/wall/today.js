@@ -1,4 +1,4 @@
-// Today's briefing on the wall (GET /api/today) and the actions on its items: Done (upkeep, with
+// Today's briefing on the wall (GET /api/today) and the actions on its items: Done (a GCloud task, with
 // an optional "who"), Undo, Remind tomorrow, and dismissing an appliance's need. Shared by the Today
 // tile and the To do screen; refreshed on live device changes (~2 s later) and every minute.
 
@@ -41,7 +41,8 @@ export function useToday() {
     };
   }, []);
   useLive((m) => {
-    if (m.type === 'entity' || m.type === 'entity-removed' || m.type === 'reconnected') {
+    // "today": a task changed in GCloud (the calendar server connection heard it).
+    if (m.type === 'entity' || m.type === 'entity-removed' || m.type === 'reconnected' || m.type === 'today') {
       clearTimeout(timer.current);
       timer.current = setTimeout(load, 2000);
     }
@@ -49,12 +50,12 @@ export function useToday() {
   return { data, reload: load };
 }
 
-/** The household (names for "Who did it?") and the full upkeep items (history, how often…). */
-export function useUpkeep() {
+/** The household (names for "Who did it?"): GET /api/tasks/calendars → { people, calendars }. */
+export function useHousehold() {
   const [data, setData] = useState(null);
   const reload = useCallback(() => {
     api
-      .get('api/upkeep', { quiet: true })
+      .get('api/tasks/calendars', { quiet: true })
       .then(setData)
       .catch(() => {});
   }, []);
@@ -64,25 +65,18 @@ export function useUpkeep() {
   return { data, reload };
 }
 
-/** The upkeep item id behind a To do entry (its entity is upkeep.<id> on the hub; the API takes the item id). */
-export function upkeepId(item, upkeep) {
-  const items = (upkeep && upkeep.items) || [];
-  const hit = items.find((x) => x.entity === item.entity || x.id === item.id);
-  return hit ? hit.id : String(item.id || '').replace(/^.*\./, '');
-}
-
-export async function markDone(item, upkeep, who) {
-  const id = upkeepId(item, upkeep);
-  await api.post('api/upkeep/' + enc(id) + '/done', who ? { who } : {}, { quiet: true });
+/** Done → the hub's answer: { who, nextDue } (nextDue: when a repeating task is due again). */
+export async function markDone(item, who) {
+  const r = await api.post('api/tasks/done', who ? { id: item.id, who } : { id: item.id }, { quiet: true });
   load();
-  return id;
+  return r || {};
 }
 export async function undoDone(id) {
-  await api.post('api/upkeep/' + enc(id) + '/undo', {}, { quiet: true });
+  await api.post('api/tasks/undo', { id }, { quiet: true });
   load();
 }
-export async function snooze(item, upkeep) {
-  await api.post('api/upkeep/' + enc(upkeepId(item, upkeep)) + '/snooze', { days: 1 }, { quiet: true });
+export async function snooze(item) {
+  await api.post('api/tasks/snooze', { id: item.id, days: 1 }, { quiet: true });
   load();
 }
 export async function dismissNeed(item) {
@@ -110,14 +104,14 @@ export function greeting(now = new Date()) {
 
 // Just done on this tablet: the row stays (struck through, with Undo) for a while after Done.
 const KEEP_DONE_MS = 10 * 60 * 1000;
-const recent = new Map(); // To do item id -> { item, upkeepId, who, at }
+const recent = new Map(); // To do item id -> { item, taskId, who, at }
 const recentListeners = new Set();
 function emitRecent() {
   const snap = new Map(recent);
   recentListeners.forEach((fn) => fn(snap));
 }
-export function rememberDone(item, id, who) {
-  recent.set(item.id, { item, upkeepId: id, who: who || item.owner || '', at: Date.now() });
+export function rememberDone(item, id, who, nextDue) {
+  recent.set(item.id, { item, taskId: id, who: who || item.owner || '', nextDue: nextDue || '', at: Date.now() });
   emitRecent();
 }
 export function forgetDone(itemId) {
@@ -147,16 +141,16 @@ export function useRecentlyDone() {
   return snap;
 }
 
-/** Done (upkeep: optionally who; appliance: dismiss), remembered for Undo. */
-export async function doItem(item, upkeep, who) {
+/** Done (a task: optionally who; appliance: dismiss), remembered for Undo. */
+export async function doItem(item, who) {
   try {
     if (item.action === 'dismiss') {
       await dismissNeed(item);
       rememberDone(item, null, '');
       return true;
     }
-    const id = await markDone(item, upkeep, who);
-    rememberDone(item, id, who);
+    const r = await markDone(item, who);
+    rememberDone(item, item.id, who, r.nextDue);
     return true;
   } catch (err) {
     failed(err);
@@ -169,7 +163,7 @@ export async function undoItem(itemId) {
   const r = recent.get(itemId);
   if (!r) return;
   try {
-    if (r.upkeepId) await undoDone(r.upkeepId);
+    if (r.taskId) await undoDone(r.taskId);
     forgetDone(itemId);
   } catch (err) {
     failed(err);
@@ -180,7 +174,7 @@ export async function undoItem(itemId) {
 export function withRecent(list, recentMap) {
   const out = (list || []).filter((x) => !recentMap.has(x.id));
   recentMap.forEach((r) => {
-    if (!out.some((x) => x.id === r.item.id)) out.push({ ...r.item, justDone: true, doneBy: r.who });
+    if (!out.some((x) => x.id === r.item.id)) out.push({ ...r.item, justDone: true, doneBy: r.who, nextDue: r.nextDue });
   });
   return out;
 }

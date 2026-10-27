@@ -3,7 +3,7 @@
 For moving to a new way of reaching the same things (ring-mqtt's devices -> the Ring connection's,
 say) or replacing a broken sensor: automations (their "When" parts, "Only if" rows, actions and
 notification buttons), dashboards (tiles, readings and "show as" names), phone layouts, names given to devices, and
-whatever a connection keeps itself (an upkeep item counting a device's running hours) all move to the
+whatever a connection keeps itself about a device all move to the
 new device ids in one go. Nothing here knows about any particular connection or kind of device.
 """
 from __future__ import annotations
@@ -191,7 +191,7 @@ async def replace_entities(h: "Newman", pairs: Any) -> dict[str, Any]:
             counts["references"] += n
 
     for inst in list(h.integrations.instances.values()):
-        if n := await inst.replace_entities(mapping):  # counted under the connection's type ("upkeep": 1)
+        if n := await inst.replace_entities(mapping):  # counted under the connection's type ("<type>": 1)
             counts[inst.type] = counts.get(inst.type, 0) + n
             counts["references"] += n
     counts["dashboardOwners"] = sorted(owners)

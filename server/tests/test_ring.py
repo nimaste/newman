@@ -783,17 +783,6 @@ class SwapTests(unittest.IsolatedAsyncioTestCase):
         r = await self.client.get("/api/automations")
         self.assertEqual(r.status, 200)
 
-    async def test_upkeep_follows_the_device(self):
-        h = self.h
-        rec = await h.integrations.create("upkeep", "Upkeep", {})
-        up = h.integrations.instances[rec["id"]]
-        item = await up.add({"name": "Test the siren", "every": 0, "runtimeHours": 10, "runtimeEntity": "mqtt.z-panel_siren"})
-        r = await self.client.post("/api/entities/replace", json={"pairs": [{"from": "mqtt.z-panel_siren",
-                                                                             "to": "ring.z_panel_siren"}]})
-        self.assertEqual((await r.json())["upkeep"], 1)
-        self.assertEqual(up._item(item["id"])["runtimeEntity"], "ring.z_panel_siren")
-        self.assertIn("ring.z_panel_siren", (Path(self.tmp.name) / "integrations" / rec["id"] / "items.json").read_text())
-
     async def test_bad_requests(self):
         for body in ({}, {"pairs": []}, {"pairs": [{"from": "mqtt.z-side"}]},
                      {"pairs": [{"from": "mqtt.z-side", "to": "ring.missing"}]},

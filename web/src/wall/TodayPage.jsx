@@ -9,7 +9,7 @@ import { useMoreAfter } from './fade.js';
 import { Icon } from '../icons.jsx';
 import { TodoRow, useDeviceOpener } from './TodayTile.jsx';
 import { GROUPS } from './TodoView.jsx';
-import { doItem, greeting, useRecentlyDone, useToday, useUpkeep, withRecent } from './today.js';
+import { doItem, greeting, useRecentlyDone, useHousehold, useToday, withRecent } from './today.js';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -59,19 +59,19 @@ export function GreetingTile() {
 
 export function TodoTile() {
   const { data } = useToday();
-  const upkeep = useUpkeep();
+  const household = useHousehold();
   const recent = useRecentlyDone();
   const [asking, setAsking] = useState(null);
   const { openDevice, muteDevice, sheet } = useDeviceOpener();
   const bodyRef = useRef(null);
   const more = useMoreAfter(bodyRef);
-  const people = (upkeep.data && upkeep.data.people) || [];
+  const people = (household.data && household.data.people) || [];
 
   const all = data ? [...withRecent(data.todo, recent), ...(data.soon || [])] : [];
   const groups = GROUPS.map((g) => ({ ...g, items: all.filter((x) => g.levels.includes(x.level)) })).filter((g) => g.items.length);
   const pick = async (item, who) => {
     setAsking(null);
-    await doItem(item, upkeep.data, who);
+    await doItem(item, who);
   };
 
   return (
@@ -93,7 +93,7 @@ export function TodoTile() {
           <div key={g.name} className="tt-group">
             <span className="tt-head">{g.name}</span>
             {g.items.map((item) => (
-              <TodoRow key={item.id} item={item} people={people} upkeep={upkeep.data} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} onMute={muteDevice} />
+              <TodoRow key={item.id} item={item} people={people} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} onMute={muteDevice} />
             ))}
           </div>
         ))}

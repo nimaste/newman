@@ -904,11 +904,11 @@ eq((try? JSONDecoder().decode(ReportReply.self, from: Data(#"{"live":false,"ever
 let todayJSON = #"""
 {"date":"2026-10-02",
  "todo":[
-  {"id":"upkeep.furnace","source":"upkeep","entity":"upkeep.furnace","title":"Furnace filter","owner":"Chris","ownerId":"p1","askWho":false,"level":"overdue","status":"4 days late","sort":-4,"action":"done"},
+  {"id":"caldav.home:task:furnace","source":"task","entity":"caldav.home","title":"Furnace filter","owner":"Chris","ownerId":"p1","askWho":false,"level":"overdue","status":"4 days late","sort":-4,"action":"done"},
   {"id":"ring.side_door:health","source":"device","entity":"ring.side_door","level":"device","title":"Side door: battery low","status":"battery low","action":"open","askWho":false},
-  {"id":"upkeep.plants","source":"upkeep","entity":"upkeep.plants","title":"Water the plants","owner":"","level":"due","status":"Due today","action":"done"},
+  {"id":"caldav.home:task:plants","source":"task","entity":"caldav.home","title":"Water the plants","owner":"","level":"due","status":"Due today","action":"done"},
   {"id":"lg.dishwasher:need:rinse aid low","source":"appliance","entity":"lg.dishwasher","level":"appliance","title":"Dishwasher: rinse aid low","status":"Reported by the dishwasher","action":"dismiss"}],
- "soon":[{"id":"upkeep.smoke","source":"upkeep","entity":"upkeep.smoke","title":"Test smoke alarms","level":"soon","status":"In 3 days","action":"done"}],
+ "soon":[{"id":"caldav.home:task:smoke","source":"task","entity":"caldav.home","title":"Test smoke alarms","level":"soon","status":"In 3 days","action":"done"}],
  "events":[{"title":"Dentist","allDay":false,"time":"3:30 PM","start":"2026-10-02T15:30:00","end":"2026-10-02T16:30:00","location":"Main St","calendar":"Family","colour":"#7FB8FF","now":false}],
  "headsUp":[{"id":"weather.home:rain","source":"weather","icon":"rain","entity":"weather.home","text":"Rain likely from 3 PM (70%)","short":"rain from 3 PM"}],
  "counts":{"todo":4,"soon":1,"events":1}}
@@ -916,27 +916,26 @@ let todayJSON = #"""
 if let brief = try? JSONDecoder().decode(TodayBriefing.self, from: Data(todayJSON.utf8)) {
     let card = TodayView.card(brief, done: [:], now: t0)
     eq(card.summary, "4 things to do · 1 event", "today summary")
-    eq(card.rows.map { $0.id }, ["upkeep.furnace", "ring.side_door:health", "upkeep.plants", "lg.dishwasher:need:rinse aid low"], "today rows")
+    eq(card.rows.map { $0.id }, ["caldav.home:task:furnace", "ring.side_door:health", "caldav.home:task:plants", "lg.dishwasher:need:rinse aid low"], "today rows")
     eq(card.more, 1, "coming up waits behind N more")
     eq(card.rows[0].status, "4 days late · Chris", "owner named")
     eq(card.rows[0].tone, .urgent, "overdue is urgent")
-    eq(card.rows[0].buttons, [.done, .snooze], "upkeep: done + tomorrow")
+    eq(card.rows[0].buttons, [.done, .snooze], "task: done + tomorrow")
     eq(card.rows[1].buttons, [.open], "device: open")
     eq(card.rows[2].status, "Due today", "shared item names nobody")
     eq(card.rows[3].buttons, [.dismiss], "appliance: dismiss")
     eq(card.events.first?.title, "Dentist", "event")
     eq(card.headsUp.first?.text, "Rain likely from 3 PM (70%)", "heads-up")
-    eq(TodayView.upkeepId(brief.todo[0]), "furnace", "upkeep id")
     let furnace = brief.todo[0]
     let after = TodayBriefing(date: brief.date, todo: Array(brief.todo.dropFirst()), soon: brief.soon, events: brief.events, headsUp: brief.headsUp)
-    let doneHere = [furnace.id: TodayView.Done(item: furnace, upkeepId: "furnace", at: t0 - 30)]
+    let doneHere = [furnace.id: TodayView.Done(item: furnace, taskId: "caldav.home:task:furnace", at: t0 - 30)]
     let card2 = TodayView.card(after, done: doneHere, now: t0)
     eq(card2.summary, "3 things to do · 1 event", "after done")
     eq(card2.rows.first { $0.id == furnace.id }?.buttons, [.undo], "undo offered")
     eq(card2.rows.first { $0.id == furnace.id }?.tone, .done, "struck through")
     let card3 = TodayView.card(after, done: doneHere, now: t0 + 700)
-    eq(card3.rows.map { $0.id }, ["ring.side_door:health", "upkeep.plants", "lg.dishwasher:need:rinse aid low", "upkeep.smoke"], "done drops off, coming up fills in")
-    eq(TodayView.card(TodayBriefing(), done: [furnace.id: TodayView.Done(item: furnace, upkeepId: "furnace", at: t0)], now: t0).summary,
+    eq(card3.rows.map { $0.id }, ["ring.side_door:health", "caldav.home:task:plants", "lg.dishwasher:need:rinse aid low", "caldav.home:task:smoke"], "done drops off, coming up fills in")
+    eq(TodayView.card(TodayBriefing(), done: [furnace.id: TodayView.Done(item: furnace, taskId: "caldav.home:task:furnace", at: t0)], now: t0).summary,
        "All done for today", "all done")
     check(TodayView.card(TodayBriefing(), done: [:], now: t0).empty, "empty briefing")
 } else { check(false, "today decodes") }
@@ -1110,8 +1109,8 @@ let notSharingRow = PeopleText.row(tileHousehold[2], now: t0)
 check(!notSharingRow.located && notSharingRow.whereText == "Not sharing location" && notSharingRow.updated == nil, "not sharing: dim, not tappable")
 
 let greetingJSON = #"""
-{"todo":[{"id":"upkeep.furnace","source":"upkeep","title":"Furnace filter","level":"overdue","action":"done"},
-         {"id":"upkeep.plants","source":"upkeep","title":"Water the plants","level":"due","action":"done"},
+{"todo":[{"id":"caldav.home:task:furnace","source":"task","title":"Furnace filter","level":"overdue","action":"done"},
+         {"id":"caldav.home:task:plants","source":"task","title":"Water the plants","level":"due","action":"done"},
          {"id":"lg.dishwasher:need","source":"appliance","title":"Dishwasher: rinse aid low","level":"appliance","action":"dismiss"}],
  "events":[{"title":"Dentist"},{"title":"Soccer"}],
  "headsUp":[
@@ -1123,7 +1122,7 @@ let greetingJSON = #"""
 if let gb = try? JSONDecoder().decode(TodayBriefing.self, from: Data(greetingJSON.utf8)) {
     eq(TodayView.greetingLine(gb, done: [:], now: t0), "3 things to do · 2 events today · wind warning · rain from 3 PM", "greeting line")
     let filterItem = gb.todo[0]
-    let doneNow = [filterItem.id: TodayView.Done(item: filterItem, upkeepId: "furnace", at: t0 - 30)]
+    let doneNow = [filterItem.id: TodayView.Done(item: filterItem, taskId: "caldav.home:task:furnace", at: t0 - 30)]
     eq(TodayView.greetingLine(gb, done: doneNow, now: t0), "2 things to do · 2 events today · wind warning · rain from 3 PM", "done here")
     check(TodayView.greetingLine(gb, done: doneNow, now: t0 + 700).hasPrefix("3 things to do · "), "done here drops off")
     eq(TodayView.greetingLine(TodayBriefing(todo: [filterItem], events: [gb.events[0]]), done: [:], now: t0), "1 thing to do · 1 event today", "singular")

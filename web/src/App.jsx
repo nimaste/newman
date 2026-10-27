@@ -13,7 +13,6 @@ import DeviceDetail from './pages/DeviceDetail.jsx';
 import Cameras from './pages/Cameras.jsx';
 import LiveView from './pages/LiveView.jsx';
 import Automations from './pages/Automations.jsx';
-import Upkeep from './pages/Upkeep.jsx';
 import AutomationEditor from './pages/AutomationEditor.jsx';
 import Activity from './pages/Activity.jsx';
 import Integrations from './pages/Integrations.jsx';
@@ -129,8 +128,6 @@ function Page({ route }) {
     case 'cameras':
       // #/cameras/<id>: the full-screen live view (one instance, so a clip keeps playing while switching cameras).
       return sub ? <LiveView id={sub} /> : <Cameras />;
-    case 'upkeep':
-      return <Upkeep />;
     case 'automations':
       return sub ? (
         <AutomationEditor key={sub + '?' + route.query.toString()} id={sub} templateId={route.query.get('template')} query={route.query} />
@@ -215,7 +212,6 @@ function Dashboard() {
       devices: 'Devices',
       cameras: 'Cameras',
       automations: 'Automations',
-      upkeep: 'Upkeep',
       activity: 'Activity',
       integrations: 'Connections',
       household: 'Household · ' + ({ phones: 'Phones', 'test-phones': 'Phones', accounts: 'Accounts', map: 'Map', places: 'Places' }[route.parts[1]] || 'People'),

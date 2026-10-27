@@ -175,7 +175,7 @@ class LayoutTests(Base):
 
 class TodayRolesTests(unittest.TestCase):
     def test_today_roles_are_kind_metadata(self):
-        self.assertEqual({k.today for k in KINDS.values() if k.today}, {"todo", "events", "weather"})
+        self.assertEqual({k.today for k in KINDS.values() if k.today}, {"events", "weather"})  # tasks come from calendar servers
 
 
 if __name__ == "__main__":

@@ -14,6 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ca.nimaste.newman.core.hub.HubState
 import ca.nimaste.newman.core.model.string
+import ca.nimaste.newman.core.today.TaskCalendars
 import ca.nimaste.newman.core.today.TodayView
 import ca.nimaste.newman.ui.LocalApp
 import ca.nimaste.newman.ui.common.NTextField
@@ -72,8 +79,8 @@ private fun upcoming(state: HubState, today: LocalDate, max: Int = 5): List<Upco
 
 /**
  * Today (Today board): CALENDAR - today's events, or "Nothing on the Family calendar today"; TO DO -
- * tap one to tick it done (Undo while it's just done), "+ Add" for admins (an upkeep item first due
- * today); COMING UP - the next days' events and the upkeep coming due, with their status.
+ * tap one to tick it done (Undo while it's just done), "+ Add" (a GCloud task, in a calendar picked);
+ * COMING UP - the next days' events and the tasks coming due, with their status.
  */
 @Composable
 fun TodayScreen(onBack: () -> Unit, onSheet: (String) -> Unit) {
@@ -93,7 +100,6 @@ fun TodayScreen(onBack: () -> Unit, onSheet: (String) -> Unit) {
         }
     }
     val today = LocalDate.now()
-    val admin = state.auth?.user?.role == "admin"
     fun act(id: String, block: suspend () -> String?) {
         busy = id
         scope.launch {
@@ -138,7 +144,7 @@ fun TodayScreen(onBack: () -> Unit, onSheet: (String) -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Caps("To do", Modifier.weight(1f))
-                        if (admin) RaisedButton("+ Add", height = 32.dp) { adding = true }
+                        RaisedButton("+ Add", height = 32.dp) { adding = true }
                     }
                     if (rows.isEmpty()) Text(if (brief == null) "Loading…" else "Nothing to do", style = HT.row.copy(color = H.Soft))
                     rows.forEach { r ->
@@ -188,7 +194,7 @@ fun TodayScreen(onBack: () -> Unit, onSheet: (String) -> Unit) {
                 soon.forEach { s ->
                     i++
                     HRow(last = i == total, onClick = s.entity?.let { { onSheet(it) } }) {
-                        Text("Upkeep", style = HT.line.copy(color = H.Info, fontWeight = FontWeight.ExtraBold), modifier = Modifier.width(72.dp), maxLines = 1)
+                        Text("Task", style = HT.line.copy(color = H.Info, fontWeight = FontWeight.ExtraBold), modifier = Modifier.width(72.dp), maxLines = 1)
                         Column(Modifier.weight(1f)) {
                             Text(s.title, style = HT.row.copy(fontSize = 14.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                             if (s.status.isNotBlank()) Text(s.status, style = HT.small.copy(color = toneColour(TodayView.tone(s.level))))
@@ -198,7 +204,7 @@ fun TodayScreen(onBack: () -> Unit, onSheet: (String) -> Unit) {
             }
         }
     }
-    if (adding) AddTodo(onDone = { adding = false })
+    if (adding) AddTask(onDone = { adding = false })
 }
 
 private fun toneColour(t: TodayView.Tone) = when (t) {
@@ -208,33 +214,78 @@ private fun toneColour(t: TodayView.Tone) = when (t) {
     TodayView.Tone.DONE -> H.Sub
 }
 
-/** "+ Add": a to-do's name and how often it comes back (the hub's upkeep items repeat); first due today. */
+/** A button showing the choice, with a menu of [options] (value to label). */
 @Composable
-private fun AddTodo(onDone: () -> Unit) {
+private fun Choice(label: String, value: String, options: List<Pair<String, String>>, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = HT.row, modifier = Modifier.weight(1f))
+        Box {
+            RaisedButton((options.firstOrNull { it.first == value }?.second ?: "Pick") + " ▾", height = 36.dp, radius = 12.dp,
+                style = HT.button.copy(fontSize = 14.sp), enabled = options.isNotEmpty()) { open = true }
+            DropdownMenu(open, onDismissRequest = { open = false }, containerColor = H.Raised) {
+                options.forEach { (v, l) ->
+                    DropdownMenuItem(text = { Text(l, style = HT.row) }, onClick = {
+                        open = false
+                        onPick(v)
+                    })
+                }
+            }
+        }
+    }
+}
+
+/**
+ * "+ Add": a GCloud task - what needs doing, when it's due, how often it comes back, who it belongs to
+ * and which calendar it goes in (the ones Newman may write that take tasks).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddTask(onDone: () -> Unit) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
+    var due by remember { mutableStateOf(LocalDate.now()) }
     var every by remember { mutableStateOf("1") }
     var unit by remember { mutableStateOf("weeks") }
+    var owner by remember { mutableStateOf("") }
+    var calendar by remember { mutableStateOf("") }
+    var options by remember { mutableStateOf<TaskCalendars?>(null) }
+    var picking by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val o = app.taskCalendars() ?: TaskCalendars()
+        options = o
+        if (calendar.isEmpty()) calendar = o.writable.firstOrNull()?.id ?: ""
+    }
     val n = every.toIntOrNull()?.takeIf { it > 0 }
     AlertDialog(
         onDismissRequest = onDone,
         containerColor = H.Card,
-        title = { Text("Add a to-do") },
+        title = { Text("New task") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 NTextField(name, { name = it }, label = "What needs doing")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Due", style = HT.row, modifier = Modifier.weight(1f))
+                    RaisedButton(due.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())), height = 36.dp, radius = 12.dp,
+                        style = HT.button.copy(fontSize = 14.sp)) { picking = true }
+                }
                 NTextField(every, { every = it.filter(Char::isDigit).take(3) }, label = "Comes back every",
                     keyboard = androidx.compose.ui.text.input.KeyboardType.Number)
                 Segmented(listOf("days" to "Days", "weeks" to "Weeks", "months" to "Months"), unit, height = 36.dp) { unit = it }
+                Choice("Belongs to", owner, listOf("" to "Everyone") + (options?.people ?: emptyList()).map { it.id to it.name }) { owner = it }
+                Choice("Calendar", calendar, (options?.writable ?: emptyList()).map { it.id to it.name }) { calendar = it }
+                if (options != null && options?.writable.isNullOrEmpty()) {
+                    Text("Newman can't add tasks to any GCloud calendar yet.", style = HT.small)
+                }
             }
         },
         confirmButton = {
-            TextButton(enabled = !saving && name.isNotBlank() && n != null, onClick = {
+            TextButton(enabled = !saving && name.isNotBlank() && n != null && calendar.isNotEmpty(), onClick = {
                 saving = true
                 scope.launch {
-                    val ok = app.addTodo(name.trim(), n ?: 1, unit)
+                    val ok = app.addTask(calendar, name.trim(), due, n ?: 1, unit, owner)
                     saving = false
                     if (ok) onDone()
                 }
@@ -242,4 +293,18 @@ private fun AddTodo(onDone: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } },
     )
+    if (picking) {
+        val zone = java.time.ZoneOffset.UTC
+        val state = rememberDatePickerState(initialSelectedDateMillis = due.atStartOfDay(zone).toInstant().toEpochMilli())
+        DatePickerDialog(
+            onDismissRequest = { picking = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { due = java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
+                    picking = false
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+        ) { DatePicker(state) }
+    }
 }

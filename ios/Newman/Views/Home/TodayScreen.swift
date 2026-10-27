@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Today: CALENDAR (today's events), TO DO (tap to tick one done; admins "+ Add") and COMING UP
-/// (the next events of the coming days and the upkeep items with their status), from GET /api/today,
-/// the calendars' upcoming events and GET /api/upkeep.
+/// Today: CALENDAR (today's events), TO DO (tap to tick one done; "+ Add" makes a GCloud task) and
+/// COMING UP (the next events of the coming days and the tasks coming due, with their status), from
+/// GET /api/today and the calendars' upcoming events.
 struct TodayScreen: View {
     @EnvironmentObject var model: AppModel
-    @State private var upkeep: [UpkeepItem]?
     @State private var adding = false
     @State private var sheetFor: HomeSheet?
 
@@ -24,8 +23,7 @@ struct TodayScreen: View {
                     }
                     calendarCard(briefing.events, calendars: calendars)
                     todoCard(briefing.todo)
-                    comingUpCard(TodayScreenLogic.comingUp(calendars, now: Date()),
-                                 upkeep: TodayScreenLogic.upkeep(upkeep ?? [], todo: briefing.todo), fallback: briefing.soon)
+                    comingUpCard(TodayScreenLogic.comingUp(calendars, now: Date()), tasks: briefing.soon)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 32)
@@ -33,13 +31,12 @@ struct TodayScreen: View {
             .refreshable { await reload() }
         }
         .task { await reload() }
-        .sheet(isPresented: $adding) { AddTodoSheet().environmentObject(model) }
+        .sheet(isPresented: $adding) { AddTaskSheet().environmentObject(model) }
         .sheet(item: $sheetFor) { s in DeviceSheet(entityId: s.id).environmentObject(model) }
     }
 
     private func reload() async {
         await model.reloadToday()
-        if let list = try? await APIClient.shared.upkeepList() { upkeep = list.items }
     }
 
     private func empty(_ text: String) -> some View {
@@ -73,10 +70,8 @@ struct TodayScreen: View {
     private func todoCard(_ items: [TodayItem]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             CardHeader(text: "To do") {
-                if model.isAdmin {
-                    Button("+ Add") { adding = true }
-                        .font(AppFont.manrope(13, .heavy)).foregroundColor(Theme.blue)
-                }
+                Button("+ Add") { adding = true }
+                    .font(AppFont.manrope(13, .heavy)).foregroundColor(Theme.blue)
             }
             .padding(.bottom, 4)
             let now = Date().timeIntervalSince1970
@@ -140,9 +135,9 @@ struct TodayScreen: View {
         .accessibilityAction(named: "Undo") { Task { await model.todayUndo(item) } }
     }
 
-    private func comingUpCard(_ events: [TodayScreenLogic.Upcoming], upkeep: [UpkeepItem], fallback: [TodayItem]) -> some View {
+    private func comingUpCard(_ events: [TodayScreenLogic.Upcoming], tasks: [TodayItem]) -> some View {
         let rows: [(String, String, String)] = events.map { ($0.day, $0.title, $0.calendar) }
-            + (self.upkeep == nil ? fallback.map { ("Upkeep", $0.title, $0.status) } : upkeep.map { ("Upkeep", $0.name, $0.statusText) })
+            + tasks.map { ("Task", $0.title, $0.status) }
         return VStack(alignment: .leading, spacing: 0) {
             CardHeader(text: "Coming up").padding(.bottom, 4)
             if rows.isEmpty { empty("Nothing coming up") }
@@ -164,20 +159,29 @@ struct TodayScreen: View {
     }
 }
 
-/// Today's "+ Add" (admins): a to-do, due today, that comes back every so many days, weeks or months.
-struct AddTodoSheet: View {
+/// Today's "+ Add": a GCloud task - what needs doing, when it's due, how often it comes back, who it
+/// belongs to and which calendar it goes in (the ones Newman may write that take tasks).
+struct AddTaskSheet: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var every = 30
-    @State private var unit = "days"
+    @State private var due = Date()
+    @State private var every = 1
+    @State private var unit = "weeks"
+    @State private var owner = ""
+    @State private var calendar = ""
+    @State private var options: TaskCalendars?
     @State private var saving = false
+
+    private var calendars: [TaskCalendars.Entry] { options?.writable ?? [] }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("What needs doing", text: $name)
+                        .font(AppFont.manrope(15, .bold))
+                    DatePicker("Due", selection: $due, displayedComponents: .date)
                         .font(AppFont.manrope(15, .bold))
                 }
                 .listRowBackground(Theme.card)
@@ -191,28 +195,61 @@ struct AddTodoSheet: View {
                     }
                     .pickerStyle(.segmented)
                 } header: {
-                    Text("COMES BACK").font(AppFont.manrope(12, .heavy)).kerning(1.2).foregroundColor(Theme.muted)
+                    sectionTitle("COMES BACK")
+                }
+                .listRowBackground(Theme.card)
+                Section {
+                    Picker("Belongs to", selection: $owner) {
+                        Text("Everyone").tag("")
+                        ForEach(options?.people ?? []) { p in Text(p.name).tag(p.id) }
+                    }
+                    .font(AppFont.manrope(15, .bold))
+                    Picker("Calendar", selection: $calendar) {
+                        ForEach(calendars) { c in Text(c.name).tag(c.id) }
+                    }
+                    .font(AppFont.manrope(15, .bold))
+                } header: {
+                    sectionTitle("IN GCLOUD")
+                } footer: {
+                    if options != nil && calendars.isEmpty {
+                        Text("Newman can't add tasks to any GCloud calendar yet.")
+                            .font(AppFont.manrope(12, .bold)).foregroundColor(Theme.muted)
+                    }
                 }
                 .listRowBackground(Theme.card)
             }
             .scrollContentBackground(.hidden)
             .background(Theme.background)
-            .navigationTitle("New to-do")
+            .navigationTitle("New task")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        saving = true
-                        Task {
-                            if await model.addTodo(name: name.trimmingCharacters(in: .whitespaces), every: every, unit: unit) { dismiss() }
-                            saving = false
-                        }
-                    }
-                    .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Add") { add() }
+                        .disabled(saving || calendar.isEmpty || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+            .task { await load() }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).font(AppFont.manrope(12, .heavy)).kerning(1.2).foregroundColor(Theme.muted)
+    }
+
+    private func load() async {
+        let o = (try? await APIClient.shared.taskCalendars()) ?? TaskCalendars()
+        options = o
+        if calendar.isEmpty { calendar = o.writable.first?.id ?? "" }
+    }
+
+    private func add() {
+        saving = true
+        Task {
+            if await model.addTask(calendar: calendar, title: name.trimmingCharacters(in: .whitespaces), due: due,
+                                   every: every, unit: unit, owner: owner) { dismiss() }
+            saving = false
+        }
     }
 }

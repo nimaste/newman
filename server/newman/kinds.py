@@ -191,8 +191,8 @@ class Kind:
     # ids read out when someone asks about one ("what's the weather"); default: its first two.
     spoken: tuple[str, ...] = ()
     summary: tuple[str, ...] = ()
-    # What it adds to Today (today.py): "todo" (an upkeep item), "events" (a calendar), "weather" (warnings
-    # and rain) - "" for nothing.
+    # What it adds to Today (today.py): "events" (a calendar), "weather" (warnings and rain) - "" for
+    # nothing. (Today's tasks come from the calendar servers, not from devices.)
     today: str = ""
     # Shown instead of the state's label while an attr has a value: (attr, value, label) - a wall
     # tablet with its screen off shows "Screen off" (its state stays charging / on battery).
@@ -627,17 +627,6 @@ KINDS: dict[str, Kind] = {k.id: k for k in [
          properties=[Property("level", "{sub} level", "%", "levels.*", "number"),
                      Property("problem", "Problem", "", "problem", "text"),
                      Property("message", "Printer's message", "", "message", "text")]),
-    # Something around the house that comes due again and again (the Upkeep connection). attrs: due
-    # (date), daysLeft (negative = late), every, owner, lastDone / lastDoneBy, runtimeHours, history.
-    Kind("upkeep", "Upkeep item", "Upkeep", "other",
-         [("ok", "Up to date"), ("soon", "Coming up"), ("due", "Due today"), ("overdue", "Overdue")],
-         active_state="due", noun="item",
-         commands=[Command("done", "Mark done", "marked done", "check", "ok"),
-                   Command("snooze", "Remind tomorrow", "snoozed", "clock", "")],
-         events=[Event("due", "Comes due", "{device} comes due", "{device}", "{device} is {detail}"),
-                 Event("soon", "Is coming up", "{device} is coming up", "{device}", "{device} is coming up ({detail})")],
-         properties=[Property("daysLeft", "Days left", "days", "daysLeft", "number"),
-                     Property("runtimeHours", "Running hours since last done", "h", "runtimeHours", "number")], today="todo"),
     # A wall tablet's own battery, as the wall app reports it (POST /api/tablet/battery): one device per
     # tablet account. With a smart plug and two automations (on below 20 %, off above 80 %) a tablet that
     # lives on the wall isn't kept at 100 % all day - what swells its battery. Temperature warns first.

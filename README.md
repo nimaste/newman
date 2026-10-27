@@ -20,7 +20,7 @@
 - [Where people are](#where-people-are) — location sharing, places, the Household map
 - [Automations](#automations)
 - [Remotes and their Controls](#remotes-and-their-controls) — what a remote's buttons do, without automations
-- [Upkeep and Today](#upkeep-and-today)
+- [Today](#today)
 - [Dashboards and the wall tablet](#dashboards-and-the-wall-tablet) (and [phone layouts](#phone-layouts), [wall tablet battery and smart charging](#wall-tablet-battery))
 - [Apps](#apps) — the phone and wall apps, connecting them, [the phone's Home](#the-phones-home) (groups, rooms, quiet hours), [Settings](#settings), widgets, live statuses
 - [Deploying behind Caddy](#deploying-behind-caddy)
@@ -359,7 +359,7 @@ own and change live; each lock / alarm / siren change carries who did it.
   ring-mqtt's matching devices, so existing automations get names too. When ready, the Ring
   connection suggests which ring-mqtt device each of its devices replaces
   (`GET /api/integrations/<id>/replacements`), and `POST /api/entities/replace` moves automations,
-  dashboards, device names and upkeep items to the new devices in one go. Then the ring-mqtt container
+  dashboards, device names and the rest to the new devices in one go. Then the ring-mqtt container
   can go.
 - Ring won't arm while a door or window is open; tick *Bypass open doors and windows when arming*
   to have Newman bypass them, as the Ring app offers.
@@ -377,12 +377,17 @@ events.
   password made for it (GCloud *Settings → Phones & app passwords*). Newman sees exactly the calendars that
   account can see: in GCloud, tick **On Newman** for a calendar (*Admin → Calendars*).
 
+**Tasks.** Every calendar that holds tasks (GCloud's to-dos) has them read too: they make Today's To do
+(see [Today](#today)). Done on the wall or a phone writes the task back as done with who did it, Undo takes it
+back, and a phone's **+ Add** makes a new task in a calendar Newman may write. A calendar holding only tasks
+gets no calendar device.
+
 Every calendar shows as a calendar device, in its own colour, on the calendar tile, the Today page and in
 automations ("event starts"), the same as iCal-link calendars. Calendars the account may only view show
 without **Edit**, and with only those, the calendar screen has no **+ New event**.
 
 **Changes show at once.** Put Newman's address (e.g. `10.1.1.2:8093`) in GCloud's *Admin → Calendars →
-Newman address*, and an event added on a phone is on the wall within seconds. Any other server can do the
+Newman address*, and an event or task added on a phone is on the wall within seconds. Any other server can do the
 same by POSTing to `/api/public/calendars/changed`. Without it, Newman checks every 15 minutes (*Check
 every*, under *More settings*).
 
@@ -1221,26 +1226,46 @@ Remotes whose button automations only switched and dimmed one set of lights (on 
 brighten and dim while held) had those automations turned into their Controls once, when this came in;
 Activity says which. The phone apps show a remote's Controls; they're changed on the dashboard.
 
-## Upkeep and Today
+## Today
 
-**Upkeep** (dashboard → Upkeep) holds things that come due again and again: the furnace filter,
-softener salt, an oil change, smoke-alarm tests. Each item repeats every N days / weeks / months
-and/or after N hours a device has run (the furnace and AC, counted from the thermostat's own
-heating / cooling). Optional: who it belongs to, how many days ahead it shows as *coming up*,
-a heads-up the evening before, and whether the wall tablet asks *who did it*. Items live in the
-Upkeep connection's data folder (so backups carry them). Each item is also a device (*Upkeep item*:
-up to date / coming up / due today / overdue), so automations can notify when one comes due.
-
-**Today** is one briefing the hub works out for the wall tile, the phone and (later) voice:
-- **To do** — upkeep items due or overdue, devices needing a hand (offline, low battery, no power,
-  jammed) and appliance needs ("rinse aid low"), most urgent first. **Done** on the wall asks *who*
-  for everyone's items (skip allowed); an item with an owner credits them; a phone always records
-  its person. **Undo** takes back a mis-tap.
+**Today** is one briefing the hub works out for the wall tile, the phone and voice:
+- **To do** — tasks from GCloud Calendar due or overdue, devices needing a hand (offline, low battery,
+  no power, jammed) and appliance needs ("rinse aid low"), most urgent first; **coming up** — tasks due
+  within their *show as coming up* days (7 unless the task says otherwise). Each task says how late or how
+  soon ("3 days late", "Due today", "In 3 days"), whose it is (or *everyone*) and where it's from
+  ("GCloud · Home").
 - **On today** — today's calendar events.
 - **Heads-up** — weather warnings, rain above a threshold (default 50%), and from the evening on
   (default 17:00) tomorrow's events from calendars marked *"the evening before"* (e.g. garbage day)
-  and upkeep items so marked. Calendar links from Google and most others don't include your own
-  reminders, so this is set per calendar in Newman.
+  and tasks due tomorrow that are marked *a heads-up the evening before*. Calendar links from Google and
+  most others don't include your own reminders, so this is set per calendar in Newman.
+
+The rain threshold and the evening time are in *Settings → Today*, which also lists the calendars tasks
+come from.
+
+**Tasks** live in GCloud Calendar, in the same calendars as events: add or change them on the GCloud
+website or in the GCloud Mail app (what needs doing, when it's due, how often it comes back - from when
+it was due or from when it's done -, who it belongs to, how many days ahead it shows as coming up, a
+heads-up the evening before, and whether the wall asks who did it). Newman reads them through the
+[Calendar server (CalDAV)](#calendar-server-caldav) connection: every calendar its GCloud account sees
+that holds tasks. A task that belongs to someone (its GCloud user name matched to a Newman person by their
+Newman user name or their name, ignoring case) shows on that person's phone only; everyone's show on the
+wall and on every phone.
+
+- **Done** on the wall asks *who did it* when the task says so and belongs to no one (household people, or
+  *Skip*); a task with an owner credits them; a phone always records its person. Newman writes the task
+  back as done with who did it, and GCloud moves a repeating one on to its next due date and adds it to
+  the task's history (*Last done*, *Done before* on the wall's To do screen).
+- **Undo** takes back a mis-tap: the previous due date comes back and that history line goes.
+- **Tomorrow** hides a task from To do until the next day, on Newman only (GCloud doesn't change).
+- **+ Add** on a phone's Today makes a new task in GCloud: what needs doing, when it's due, how often it
+  comes back, who it belongs to, and which calendar (those Newman may write).
+
+Changes made in GCloud show within seconds when GCloud has Newman's address (see the Calendar server
+section), else at the connection's next check.
+
+Newman's own Upkeep page and its items are gone: an Upkeep connection from before is removed on the first
+start (its items aren't moved; add them as tasks in GCloud).
 
 ## Dashboards and the wall tablet
 

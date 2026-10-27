@@ -1,4 +1,4 @@
-// The Today tile (approved TabletToday board): a greeting, To do (upkeep, devices needing a hand,
+// The Today tile (approved TabletToday board): a greeting, To do (GCloud tasks, devices needing a hand,
 // appliance needs) with Done / Open right there, today's events, and heads-up. Everything comes
 // from GET /api/today; tapping through goes to the To do, calendar and weather screens.
 
@@ -8,7 +8,7 @@ import { Icon } from '../icons.jsx';
 import { DeviceSheet } from './DeviceSheet.jsx';
 import { MuteSheet } from './MuteProblems.jsx';
 import { dayKey } from './CalendarView.jsx';
-import { PEOPLE_COLOURS, doItem, greeting, levelColour, undoItem, useRecentlyDone, useToday, useUpkeep, withRecent } from './today.js';
+import { PEOPLE_COLOURS, doItem, greeting, levelColour, undoItem, useRecentlyDone, useHousehold, useToday, withRecent } from './today.js';
 
 const HEADS_ICON = { warning: 'alert', rain: 'cloud', calendar: 'calendar', clock: 'clock' };
 const HEADS_COLOUR = { warning: 'var(--wt-coral)', rain: '#7FB8FF', calendar: 'var(--wt-amber)', clock: 'var(--wt-amber)' };
@@ -21,7 +21,7 @@ function headsHref(h) {
 }
 
 /** One To do row: stripe, title + status (tap: the To do screen), and its button. */
-export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, onMute, upkeep }) {
+export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, onMute }) {
   const done = !!item.justDone;
   const doneText = item.action === 'dismiss' ? 'Done just now' : `Done just now${item.doneBy ? ' · ' + item.doneBy : ''}`;
   return (
@@ -44,12 +44,12 @@ export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, onMute, u
           <span className="td-title">{item.title}</span>
           <span className="td-status" style={{ color: done ? 'var(--wt-teal)' : levelColour(item.level) }}>
             {done ? doneText : item.status}
-            {!done && item.source === 'upkeep' && item.owner ? ' · ' + item.owner : ''}
+            {!done && item.source === 'task' && item.owner ? ' · ' + item.owner : ''}
           </span>
         </a>
       )}
       {asking ? null : done ? (
-        item.source === 'upkeep' ? (
+        item.source === 'task' ? (
           <button type="button" className="td-btn td-btn--ghost" onClick={() => undoItem(item.id)}>
             Undo
           </button>
@@ -66,7 +66,7 @@ export function TodoRow({ item, people, onAsk, asking, onPick, onOpen, onMute, u
           </button>
         </>
       ) : (
-        <button type="button" className="td-btn" onClick={() => (item.askWho && people.length ? onAsk(item) : doItem(item, upkeep, null))}>
+        <button type="button" className="td-btn" onClick={() => (item.askWho && people.length ? onAsk(item) : doItem(item, null))}>
           Done
         </button>
       )}
@@ -90,11 +90,11 @@ export function useDeviceOpener() {
 
 export default function TodayTile({ tile }) {
   const { data } = useToday();
-  const upkeep = useUpkeep();
+  const household = useHousehold();
   const recent = useRecentlyDone();
   const [asking, setAsking] = useState(null);
   const { openDevice, muteDevice, sheet } = useDeviceOpener();
-  const people = (upkeep.data && upkeep.data.people) || [];
+  const people = (household.data && household.data.people) || [];
   const limit = Math.max(1, Math.min(12, Number(tile.config.limit) || 4));
   if (!data) return <div className="wt-empty">Loading today…</div>;
 
@@ -116,7 +116,7 @@ export default function TodayTile({ tile }) {
   const empty = !todo.length && !soon.length && !events.length && !heads.length;
   const pick = async (item, who) => {
     setAsking(null);
-    await doItem(item, upkeep.data, who);
+    await doItem(item, who);
   };
   const today = dayKey(new Date());
 
@@ -138,7 +138,7 @@ export default function TodayTile({ tile }) {
                 <span>See all ›</span>
               </a>
               {shown.map((item) => (
-                <TodoRow key={item.id} item={item} people={people} upkeep={upkeep.data} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} onMute={muteDevice} />
+                <TodoRow key={item.id} item={item} people={people} asking={asking === item.id} onAsk={(it) => setAsking(it.id)} onPick={pick} onOpen={openDevice} onMute={muteDevice} />
               ))}
               {moreText ? (
                 <a className="td-more" href="#/wall/todo">

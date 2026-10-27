@@ -76,14 +76,14 @@ func runScreensTests() {
     let sec = (try? JSONDecoder().decode([SecurityEntry].self, from: Data(#"[{"id":1,"at":10,"title":"A"},{"id":2,"at":30,"title":"B"}]"#.utf8))) ?? []
     eq(SecurityEntry.sorted(sec).map { $0.title }, ["B", "A"], "security: newest first")
 
-    // Today: Coming up.
-    let up = (try? JSONDecoder().decode(UpkeepList.self, from: Data(#"""
-    {"items":[{"id":"u1","name":"Change Oil - Toyota","state":"ok","daysLeft":40,"entity":"upkeep_1.u1"},
-              {"id":"u2","name":"Furnace filter","state":"soon","daysLeft":3,"entity":"upkeep_1.u2"},
-              {"id":"u3","name":"Smoke alarms","state":"overdue","daysLeft":-2,"entity":"upkeep_1.u3"}]}
-    """#.utf8)))?.items ?? []
-    eq(up.map { $0.statusText }, ["Up to date", "In 3 days", "2 days late"], "upkeep status")
-    eq(TodayScreenLogic.upkeep(up, todo: []).map { $0.id }, ["u2"], "coming up: the ones coming due")
+    // Today: "+ Add" picks a calendar that takes tasks and Newman may write.
+    let tc = (try? JSONDecoder().decode(TaskCalendars.self, from: Data(#"""
+    {"calendars":[{"id":"caldav.home","name":"Home","colour":"#3CCFB4","writable":true},
+                  {"id":"caldav.school","name":"School","writable":false}],
+     "people":[{"id":"p1","name":"Chris"},{"id":"p2","name":"Marlina"}]}
+    """#.utf8))) ?? TaskCalendars()
+    eq(tc.writable.map { $0.name }, ["Home"], "task calendars: only writable ones for + Add")
+    eq(tc.people.map { $0.name }, ["Chris", "Marlina"], "task calendars: the household")
     let calJSON = #"""
     [{"id":"cal.family","name":"Family","kind":"calendar","attrs":{"upcoming":[
        {"title":"Dentist","start":"2026-10-22T09:00:00-04:00"},{"title":"Today thing","start":"2026-10-19T09:00:00-04:00"}]}},
@@ -97,6 +97,5 @@ func runScreensTests() {
     let next = TodayScreenLogic.comingUp(cals, now: today, calendar: cal)
     eq(next.map { $0.title }, ["Dentist"], "coming up: after today only")
     eq(next.first?.day ?? "", "Thursday", "a weekday this week")
-    eq(TodayScreenLogic.lastDoneForDueToday(every: 2, unit: "weeks", now: today, calendar: cal), "2026-10-05", "due today: two weeks back")
-    eq(TodayScreenLogic.lastDoneForDueToday(every: 1, unit: "months", now: today, calendar: cal), "2026-09-19", "a month back")
+    eq(TodayScreenLogic.dayString(today, calendar: cal), "2026-10-19", "a new task's due day")
 }

@@ -24,18 +24,18 @@ class TodayTest {
     private val briefing = NewmanJson.decodeFromString(TodayBriefing.serializer(), """{
       "date": "2026-10-02",
       "todo": [
-        {"id": "upkeep.furnace", "source": "upkeep", "entity": "upkeep.furnace", "title": "Furnace filter", "owner": "Chris",
+        {"id": "caldav.home:task:furnace", "source": "task", "entity": "caldav.home", "title": "Furnace filter", "owner": "Chris",
          "ownerId": "p1", "askWho": false, "every": "3 months", "due": "2026-09-28", "icon": "", "level": "overdue",
          "status": "4 days late", "sort": -4, "action": "done"},
         {"id": "ring.side_door:health", "source": "device", "entity": "ring.side_door", "level": "device",
          "title": "Side door: battery low", "status": "battery low", "sort": 0, "action": "open", "askWho": false},
-        {"id": "upkeep.plants", "source": "upkeep", "entity": "upkeep.plants", "title": "Water the plants", "owner": "",
+        {"id": "caldav.home:task:plants", "source": "task", "entity": "caldav.home", "title": "Water the plants", "owner": "",
          "level": "due", "status": "Due today", "action": "done"},
         {"id": "lg.dishwasher:need:rinse aid low", "source": "appliance", "entity": "lg.dishwasher", "level": "appliance",
          "title": "Dishwasher: rinse aid low", "status": "Reported by the dishwasher", "action": "dismiss"}
       ],
       "soon": [
-        {"id": "upkeep.smoke", "source": "upkeep", "entity": "upkeep.smoke", "title": "Test smoke alarms", "level": "soon",
+        {"id": "caldav.home:task:smoke", "source": "task", "entity": "caldav.home", "title": "Test smoke alarms", "level": "soon",
          "status": "In 3 days", "action": "done"}
       ],
       "events": [
@@ -51,7 +51,7 @@ class TodayTest {
     fun cardShowsWhatNeedsDoingMostUrgentFirst() {
         val card = TodayView.card(briefing, emptyMap(), now)
         assertEquals("4 things to do · 1 event", card.summary)
-        assertEquals(listOf("upkeep.furnace", "ring.side_door:health", "upkeep.plants", "lg.dishwasher:need:rinse aid low"), card.rows.map { it.id })
+        assertEquals(listOf("caldav.home:task:furnace", "ring.side_door:health", "caldav.home:task:plants", "lg.dishwasher:need:rinse aid low"), card.rows.map { it.id })
         assertEquals(1, card.more) // the smoke alarms are coming up but there's no room
         val furnace = card.rows[0]
         assertEquals(Tone.URGENT, furnace.tone)
@@ -68,7 +68,7 @@ class TodayTest {
     @Test
     fun doneRowsStayWithUndoThenComingUpFillsTheRoom() {
         val furnace = briefing.todo[0]
-        val done = mapOf(furnace.id to TodayView.Done(furnace, TodayView.upkeepId(furnace), now - 30))
+        val done = mapOf(furnace.id to TodayView.Done(furnace, furnace.id, now - 30))
         // The hub no longer lists it as to do once done.
         val after = briefing.copy(todo = briefing.todo.drop(1))
         val card = TodayView.card(after, done, now)
@@ -80,7 +80,7 @@ class TodayTest {
         // After ten minutes it drops off.
         val later = TodayView.card(after, done, now + 700)
         assertTrue(later.rows.none { it.id == furnace.id })
-        assertEquals(listOf("ring.side_door:health", "upkeep.plants", "lg.dishwasher:need:rinse aid low", "upkeep.smoke"), later.rows.map { it.id })
+        assertEquals(listOf("ring.side_door:health", "caldav.home:task:plants", "lg.dishwasher:need:rinse aid low", "caldav.home:task:smoke"), later.rows.map { it.id })
         assertEquals(0, later.more)
     }
 
@@ -99,8 +99,8 @@ class TodayTest {
     }
 
     @Test
-    fun upkeepIdsAndGreeting() {
-        assertEquals("furnace", TodayView.upkeepId(briefing.todo[0]))
+    fun taskButtonsAndGreeting() {
+        assertEquals(listOf(TodayView.Button.DONE, TodayView.Button.SNOOZE), TodayView.buttons(briefing.todo[0]))
         assertEquals("Good morning", TodayView.greeting(7))
         assertEquals("Good afternoon", TodayView.greeting(12))
         assertEquals("Good evening", TodayView.greeting(18))

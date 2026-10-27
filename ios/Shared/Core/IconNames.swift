@@ -27,7 +27,7 @@ enum IconNames {
         "temperature": "thermometer.medium", "thermostat": "thermometer.medium", "tablet": "ipad", "remote": "av.remote",
         "weather": "cloud.sun", "alarm": "shield", "doorbell": "bell", "zone": "square.dashed", "container": "shippingbox",
         "disk": "internaldrive", "netcheck": "network", "recipe_book": "book", "music_player": "music.note",
-        "upkeep": "wrench.and.screwdriver", "vehicle": "car",
+        "vehicle": "car",
     ]
 
     /// The neutral symbol for a name nobody knows.

@@ -2,12 +2,12 @@ import Foundation
 
 // GET /api/today (server/newman/today.py): what needs someone today, what's on and heads-up,
 // worked out on the hub so the wall, the phone and voice say the same. On a phone the hub sends
-// this person's items and everyone's. Done / Undo / Remind tomorrow go to /api/upkeep/{id}/...;
-// the hub records the signed-in person as who did it. Mirrors android core/today/Today.kt.
+// this person's items and everyone's. Done / Undo / Remind tomorrow go to /api/tasks/{done|undo|snooze}
+// with the item's id (GCloud Calendar tasks); the hub records the signed-in person as who did it. Mirrors android core/today/Today.kt.
 
 struct TodayItem: Decodable, Hashable, Identifiable {
     var id: String
-    /// "upkeep" | "device" | "appliance"
+    /// "task" | "device" | "appliance"
     var source: String
     var entity: String?
     var title: String
@@ -108,10 +108,10 @@ enum TodayView {
         var item: TodayItem
     }
 
-    /// Something done on this phone (kept for Undo). `upkeepId` is nil for a dismissed appliance need.
+    /// Something done on this phone (kept for Undo). `taskId` is nil for a dismissed appliance need.
     struct Done: Hashable {
         var item: TodayItem
-        var upkeepId: String?
+        var taskId: String?
         var at: Double
     }
 
@@ -179,13 +179,6 @@ enum TodayView {
         return GreetingFit(size: size, twoLines: height >= size * 1.3 + TileFit.line)
     }
 
-    /// The upkeep item id behind a To do entry: its entity is "upkeep.<id>"; the API takes the id.
-    static func upkeepId(_ item: TodayItem) -> String {
-        let s = item.entity ?? item.id
-        guard let dot = s.firstIndex(of: ".") else { return s }
-        return String(s[s.index(after: dot)...])
-    }
-
     static func tone(_ level: String) -> Tone {
         switch level {
         case "overdue", "device": return .urgent
@@ -198,7 +191,7 @@ enum TodayView {
         switch item.action {
         case "open": return [.open]
         case "dismiss": return [.dismiss]
-        default: return item.source == "upkeep" ? [.done, .snooze] : [.done]
+        default: return item.source == "task" ? [.done, .snooze] : [.done]
         }
     }
 
@@ -216,7 +209,7 @@ enum TodayView {
         let soon = b.soon.filter { recent[$0.id] == nil }
         let doneRows = recent.values.sorted { $0.at < $1.at }.map { d in
             Row(id: d.item.id, title: d.item.title, status: "Done just now", tone: .done,
-                buttons: d.upkeepId != nil ? [.undo] : [], entity: d.item.entity, item: d.item)
+                buttons: d.taskId != nil ? [.undo] : [], entity: d.item.entity, item: d.item)
         }
         func row(_ i: TodayItem) -> Row {
             Row(id: i.id, title: i.title, status: [i.status, i.owner].filter { !$0.isEmpty }.joined(separator: " · "),

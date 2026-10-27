@@ -117,8 +117,8 @@ kotlinx-serialization + Coil 3 on Android.
   while visible). Use `GET /api/entities/{id}/alerts` for a camera's events.
 - **Alerts tab:** `GET /api/events` (activity) and `GET /api/alerts`.
 - **Today:** `GET /api/today` (`server/newman/today.py`; on a phone: this person's items and
-  everyone's) → `{todo, soon, events, headsUp}`. Actions: `POST /api/upkeep/{id}/done`, `…/undo`,
-  `…/snooze {days: 1}` (the item id is the part of its `entity` after `upkeep.`; the hub records the
+  everyone's) → `{todo, soon, events, headsUp}`. Actions: `POST /api/tasks/done`, `/api/tasks/undo`,
+  `/api/tasks/snooze` with `{id}` (the To do item's id, a GCloud task; the hub records the
   signed-in person as who did it) and `POST /api/today/dismiss {id}` for an appliance's need.
 - **People & location** (older hubs answer 404 to all of these; the apps stay quiet):
   - `GET /api/people` → `[{id, name, sharing, home, place|null, distanceM|null, lat|null, lon|null,
@@ -158,7 +158,7 @@ glows, Sora for headings, Manrope for text).
   - weather and calendar;
   - "needs attention";
   - To do / Today tiles as the Today card (the greeting tile isn't drawn: the header greets).
-- **Today card:** To do (most urgent first, as the hub orders it) with **Done** (upkeep), a clock
+- **Today card:** To do (most urgent first, as the hub orders it) with **Done** (a GCloud task), a clock
   for **Remind tomorrow**, **Open** (a device needing a hand: its sheet) or Done for an appliance's
   need; a row just done stays struck through with **Undo** for 10 minutes. At most 4 rows, then
   "N more"; up to 3 of today's events and 2 heads-up. Reloaded when shown, every minute while shown

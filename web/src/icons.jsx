@@ -290,7 +290,6 @@ const ALIASES = {
   bell_off: 'bellOff',
   siren: 'megaphone',
   press: 'pointer',
-  upkeep: 'wrench',
   set_volume: 'volume',
   play_pause: 'play',
   leak: 'droplet',

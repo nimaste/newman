@@ -1,7 +1,8 @@
 // The wall's To do screen (#/wall/todo, approved TabletTodo board): Overdue / Today / Coming up as
 // cards on the left, the chosen item on the right - Done (with "Who did it?" for shared items),
 // Remind tomorrow, Undo, history; a device's problem opens the device; an appliance's need is
-// dismissed. Data: GET /api/today (+ /api/upkeep for how often, history and the household).
+// dismissed. Data: GET /api/today (a task's facts and history come with it; GCloud Calendar keeps them)
+// and GET /api/tasks/calendars for the household.
 
 import { useState } from 'react';
 import { useHub } from '../hooks.js';
@@ -9,7 +10,7 @@ import { Icon } from '../icons.jsx';
 import { deviceIcon } from '../model.js';
 import { useDeviceOpener } from './TodayTile.jsx';
 import { ProblemList } from './MuteProblems.jsx';
-import { PEOPLE_COLOURS, doItem, snooze, undoItem, useRecentlyDone, useToday, useUpkeep, withRecent, failed } from './today.js';
+import { PEOPLE_COLOURS, doItem, snooze, undoItem, useHousehold, useRecentlyDone, useToday, withRecent, failed } from './today.js';
 
 export const GROUPS = [
   { name: 'Overdue', levels: ['overdue', 'device'] },
@@ -39,44 +40,41 @@ function badgeText(item) {
 }
 
 function sourceText(item, e) {
-  if (item.source === 'upkeep') return 'Upkeep · ' + (item.owner || 'everyone');
+  if (item.source === 'task') return (item.from || 'GCloud') + ' · ' + (item.owner || 'everyone');
   if (item.source === 'device') return 'Device · ' + ((e && (e.integrationName || e.name)) || 'device');
   return 'Appliance · ' + ((e && e.name) || 'appliance');
 }
 
-/** "90 days or after 500 running hours", from the upkeep device's own wording (attrs.every). */
-function everyText(e) {
-  const s = (e && e.attrs && e.attrs.every) || '';
-  return s.replace(/^every /, '');
+/** "6 months, from when it’s done" - how often a task comes back (its RRULE; "" when it doesn't). */
+function everyText(item) {
+  if (!item.every) return '';
+  return item.every + (item.repeatFrom === 'done' ? ', from when it’s done' : '');
 }
 
 export default function TodoView({ itemId, onBack }) {
   const { entitiesById, kindsById } = useHub();
   const { data } = useToday();
-  const upkeep = useUpkeep();
+  const household = useHousehold();
   const recent = useRecentlyDone();
   const [sel, setSel] = useState(itemId || null);
   const [asking, setAsking] = useState(false);
   const { openDevice, sheet } = useDeviceOpener();
-  const people = (upkeep.data && upkeep.data.people) || [];
+  const people = (household.data && household.data.people) || [];
 
   const todo = data ? withRecent(data.todo, recent) : [];
   const soon = (data && data.soon) || [];
   const all = [...todo, ...soon];
   const current = all.find((x) => x.id === sel) || all[0] || null;
   const now = todo.filter((x) => !x.justDone).length;
-  const u = current && current.source === 'upkeep' ? ((upkeep.data && upkeep.data.items) || []).find((x) => x.entity === current.entity) : null;
   const e = current ? entitiesById[current.entity] : null;
 
   const done = async (who) => {
     setAsking(false);
-    await doItem(current, upkeep.data, who);
-    upkeep.reload();
+    await doItem(current, who);
   };
   const remind = async () => {
     try {
-      await snooze(current, upkeep.data);
-      upkeep.reload();
+      await snooze(current);
     } catch (err) {
       failed(err);
     }
@@ -88,15 +86,12 @@ export default function TodoView({ itemId, onBack }) {
   if (current) {
     status = current.justDone ? `Done just now${current.doneBy ? ' by ' + current.doneBy : ''}` : current.status;
     statusColour = current.justDone ? 'var(--wt-teal)' : current.level === 'soon' || !BADGE[current.level] ? 'var(--wt-dim)' : BADGE[current.level][0];
-    if (current.source === 'upkeep') {
+    if (current.source === 'task') {
       facts = [
-        ['Belongs to', (u && u.ownerName) || current.owner || 'Everyone'],
-        ['Every', everyText(e) || String(current.every || '').replace(/^every /, '')],
-        ['Last done', u ? [longDate(u.lastDoneDate), u.lastDoneBy].filter(Boolean).join(' · ') : ''],
-        [current.justDone ? 'Next due' : current.level === 'overdue' ? 'Was due' : 'Due',longDate((u && u.due) || current.due)],
-        ...(u && typeof u.runtimeHours === 'number'
-          ? [['Running hours', `${Math.round(u.runtimeHours)} h${e && e.attrs && e.attrs.runtimeLimit ? ' of ' + e.attrs.runtimeLimit : ''}`]]
-          : []),
+        ['Belongs to', current.owner || 'Everyone'],
+        ['Every', everyText(current)],
+        ['Last done', current.justDone ? ['Today', current.doneBy].filter(Boolean).join(' · ') : [longDate(current.lastDone), current.lastDoneBy].filter(Boolean).join(' · ')],
+        current.justDone ? ['Next due', longDate(current.nextDue)] : [current.level === 'overdue' ? 'Was due' : 'Due', longDate(current.due)],
       ].filter((f) => f[1]);
     } else if (current.source === 'device') {
       facts = [
@@ -111,7 +106,9 @@ export default function TodoView({ itemId, onBack }) {
       ];
     }
   }
-  const history = u && Array.isArray(u.history) ? u.history.slice(0, 4) : [];
+  const past = current && current.source === 'task' && Array.isArray(current.history) ? current.history : [];
+  // Just done here: this time first (GCloud has the line too; Today shows it once it's fetched again).
+  const history = (current && current.justDone ? [{ at: new Date().toISOString(), who: current.doneBy || '' }, ...past] : past).slice(0, 4);
 
   return (
     <div className="wcal wtodo">
@@ -139,7 +136,7 @@ export default function TodoView({ itemId, onBack }) {
                     return (
                       <button key={item.id} type="button" className={'wtodo-card' + (on ? ' is-sel' : '') + (item.justDone ? ' is-done' : '')} aria-pressed={on} onClick={() => (setSel(item.id), setAsking(false))}>
                         <span className="wtodo-icon">
-                          <Icon name={item.source === 'upkeep' ? item.icon || 'wrench' : deviceIcon(ie, ie && kindsById[ie.kind])} size={24} />
+                          <Icon name={item.source === 'task' ? item.icon || 'wrench' : deviceIcon(ie, ie && kindsById[ie.kind])} size={24} />
                         </span>
                         <span className="wtodo-text">
                           <span className="wtodo-title">{item.title}</span>
@@ -181,7 +178,7 @@ export default function TodoView({ itemId, onBack }) {
                 ))}
               </div>
             ) : null}
-            {current.source === 'upkeep' ? (
+            {current.source === 'task' ? (
               asking ? (
                 <div className="wtodo-who">
                   <span className="wtodo-who-q">Who did it?</span>
@@ -247,7 +244,7 @@ export default function TodoView({ itemId, onBack }) {
           </>
         )}
         <span className="wtodo-gap" />
-        <span className="wtodo-foot">Add or change items in the Newman dashboard → Upkeep.</span>
+        <span className="wtodo-foot">Add or change tasks in GCloud Calendar, on the website or the GCloud Mail app.</span>
       </aside>
       {sheet}
     </div>

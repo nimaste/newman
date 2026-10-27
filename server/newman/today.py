@@ -1,18 +1,23 @@
 """Today: what needs someone today, what's on, and what's coming - worked out once on the hub so the
 wall tile, the phone and (later) voice all say the same thing.
 
-    to do     upkeep items due or overdue (not snoozed), devices needing a hand (offline, low battery,
-              no power, jammed…), and appliance needs ("rinse aid low") not dismissed
-    soon      upkeep items coming up
+    to do     tasks from GCloud Calendar due or overdue (not put off till tomorrow), devices needing a hand
+              (offline, low battery, no power, jammed…), and appliance needs ("rinse aid low") not dismissed
+    soon      tasks coming up (within their lead days)
     events    today's calendar events
     heads-up  weather warnings, rain above a threshold, and - from the evening on - tomorrow's events
-              from calendars marked "the evening before" and upkeep items due tomorrow so marked
+              from calendars marked "the evening before" and tasks due tomorrow marked so
+
+Tasks (tasks.py) come from the Calendar server connections; build_for() gathers them. One that belongs to
+someone (X-GCLOUD-OWNER, a GCloud user name matched to a Newman person) shows on that person's phone only;
+everyone's show on the wall and on every phone.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 from typing import Any
 
+from . import tasks as TK
 from .kinds import KINDS
 from .muting import switched_off, unmuted_issues
 
@@ -28,8 +33,55 @@ def _days(n: int) -> str:
     return f"{n} day{'s' if n != 1 else ''}"
 
 
+def collect_tasks(instances: Any) -> list[dict[str, Any]]:
+    """Every task of every Calendar server connection."""
+    return [t for i in list(instances.values()) if hasattr(i, "tasks") for t in i.tasks()]
+
+
+def build_for(h: Any, person_id: str | None = None, now: datetime | None = None) -> dict[str, Any]:
+    """Today for the hub `h` (its store, devices and calendar servers' tasks); `person_id`: a phone's."""
+    st = h.store.settings()
+    return build(h.hub, st, person_id=person_id, dismissed=st.get("todayDismissed") or {}, now=now,
+                 tasks=collect_tasks(h.integrations.instances), people=TK.household(h.store),
+                 snoozed=st.get("todaySnoozed") or {})
+
+
+def _task_item(t: dict[str, Any], today: Any, tomorrow: Any, now: datetime, s: dict[str, Any],
+               person_id: str | None, people: list[dict[str, Any]], snoozed: dict[str, float],
+               todo: list[dict[str, Any]], soon: list[dict[str, Any]], heads: list[dict[str, Any]]) -> None:
+    if t["status"] == "COMPLETED" or not t.get("due"):
+        return
+    person = TK.owner_person(t.get("owner") or "", people)
+    if person_id and t.get("owner") and (not person or person["id"] != person_id):
+        return  # someone else's (on a phone: mine and everyone's)
+    due = datetime.fromisoformat(t["due"]).date()
+    days = (due - today).days
+    tid = TK.task_id(t["calendarKey"], t["uid"])
+    last = t["history"][0] if t.get("history") else None
+    base = {"id": tid, "source": "task", "entity": t.get("calendarEntity"), "title": t["title"],
+            "owner": person["name"] if person else t.get("owner") or "", "ownerId": person["id"] if person else "",
+            "askWho": bool(t.get("askWho")), "every": t.get("every") or "", "repeatFrom": t.get("repeatFrom") or "due",
+            "due": t["due"], "calendar": t["calendar"], "from": f"{t.get('connection') or 'GCloud'} · {t['calendar']}",
+            "lastDone": last["at"] if last else "", "lastDoneBy": last["who"] if last else "",
+            "history": [{"at": d["at"], "who": d["who"]} for d in (t.get("history") or [])[:4]],
+            "notes": (t.get("notes") or "")[:500], "icon": ""}
+    snoozed_now = (snoozed.get(tid) or 0) > now.timestamp()
+    if days < 0 and not snoozed_now:
+        todo.append({**base, "level": "overdue", "status": f"{_days(-days)} late", "sort": days, "action": "done"})
+    elif days == 0 and not snoozed_now:
+        todo.append({**base, "level": "due", "status": "Due today", "sort": 0, "action": "done"})
+    elif days <= int(t.get("lead") if t.get("lead") is not None else TK.DEFAULT_LEAD) or snoozed_now:
+        status = "Tomorrow" if snoozed_now or days == 1 else f"In {_days(days)}"
+        soon.append({**base, "level": "soon", "status": status, "sort": 1 if snoozed_now else days, "action": "done"})
+    if t.get("eveningBefore") and due == tomorrow and _evening(now, s):
+        heads.append({"id": f"{tid}:tomorrow", "source": "task", "icon": "clock", "entity": t.get("calendarEntity"),
+                      "text": f"{t['title']} is due tomorrow"})
+
+
 def build(hub: Any, settings: dict[str, Any], *, person_id: str | None = None,
-          dismissed: dict[str, float] | None = None, now: datetime | None = None) -> dict[str, Any]:
+          dismissed: dict[str, float] | None = None, now: datetime | None = None,
+          tasks: list[dict[str, Any]] | None = None, people: list[dict[str, Any]] | None = None,
+          snoozed: dict[str, float] | None = None) -> dict[str, Any]:
     now = now or datetime.now()
     today, tomorrow = now.date(), now.date() + timedelta(days=1)
     s = {**DEFAULTS, **{k: v for k, v in settings.items() if k in DEFAULTS}}
@@ -39,34 +91,11 @@ def build(hub: Any, settings: dict[str, Any], *, person_id: str | None = None,
     soon: list[dict[str, Any]] = []
     heads: list[dict[str, Any]] = []
 
+    for t in tasks or []:
+        _task_item(t, today, tomorrow, now, s, person_id, people or [], snoozed or {}, todo, soon, heads)
+
     for e in ents:
         a = e.attrs or {}
-        if KINDS[e.kind].today == "todo":
-            if not e.available:
-                continue
-            if person_id and a.get("ownerId") and a["ownerId"] != person_id:
-                continue  # someone else's (on a phone: mine and everyone's)
-            owner = a.get("owner") if a.get("ownerId") else ""
-            base = {"id": e.id, "source": "upkeep", "entity": e.id, "title": e.name, "owner": owner,
-                    "ownerId": a.get("ownerId") or "", "askWho": bool(a.get("askWho", True)) and not a.get("ownerId"),
-                    "every": a.get("every") or "", "due": a.get("due"), "icon": a.get("icon") or ""}
-            snoozed = a.get("snoozedUntil") and a["snoozedUntil"] > now.timestamp()
-            if e.state == "overdue" and not snoozed:
-                late = -int(a.get("daysLeft") or -1)
-                todo.append({**base, "level": "overdue", "status": f"{_days(late)} late", "sort": -late,
-                             "action": "done"})
-            elif e.state == "due" and not snoozed:
-                todo.append({**base, "level": "due", "status": "Due today", "sort": 0, "action": "done"})
-            elif e.state == "soon" or snoozed:
-                left = a.get("daysLeft")
-                status = "Tomorrow" if snoozed else ("Running hours almost up" if left is None or left > 999
-                                                     else f"In {_days(left)}" if left > 1 else "Tomorrow")
-                soon.append({**base, "level": "soon", "status": status, "sort": left if left is not None else 999,
-                             "action": "done"})
-            if a.get("eveningBefore") and a.get("due") == tomorrow.isoformat() and _evening(now, s):
-                heads.append({"id": f"{e.id}:tomorrow", "source": "upkeep", "icon": "clock", "entity": e.id,
-                              "text": f"{e.name} is due tomorrow"})
-            continue
         # Muted problems and those switched off on its Warnings tab: not to do.
         issues = unmuted_issues(e, settings.get("mutedIssues") or {}, now.timestamp(),
                                 switched_off(settings.get("deviceWarnings") or {}, e.id))

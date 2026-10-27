@@ -1398,7 +1398,38 @@ calendar's device id; a calendar the account may only view answers 400). Times a
   tablet. Live: `{"type": "calendarReminder", "reminder"}` and `{"type": "calendarReminderDone", "id"}`.
 - `POST /api/public/calendars/changed` `{"calendar": id}` (no sign-in) — a calendar server says a calendar
   changed, and every calendar server connection fetches it at once with its own sign-in (nudges less than 5 s
-  apart become one fetch). 404 when there's no calendar server connection.
+  apart become one fetch). 404 when there's no calendar server connection. Tasks ride the same nudge.
+
+## Today and tasks
+
+Today is worked out on the hub for the wall, the phones and voice (README → Today). Its tasks are GCloud
+Calendar's to-dos (VTODO) from the calendar server connections; the format is GCloud's (README → Today).
+
+- `GET /api/today` → `{"date", "todo": [...], "soon": [...], "events": [...], "headsUp": [...], "counts"}`. A phone
+  (session kind `app`, or `?mine=1`) gets its person's tasks and everyone's; a wall tablet and the dashboard get
+  everyone's. Each To do / soon item: `{"id", "source": "task"|"device"|"appliance", "entity"?, "title", "status"
+  ("3 days late", "Due today", "Tomorrow", "In 3 days"), "level": "overdue"|"due"|"soon"|"device"|"appliance",
+  "action": "done"|"open"|"dismiss", "askWho", "owner"}`. A task also has `"calendar"`, `"from"` ("GCloud · Home"),
+  `"ownerId"` (the Newman person, "" for everyone), `"every"` ("6 months", "" when it doesn't repeat),
+  `"repeatFrom"` ("due"|"done"), `"due"` (YYYY-MM-DD), `"lastDone"` (ISO), `"lastDoneBy"`, `"history"` (up to 4
+  `{"at", "who"}`, newest first), `"notes"`. Its id is `<calendar>:task:<uid>`. Live: `{"type": "today"}` when a
+  task changed (fetch Today again).
+- `GET /api/tasks/calendars` → `{"calendars": [{"id", "name", "colour", "writable"}], "people": [{"id", "name"}]}` —
+  the calendars that hold tasks (a new task goes in a `writable` one) and the household ("Who did it?",
+  "Belongs to").
+- `POST /api/tasks/done` `{"id", "who"?}` → `{"ok", "who", "nextDue", "calendar"}`. Who did it: on a wall tablet the
+  household name tapped (`who`), else the task's owner, else the tablet; on a phone or the dashboard the
+  signed-in person. The task is written back with `STATUS:COMPLETED`, `COMPLETED` and `X-GCLOUD-DONE-BY`; GCloud
+  rolls a repeating one forward (`nextDue`: when it's due again).
+- `POST /api/tasks/undo` `{"id"}` — takes back a Done: the previous due date from the newest `X-GCLOUD-DONE` line
+  (one from the last 12 hours), that line removed, open again.
+- `POST /api/tasks/snooze` `{"id", "days"?: 1}` — Tomorrow: hidden from To do until the next day, on Newman only.
+- `POST /api/tasks` `{"calendar", "title", "due": "YYYY-MM-DD", "every": n (0 = once), "unit": "days"|"weeks"|"months",
+  "owner": person id | ""}` → `{"ok", "calendar", "uid"}` — anyone signed in except a wall tablet (403). The owner
+  is written as the person's Newman user name (else their name in lower case).
+- `POST /api/today/dismiss` `{"id"}` — hides an appliance's need until it's reported again.
+- `GET /api/today/settings` → `{"todayRainThreshold", "todayEveningFrom", "taskCalendars": [names]}`;
+  `PATCH /api/today/settings` (admin) `{"todayRainThreshold": 0-100, "todayEveningFrom": "HH:MM"}`.
 
 ## Alerts
 

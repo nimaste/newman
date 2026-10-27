@@ -81,7 +81,7 @@ TILE_TYPES: list[dict[str, Any]] = [
                 {"key": "show", "label": "Show", "type": "select", "default": "days",
                  "options": [{"value": "days", "label": "The week ahead"}, {"value": "hours", "label": "The next hours"},
                              {"value": "line", "label": "One line (now, high/low, rain)"}]}]},
-    {"type": "today", "name": "Today", "description": "What needs doing today (upkeep, devices, appliances), today's "
+    {"type": "today", "name": "Today", "description": "What needs doing today (tasks from GCloud Calendar, devices, appliances), today's "
      "events and heads-ups - one list, most urgent first. Tap for the full To do list.",
      "min": [3, 4], "default": [4, 6],
      "fields": [{"key": "limit", "label": "At most this many To do items", "type": "number", "default": 4, "min": 1,

@@ -25,6 +25,11 @@ DATE values (DTEND the day after the last day). Changing one occurrence of a rep
 override (RECURRENCE-ID); deleting one adds an EXDATE. Everything not shown on the wall - reminders
 (VALARM), attendees, other properties - is kept as it was.
 
+Tasks (GCloud Calendar's to-dos, VTODO - see tasks.py): every calendar that says it holds VTODO (or doesn't
+say) has its tasks read with its events (a calendar-query for every VTODO, whatever its date), for Today's
+To do. A calendar holding only tasks gets no calendar device. Done, Undo and a new task (a phone's "+ Add")
+are PUT back like events.
+
 Reminders on the wall: a calendar ticked in "Remind on the wall tablets" has each event's reminders
 (VALARM times) shown as a card on every wall tablet ({"type": "calendarReminder"}); OK on any one
 dismisses it on all ({"type": "calendarReminderDone"}).
@@ -46,6 +51,7 @@ import httpx
 import icalendar
 import recurring_ical_events
 
+from .. import tasks as TK
 from ..store import slug
 from .base import CommandError, Field, Integration, check_every_field
 from .calendar_ics import _local, window_attrs
@@ -123,14 +129,20 @@ def writable(props: dict[str, ET.Element]) -> bool:
     return bool(names & {_q(D, "all"), _q(D, "write"), _q(D, "write-content"), _q(D, "bind")})
 
 
-def is_event_calendar(props: dict[str, ET.Element]) -> bool:
+def components(props: dict[str, ET.Element]) -> set[str]:
+    """What a calendar holds: {"VEVENT", "VTODO"} (both when the server doesn't say); empty when it isn't a
+    calendar."""
     rt = props.get(_q(D, "resourcetype"))
     if rt is None or rt.find(_q(C, "calendar")) is None:
-        return False
+        return set()
     comps = props.get(_q(C, "supported-calendar-component-set"))
     if comps is None:
-        return True
-    return any((c.get("name") or "").upper() == "VEVENT" for c in comps.findall(_q(C, "comp")))
+        return {"VEVENT", "VTODO"}
+    return {(c.get("name") or "").upper() for c in comps.findall(_q(C, "comp"))} & {"VEVENT", "VTODO"}
+
+
+def is_event_calendar(props: dict[str, ET.Element]) -> bool:
+    return "VEVENT" in components(props)
 
 
 def hub_zone() -> ZoneInfo | None:
@@ -406,7 +418,7 @@ class CalDavIntegration(Integration):
     provides = ("calendar",)
     transport: Any = None  # tests: an httpx transport standing in for the server
     description = ("Your own calendar server - GCloud, Nextcloud, Radicale, iCloud… Every calendar the account can "
-                   "see shows on Newman, and the wall tablets can add and change events.")
+                   "see shows on Newman, and the wall tablets can add and change events. Its tasks show in Today's To do.")
     fields = [
         Field("url", "Server address", required=True, placeholder="https://share.example.com/caldav/"),
         Field("username", "User name", required=True),
@@ -433,6 +445,9 @@ class CalDavIntegration(Integration):
         self._cals: dict[str, dict[str, Any]] = {}       # entity id -> {id, href, name, colour, writable, ctag}
         self._objects: dict[str, dict[str, dict[str, str]]] = {}  # entity id -> href -> {"etag", "ics"}
         self._events: dict[str, list[dict[str, Any]]] = {}
+        self._tasks: dict[str, list[dict[str, Any]]] = {}        # calendar key -> its tasks (tasks.parse_tasks)
+        self._task_objects: dict[str, dict[str, dict[str, str]]] = {}  # calendar key -> href -> {"etag", "ics"}
+        self._tasks_seen = ""  # what Today was last told about (a change → "today" to the screens)
         self._fetched: dict[str, float] = {}
         self._until: dict[str, datetime] = {}           # entity id -> the end of the window fetched
         self._ranges: dict[tuple[str, date, date], tuple[float, list[dict[str, Any]]]] = {}  # other days asked for
@@ -494,7 +509,8 @@ class CalDavIntegration(Integration):
             raise ConnectionError(f"the calendar list answered {r.status_code}")
         cals: dict[str, dict[str, Any]] = {}
         for href, props in multistatus(r.content):
-            if not is_event_calendar(props):
+            comps = components(props)
+            if not comps:
                 continue
             url = urljoin(str(r.url), href)
             cid = unquote(urlparse(url).path.rstrip("/").rsplit("/", 1)[-1])
@@ -503,17 +519,22 @@ class CalDavIntegration(Integration):
             ctag_el = props.get(_q(CS, "getctag")) if props.get(_q(CS, "getctag")) is not None else props.get(_q(D, "sync-token"))
             cals[eid] = {"id": cid, "href": url if url.endswith("/") else url + "/", "name": name or cid,
                          "colour": colour_of(props.get(_q(IC, "calendar-color")).text if props.get(_q(IC, "calendar-color")) is not None else None),
-                         "writable": writable(props), "ctag": (ctag_el.text or "") if ctag_el is not None else ""}
+                         "writable": writable(props), "ctag": (ctag_el.text or "") if ctag_el is not None else "",
+                         "events": "VEVENT" in comps, "tasks": "VTODO" in comps}
         for eid, c in cals.items():
-            self.hub.upsert(eid, kind="calendar", name=c["name"], integration=self.id)
+            if c["events"]:
+                self.hub.upsert(eid, kind="calendar", name=c["name"], integration=self.id)
             old = self._cals.get(eid)
-            if old and old.get("ctag") and old["ctag"] == c["ctag"] and eid in self._events:
+            if old and old.get("ctag") and old["ctag"] == c["ctag"] and (eid in self._events or eid in self._tasks):
                 c["unchanged"] = True
         for gone in set(self._cals) - set(cals):
             self._events.pop(gone, None)
             self._objects.pop(gone, None)
             self._seen.pop(gone, None)
-            await self.hub.update(gone, available=False)
+            self._tasks.pop(gone, None)
+            self._task_objects.pop(gone, None)
+            if self._cals[gone].get("events", True):
+                await self.hub.update(gone, available=False)
         self._cals = cals
 
     async def fetch(self, eid: str, force: bool = False) -> None:
@@ -526,10 +547,13 @@ class CalDavIntegration(Integration):
         now = datetime.now()
         lo, hi = now - timedelta(days=1), now + timedelta(days=days)
         try:
-            objects, events = await self._query(cal, lo, hi)
-            self._objects[eid] = objects
-            self._events[eid] = events
-            self._until[eid] = hi
+            if cal.get("events", True):
+                objects, events = await self._query(cal, lo, hi)
+                self._objects[eid] = objects
+                self._events[eid] = events
+                self._until[eid] = hi
+            if cal.get("tasks"):
+                self._task_objects[eid], self._tasks[eid] = await self._query_tasks(cal)
             self._fetched[eid] = time.time()
             self._errors.pop(eid, None)
         except SignInRefused:
@@ -569,6 +593,34 @@ class CalDavIntegration(Integration):
         events.sort(key=lambda x: x["start"])
         return objects, events
 
+    async def _query_tasks(self, cal: dict[str, Any]) -> tuple[dict[str, dict[str, str]], list[dict[str, Any]]]:
+        """Every task in the calendar → ({href: {"etag", "ics"}}, its tasks)."""
+        body = (f'<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="{D}" xmlns:c="{C}">'
+                f"<d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name=\"VCALENDAR\">"
+                f'<c:comp-filter name="VTODO"/></c:comp-filter></c:filter></c:calendar-query>')
+        r = await self._dav("REPORT", cal["href"], body, "1")
+        if r.status_code != 207:
+            raise ConnectionError(f"{cal['name']}'s tasks answered {r.status_code}")
+        objects: dict[str, dict[str, str]] = {}
+        for href, props in multistatus(r.content):
+            data = props.get(_q(C, "calendar-data"))
+            if data is None or not (data.text or "").strip():
+                continue
+            etag = props.get(_q(D, "getetag"))
+            objects[urljoin(cal["href"], href)] = {"etag": (etag.text or "").strip() if etag is not None else "",
+                                                   "ics": data.text}
+        found: list[dict[str, Any]] = []
+
+        def parse_all() -> None:
+            for href, o in objects.items():
+                try:
+                    found.extend(TK.parse_tasks(o["ics"], href, o["etag"]))
+                except Exception as e:  # one bad task mustn't hide the rest
+                    log.warning("Calendar %s: a task couldn't be read (%s)", cal["name"], e)
+
+        await asyncio.to_thread(parse_all)
+        return objects, found
+
     async def events_between(self, eid: str, start: date, end: date) -> list[dict[str, Any]]:
         """The calendar's events from `start` up to `end` (days; a past month too) in the attrs.upcoming
         shape, for the wall's month screen. Asked of the server again after RANGE_KEEP_S, or sooner when
@@ -607,6 +659,7 @@ class CalDavIntegration(Integration):
         else:
             self.set_status("connected", f"{n} calendar{'s' if n != 1 else ''}" if n else "No calendars shared with this account")
         await self._publish()
+        await self._tasks_changed()
 
     async def run(self) -> None:
         attempt = 0
@@ -645,6 +698,14 @@ class CalDavIntegration(Integration):
 
     async def _publish(self) -> None:
         await self._tick(publish_only=True)
+
+    async def _tasks_changed(self) -> None:
+        """Tell the screens to fetch Today again when any task changed (added, done, moved on, gone)."""
+        now = repr(sorted((k, [(t["uid"], t["etag"], t["status"], t["due"]) for t in v]) for k, v in self._tasks.items()))
+        if now != self._tasks_seen:
+            first, self._tasks_seen = not self._tasks_seen, now
+            if not first and self.ctx.broadcast:
+                await self.ctx.broadcast({"type": "today"})
 
     async def _tick(self, publish_only: bool = False) -> None:
         """What's on now, the next events, "event starts" for automations, and wall reminders due."""
@@ -722,7 +783,7 @@ class CalDavIntegration(Integration):
         self._wake.set()
 
     async def dynamic_options(self) -> dict[str, list[dict[str, Any]]]:
-        return {"remind": [{"value": c["id"], "label": c["name"]} for c in self._cals.values()]}
+        return {"remind": [{"value": c["id"], "label": c["name"]} for c in self._cals.values() if c.get("events", True)]}
 
     # -- events from the wall ------------------------------------------------------------------------
 
@@ -804,3 +865,64 @@ class CalDavIntegration(Integration):
         await self.fetch(eid, force=True)
         await self._publish()
         return {"calendar": c["name"]}
+
+    # -- tasks (Today's To do) -----------------------------------------------------------------------
+
+    def connection_label(self) -> str:
+        """"GCloud" for Today's "GCloud · Home" - this connection's own name when it was given one."""
+        n = (self.display_name or "").strip()
+        return "GCloud" if not n or n == self.name else n
+
+    def tasks(self) -> list[dict[str, Any]]:
+        """Every task of every calendar, each with its calendar: key, name, colour, entity (a device when the
+        calendar has events) and the connection's label."""
+        out = []
+        for key, items in self._tasks.items():
+            c = self._cals.get(key)
+            if not c:
+                continue
+            for t in items:
+                out.append({**t, "calendarKey": key, "calendar": c["name"], "colour": c["colour"],
+                            "calendarEntity": key if c.get("events", True) else None,
+                            "connection": self.connection_label()})
+        return out
+
+    def task_calendars(self) -> list[dict[str, Any]]:
+        """Calendars that hold tasks: {id, name, colour, writable}."""
+        return [{"id": k, "name": c["name"], "colour": c["colour"], "writable": c["writable"]}
+                for k, c in self._cals.items() if c.get("tasks")]
+
+    def _task(self, key: str, uid: str) -> tuple[dict[str, Any], dict[str, str]]:
+        c = self._calendar(key, change=True)
+        t = next((t for t in self._tasks.get(key) or [] if t["uid"] == uid), None)
+        o = (self._task_objects.get(key) or {}).get(t["href"]) if t else None
+        if not o:
+            raise CommandError("That task isn't on the calendar any more")
+        return c, {"href": t["href"], **o}
+
+    async def _put_task(self, key: str, href: str, etag: str, text: str) -> None:
+        await self._write("PUT", href, text, {"If-Match": etag} if etag else {})
+        await self.fetch(key, force=True)
+        await self._publish()
+        await self._tasks_changed()
+
+    async def task_done(self, key: str, uid: str, who: str) -> dict[str, Any]:
+        c, o = self._task(key, uid)
+        await self._put_task(key, o["href"], o["etag"], await asyncio.to_thread(TK.mark_done, o["ics"], who))
+        return {"calendar": c["name"]}
+
+    async def task_undo(self, key: str, uid: str) -> dict[str, Any]:
+        c, o = self._task(key, uid)
+        await self._put_task(key, o["href"], o["etag"], await asyncio.to_thread(TK.undo_done, o["ics"]))
+        return {"calendar": c["name"]}
+
+    async def add_task(self, key: str, f: dict[str, Any]) -> dict[str, Any]:
+        c = self._calendar(key, change=True)
+        if not c.get("tasks"):
+            raise CommandError(f"{c['name']} doesn't take tasks")
+        uid, text = TK.new_task(f)
+        await self._write("PUT", c["href"] + uid.replace("@", "-") + ".ics", text, {"If-None-Match": "*"})
+        await self.fetch(key, force=True)
+        await self._publish()
+        await self._tasks_changed()
+        return {"calendar": c["name"], "uid": uid}

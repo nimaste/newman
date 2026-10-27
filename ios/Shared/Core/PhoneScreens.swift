@@ -244,61 +244,53 @@ enum NotificationAlert {
 
 // MARK: - Today: Coming up
 
-/// GET /api/upkeep's items (the upkeep list): name, state and how far off.
-struct UpkeepItem: Decodable, Hashable, Identifiable {
-    var id: String
-    var name: String
-    /// "overdue" | "due" | "soon" | "ok"
-    var state: String
-    var daysLeft: Int?
-    var due: String?
-    /// Its device id (Today's items name it as `entity`).
-    var entity: String?
+/// GET /api/tasks/calendars: the calendars that hold GCloud tasks (Today's "+ Add" picks a writable one)
+/// and the household (a task's "Belongs to").
+struct TaskCalendars: Decodable {
+    struct Entry: Decodable, Hashable, Identifiable {
+        var id: String
+        var name: String
+        var writable: Bool
 
-    enum CodingKeys: String, CodingKey { case id, name, state, daysLeft, due, entity }
+        enum CodingKeys: String, CodingKey { case id, name, writable }
 
-    init(id: String, name: String, state: String, daysLeft: Int? = nil, entity: String? = nil) {
-        self.id = id
-        self.entity = entity
-        self.name = name
-        self.state = state
-        self.daysLeft = daysLeft
-    }
+        init(id: String, name: String, writable: Bool = true) {
+            self.id = id
+            self.name = name
+            self.writable = writable
+        }
 
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? ""
-        name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
-        state = (try? c.decodeIfPresent(String.self, forKey: .state)) ?? "ok"
-        daysLeft = (try? c.decodeIfPresent(Double.self, forKey: .daysLeft)).map { Int($0) }
-        due = try? c.decodeIfPresent(String.self, forKey: .due)
-        entity = try? c.decodeIfPresent(String.self, forKey: .entity)
-    }
-
-    /// "3 days late", "Due today", "Tomorrow", "In 5 days", "Up to date".
-    var statusText: String {
-        switch state {
-        case "overdue":
-            let late = max(1, -(daysLeft ?? -1))
-            return late == 1 ? "1 day late" : "\(late) days late"
-        case "due": return "Due today"
-        case "soon":
-            guard let d = daysLeft, d <= 999 else { return "Running hours almost up" }
-            return d <= 1 ? "Tomorrow" : "In \(d) days"
-        default: return "Up to date"
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = (try? c.decodeIfPresent(String.self, forKey: .id)) ?? ""
+            name = (try? c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+            writable = (try? c.decodeIfPresent(Bool.self, forKey: .writable)) ?? true
         }
     }
-}
 
-struct UpkeepList: Decodable {
-    var items: [UpkeepItem]
+    struct Member: Decodable, Hashable, Identifiable {
+        var id: String
+        var name: String
+    }
+
+    var calendars: [Entry]
+    var people: [Member]
+
+    enum CodingKeys: String, CodingKey { case calendars, people }
+
+    init(calendars: [Entry] = [], people: [Member] = []) {
+        self.calendars = calendars
+        self.people = people
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        items = (try? c.decodeIfPresent([UpkeepItem].self, forKey: .items)) ?? []
+        calendars = (try? c.decodeIfPresent([Entry].self, forKey: .calendars)) ?? []
+        people = (try? c.decodeIfPresent([Member].self, forKey: .people)) ?? []
     }
 
-    enum CodingKeys: String, CodingKey { case items }
+    /// Where "+ Add" can put a task: the calendars Newman may write.
+    var writable: [Entry] { calendars.filter { $0.writable } }
 }
 
 enum TodayScreenLogic {
@@ -363,16 +355,8 @@ enum TodayScreenLogic {
         return nil
     }
 
-    /// The upkeep rows of Coming up: the items coming due (not already in To do).
-    static func upkeep(_ items: [UpkeepItem], todo: [TodayItem]) -> [UpkeepItem] {
-        let inTodo = Set(todo.compactMap { $0.entity })
-        return items.filter { !inTodo.contains($0.entity ?? "") && $0.state == "soon" }
-    }
-
-    /// "+ Add": its last time done one interval ago, so the new to-do is due today ("2026-09-19").
-    static func lastDoneForDueToday(every: Int, unit: String, now: Date, calendar: Calendar = .current) -> String {
-        let component: Calendar.Component = unit == "weeks" ? .weekOfYear : (unit == "months" ? .month : .day)
-        let d = calendar.date(byAdding: component, value: -every, to: now) ?? now
+    /// "+ Add": the day a new task is due, as the hub takes it ("2026-10-30").
+    static func dayString(_ d: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }

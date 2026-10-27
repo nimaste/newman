@@ -178,8 +178,6 @@ class WidgetTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tap("vacuum", "docked"), "start")
         self.assertEqual(tap("vacuum", "cleaning"), "pause")
         self.assertEqual(tap("alarm", "armed_away"), "arm_home")
-        self.assertEqual(tap("upkeep", "ok"), None)  # done already; Remind tomorrow isn't a tap
-        self.assertEqual(tap("upkeep", "due"), "done")
         self.assertEqual(tap("webhook", "idle"), None)
 
     # -- push tokens -------------------------------------------------------------------------------------

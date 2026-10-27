@@ -33,7 +33,9 @@ import ca.nimaste.newman.core.people.Place
 import ca.nimaste.newman.core.people.ProfileUpdate
 import ca.nimaste.newman.core.people.ReportReply
 import ca.nimaste.newman.core.today.DismissRequest
-import ca.nimaste.newman.core.today.SnoozeRequest
+import ca.nimaste.newman.core.today.NewTask
+import ca.nimaste.newman.core.today.TaskCalendars
+import ca.nimaste.newman.core.today.TaskRequest
 import ca.nimaste.newman.core.today.TodayBriefing
 import ca.nimaste.newman.core.widgets.WidgetDevicesResponse
 import ca.nimaste.newman.core.widgets.WidgetHome
@@ -140,19 +142,26 @@ interface NewmanApi {
     @GET("api/live/current")
     suspend fun liveCurrent(@Query("deviceId") deviceId: String? = null): ca.nimaste.newman.core.livestatus.LiveUpdate
 
-    // -- Today & upkeep (the hub records the signed-in person as who did it) -----------------------
+    // -- Today & GCloud tasks (the hub records the signed-in person as who did it) -----------------
 
     @GET("api/today")
     suspend fun today(): TodayBriefing
 
-    @POST("api/upkeep/{id}/done")
-    suspend fun upkeepDone(@Path("id") id: String, @Body body: JsonObject = JsonObject(emptyMap())): Response<Unit>
+    @POST("api/tasks/done")
+    suspend fun taskDone(@Body body: TaskRequest): Response<Unit>
 
-    @POST("api/upkeep/{id}/undo")
-    suspend fun upkeepUndo(@Path("id") id: String, @Body body: JsonObject = JsonObject(emptyMap())): Response<Unit>
+    @POST("api/tasks/undo")
+    suspend fun taskUndo(@Body body: TaskRequest): Response<Unit>
 
-    @POST("api/upkeep/{id}/snooze")
-    suspend fun upkeepSnooze(@Path("id") id: String, @Body body: SnoozeRequest = SnoozeRequest(1)): Response<Unit>
+    @POST("api/tasks/snooze")
+    suspend fun taskSnooze(@Body body: TaskRequest): Response<Unit>
+
+    @GET("api/tasks/calendars")
+    suspend fun taskCalendars(): TaskCalendars
+
+    /** A new GCloud task from Today's "+ Add" (anyone signed in). */
+    @POST("api/tasks")
+    suspend fun addTask(@Body body: NewTask): Response<ResponseBody>
 
     @POST("api/today/dismiss")
     suspend fun todayDismiss(@Body body: DismissRequest): Response<Unit>
@@ -209,10 +218,6 @@ interface NewmanApi {
     /** Part of the house settings (admin): the Cameras tab's Change sends {"cameras": {"mode", "featured"}}. */
     @PATCH("api/settings/house")
     suspend fun patchHouseSettings(@Body body: JsonObject): Response<ResponseBody>
-
-    /** A new upkeep item / to-do (admin): {"name", "every", "unit", "lastDone"?}. */
-    @POST("api/upkeep")
-    suspend fun addUpkeep(@Body body: JsonObject): Response<ResponseBody>
 
     @POST("api/auth/password")
     suspend fun changePassword(@Body body: PasswordChange): Response<ResponseBody>

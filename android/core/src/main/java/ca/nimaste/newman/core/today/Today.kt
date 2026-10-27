@@ -6,13 +6,13 @@ import kotlinx.serialization.Serializable
 /**
  * GET /api/today (server/newman/today.py): what needs someone today, what's on and heads-up, worked
  * out on the hub so the wall, the phone and voice say the same. On a phone the hub sends this
- * person's items and everyone's. Done / Undo / Remind tomorrow go to /api/upkeep/{id}/…; the hub
- * records the signed-in person as who did it.
+ * person's items and everyone's. Done / Undo / Remind tomorrow go to /api/tasks/{done|undo|snooze} with
+ * the item's id (GCloud Calendar tasks); the hub records the signed-in person as who did it.
  */
 @Serializable
 data class TodayItem(
     val id: String,
-    /** "upkeep" | "device" | "appliance" */
+    /** "task" | "device" | "appliance" */
     val source: String = "",
     val entity: String? = null,
     val title: String = "",
@@ -41,7 +41,7 @@ data class TodayEvent(
 @Serializable
 data class HeadsUp(
     val id: String = "",
-    /** "weather" | "calendar" | "upkeep" */
+    /** "weather" | "calendar" | "task" */
     val source: String = "",
     /** "warning" | "rain" | "calendar" | "clock" */
     val icon: String = "",
@@ -64,9 +64,26 @@ data class TodayBriefing(
     val isEmpty: Boolean get() = todo.isEmpty() && soon.isEmpty() && events.isEmpty() && headsUp.isEmpty()
 }
 
-/** Body of POST /api/upkeep/{id}/snooze. */
+/** Body of POST /api/tasks/done, /undo and /snooze: the To do item's id (and for snooze, how many days). */
 @Serializable
-data class SnoozeRequest(val days: Int = 1)
+data class TaskRequest(val id: String, val days: Int? = null)
+
+/** GET /api/tasks/calendars: the calendars holding GCloud tasks and the household (Today's "+ Add"). */
+@Serializable
+data class TaskCalendars(val calendars: List<Entry> = emptyList(), val people: List<Member> = emptyList()) {
+    @Serializable
+    data class Entry(val id: String, val name: String = "", val writable: Boolean = true)
+
+    @Serializable
+    data class Member(val id: String, val name: String = "")
+
+    /** Where "+ Add" can put a task: the calendars Newman may write. */
+    val writable: List<Entry> get() = calendars.filter { it.writable }
+}
+
+/** Body of POST /api/tasks: a new GCloud task ("due": "2026-10-30"; "owner": a person's id or ""). */
+@Serializable
+data class NewTask(val calendar: String, val title: String, val due: String, val every: Int, val unit: String, val owner: String = "")
 
 /** Body of POST /api/today/dismiss. */
 @Serializable
@@ -95,8 +112,8 @@ object TodayView {
         val item: TodayItem,
     )
 
-    /** Something done on this phone (kept for Undo). [upkeepId] is null for a dismissed appliance need. */
-    data class Done(val item: TodayItem, val upkeepId: String?, val at: Double)
+    /** Something done on this phone (kept for Undo). [taskId] is null for a dismissed appliance need. */
+    data class Done(val item: TodayItem, val taskId: String?, val at: Double)
 
     data class Card(
         val summary: String,
@@ -152,9 +169,6 @@ object TodayView {
         return GreetingFit(size, height >= size * 1.3f + TileFit.LINE)
     }
 
-    /** The upkeep item id behind a To do entry: its entity is "upkeep.<id>"; the API takes the id. */
-    fun upkeepId(item: TodayItem): String = (item.entity ?: item.id).substringAfter('.')
-
     fun tone(level: String): Tone = when (level) {
         "overdue", "device" -> Tone.URGENT
         "due", "appliance" -> Tone.DUE
@@ -164,7 +178,7 @@ object TodayView {
     fun buttons(item: TodayItem): List<Button> = when (item.action) {
         "open" -> listOf(Button.OPEN)
         "dismiss" -> listOf(Button.DISMISS)
-        else -> if (item.source == "upkeep") listOf(Button.DONE, Button.SNOOZE) else listOf(Button.DONE)
+        else -> if (item.source == "task") listOf(Button.DONE, Button.SNOOZE) else listOf(Button.DONE)
     }
 
     /** "2 things to do · 1 event", "All done for today", or "" when there's nothing at all. */
@@ -186,7 +200,7 @@ object TodayView {
         val open = b.todo.filter { it.id !in recent }
         val soon = b.soon.filter { it.id !in recent }
         val doneRows = recent.values.sortedBy { it.at }.map { d ->
-            Row(d.item.id, d.item.title, "Done just now", Tone.DONE, if (d.upkeepId != null) listOf(Button.UNDO) else emptyList(), d.item.entity, d.item)
+            Row(d.item.id, d.item.title, "Done just now", Tone.DONE, if (d.taskId != null) listOf(Button.UNDO) else emptyList(), d.item.entity, d.item)
         }
         fun row(i: TodayItem) = Row(i.id, i.title, listOf(i.status, i.owner).filter { it.isNotBlank() }.joinToString(" · "),
             tone(i.level), buttons(i), i.entity, i)

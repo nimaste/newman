@@ -415,7 +415,7 @@ export function summaryChips(list, kinds, { max = 6 } = {}) {
  */
 export function kindIcon(kind) {
   if (!kind) return 'dot';
-  const byKind = { lock: 'lock', doorbell: 'bell', contact: 'door', motion: 'motion', alarm: 'shield', camera: 'camera', light: 'light', remote: 'grid', zone: 'camera', thermostat: 'thermometer', temperature: 'thermometer', garage: 'garage', weather: 'cloud', calendar: 'calendar', vacuum: 'vacuum', switch: 'power', fan: 'fan', cover: 'blinds', sensor: 'gauge', leak: 'droplet', smoke: 'flame', binary: 'toggle', siren: 'megaphone', button: 'pointer', speaker: 'speaker', music_player: 'music', recipe_book: 'recipe', webhook: 'webhook', upkeep: 'wrench' };
+  const byKind = { lock: 'lock', doorbell: 'bell', contact: 'door', motion: 'motion', alarm: 'shield', camera: 'camera', light: 'light', remote: 'grid', zone: 'camera', thermostat: 'thermometer', temperature: 'thermometer', garage: 'garage', weather: 'cloud', calendar: 'calendar', vacuum: 'vacuum', switch: 'power', fan: 'fan', cover: 'blinds', sensor: 'gauge', leak: 'droplet', smoke: 'flame', binary: 'toggle', siren: 'megaphone', button: 'pointer', speaker: 'speaker', music_player: 'music', recipe_book: 'recipe', webhook: 'webhook' };
   const byCat = { security: 'shield', garage: 'garage', lighting: 'light', climate: 'thermometer', cleaning: 'vacuum', cameras: 'camera' };
   if (byKind[kind.id]) return byKind[kind.id];
   if (kind.hasCamera) return 'camera';

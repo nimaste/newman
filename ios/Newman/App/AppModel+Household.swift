@@ -1,7 +1,7 @@
 import Foundation
 
 /// People (GET /api/people, tap-to-refresh POST /api/people/{id}/refresh, the signed-in person's
-/// colour and photo) and Today (GET /api/today and the upkeep actions). Older hubs answer 404: the
+/// colour and photo) and Today (GET /api/today and the task actions). Older hubs answer 404: the
 /// People tab says so calmly and the Today card stays hidden.
 extension AppModel {
     // MARK: people
@@ -140,17 +140,16 @@ extension AppModel {
         }
     }
 
-    /// Done (upkeep) or dismiss (an appliance's need). Returns false and shows the hub's words on failure.
+    /// Done (a GCloud task) or dismiss (an appliance's need). Returns false and shows the hub's words on failure.
     @discardableResult
     func todayDo(_ item: TodayItem) async -> Bool {
         await todayAct {
             if item.action == "dismiss" {
                 try await APIClient.shared.todayDismiss(item.id)
-                self.todayDone[item.id] = TodayView.Done(item: item, upkeepId: nil, at: Date().timeIntervalSince1970)
+                self.todayDone[item.id] = TodayView.Done(item: item, taskId: nil, at: Date().timeIntervalSince1970)
             } else {
-                let id = TodayView.upkeepId(item)
-                try await APIClient.shared.upkeepDone(id)
-                self.todayDone[item.id] = TodayView.Done(item: item, upkeepId: id, at: Date().timeIntervalSince1970)
+                try await APIClient.shared.taskDone(item.id)
+                self.todayDone[item.id] = TodayView.Done(item: item, taskId: item.id, at: Date().timeIntervalSince1970)
             }
         }
     }
@@ -158,7 +157,7 @@ extension AppModel {
     @discardableResult
     func todayUndo(_ item: TodayItem) async -> Bool {
         await todayAct {
-            if let id = self.todayDone[item.id]?.upkeepId { try await APIClient.shared.upkeepUndo(id) }
+            if let id = self.todayDone[item.id]?.taskId { try await APIClient.shared.taskUndo(id) }
             self.todayDone[item.id] = nil
         }
     }
@@ -166,7 +165,7 @@ extension AppModel {
     /// Remind tomorrow.
     @discardableResult
     func todaySnooze(_ item: TodayItem) async -> Bool {
-        let ok = await todayAct { try await APIClient.shared.upkeepSnooze(TodayView.upkeepId(item)) }
+        let ok = await todayAct { try await APIClient.shared.taskSnooze(item.id) }
         if ok { show("We'll remind you tomorrow") }
         return ok
     }

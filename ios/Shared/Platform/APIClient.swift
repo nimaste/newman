@@ -123,7 +123,7 @@ final class APIClient {
         _ = try? await send("POST", "api/auth/logout")
     }
 
-    // MARK: Today & upkeep (the hub records the signed-in person as who did it)
+    // MARK: Today & tasks (the hub records the signed-in person as who did it)
 
     func today() async throws -> TodayBriefing { try await get("api/today") }
 
@@ -131,10 +131,11 @@ final class APIClient {
         s.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/?#"))) ?? s
     }
 
-    func upkeepDone(_ id: String) async throws { try await call("POST", "api/upkeep/\(pathPart(id))/done", body: [:]) }
-    func upkeepUndo(_ id: String) async throws { try await call("POST", "api/upkeep/\(pathPart(id))/undo", body: [:]) }
-    func upkeepSnooze(_ id: String, days: Int = 1) async throws {
-        try await call("POST", "api/upkeep/\(pathPart(id))/snooze", body: ["days": .number(Double(days))])
+    /// A GCloud task (a To do item's id): Done / Undo / Remind tomorrow.
+    func taskDone(_ id: String) async throws { try await call("POST", "api/tasks/done", body: ["id": .string(id)]) }
+    func taskUndo(_ id: String) async throws { try await call("POST", "api/tasks/undo", body: ["id": .string(id)]) }
+    func taskSnooze(_ id: String, days: Int = 1) async throws {
+        try await call("POST", "api/tasks/snooze", body: ["id": .string(id), "days": .number(Double(days))])
     }
     func todayDismiss(_ id: String) async throws { try await call("POST", "api/today/dismiss", body: ["id": .string(id)]) }
 
@@ -216,7 +217,7 @@ final class APIClient {
         return (try? JSONDecoder().decode(AutomationDescription.self, from: data)) ?? AutomationDescription(summary: nil, errors: nil)
     }
 
-    // MARK: Phone screens (alerts by camera / category, a notification's run, upkeep, house settings)
+    // MARK: Phone screens (alerts by camera / category, a notification's run, tasks, house settings)
 
     private func queryPart(_ s: String) -> String {
         s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&=+?#"))) ?? s
@@ -237,13 +238,14 @@ final class APIClient {
         try await get("api/alerts?category=security&since=\(Int(since))&limit=\(limit)")
     }
 
-    /// GET /api/upkeep: every upkeep item with its state (Today's Coming up).
-    func upkeepList() async throws -> UpkeepList { try await get("api/upkeep") }
+    /// GET /api/tasks/calendars: the calendars that hold GCloud tasks and the household (Today's "+ Add").
+    func taskCalendars() async throws -> TaskCalendars { try await get("api/tasks/calendars") }
 
-    /// POST /api/upkeep (admins): a new to-do, every so many days / weeks / months, last done `lastDone`.
-    func addUpkeep(name: String, every: Int, unit: String, lastDone: String) async throws {
-        try await call("POST", "api/upkeep", body: ["name": .string(name), "every": .number(Double(every)),
-                                                    "unit": .string(unit), "lastDone": .string(lastDone)])
+    /// POST /api/tasks: a new GCloud task in `calendar`, due `due` ("2026-10-30"), coming back every so
+    /// many days / weeks / months, belonging to a person (their id) or everyone ("").
+    func addTask(calendar: String, title: String, due: String, every: Int, unit: String, owner: String) async throws {
+        try await call("POST", "api/tasks", body: ["calendar": .string(calendar), "title": .string(title), "due": .string(due),
+                                                   "every": .number(Double(every)), "unit": .string(unit), "owner": .string(owner)])
     }
 
     /// PATCH /api/settings/house (admins), e.g. {"cameras": {"mode", "featured"}}.

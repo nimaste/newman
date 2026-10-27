@@ -53,12 +53,12 @@ extension AppModel {
         }
     }
 
-    /// Today's "+ Add" (admins): a new upkeep to-do, due today, coming back every so often.
+    /// Today's "+ Add" (anyone signed in): a new GCloud task in the calendar picked, coming back every so often.
     @discardableResult
-    func addTodo(name: String, every: Int, unit: String) async -> Bool {
+    func addTask(calendar: String, title: String, due: Date, every: Int, unit: String, owner: String) async -> Bool {
         do {
-            try await APIClient.shared.addUpkeep(name: name, every: every, unit: unit,
-                                                 lastDone: TodayScreenLogic.lastDoneForDueToday(every: every, unit: unit, now: Date()))
+            try await APIClient.shared.addTask(calendar: calendar, title: title, due: TodayScreenLogic.dayString(due),
+                                               every: every, unit: unit, owner: owner)
             await reloadToday()
             return true
         } catch {

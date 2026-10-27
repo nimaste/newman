@@ -74,8 +74,8 @@ class PhoneTilesTest {
 
     private val briefing = NewmanJson.decodeFromString(TodayBriefing.serializer(), """{
       "todo": [
-        {"id": "upkeep.furnace", "source": "upkeep", "title": "Furnace filter", "level": "overdue", "action": "done"},
-        {"id": "upkeep.plants", "source": "upkeep", "title": "Water the plants", "level": "due", "action": "done"},
+        {"id": "caldav.home:task:furnace", "source": "task", "title": "Furnace filter", "level": "overdue", "action": "done"},
+        {"id": "caldav.home:task:plants", "source": "task", "title": "Water the plants", "level": "due", "action": "done"},
         {"id": "lg.dishwasher:need", "source": "appliance", "title": "Dishwasher: rinse aid low", "level": "appliance", "action": "dismiss"}
       ],
       "events": [{"title": "Dentist"}, {"title": "Soccer"}],

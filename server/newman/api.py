@@ -33,6 +33,7 @@ from . import groups as G
 from . import home as HM
 from . import house as HS
 from . import muting as M
+from . import tasks as TK
 from . import today as T
 from . import dashboards as D
 from . import phone_layouts as PL
@@ -285,7 +286,7 @@ def build_app(h: "Newman") -> web.Application:
         # Using the house (a device command, an alert's button) - which family and wall tablets may do.
         command = (p.startswith("/api/entities/") and (p.endswith("/command") or "/mute" in p)) or \
             (p.startswith("/api/runs/") and p.endswith("/press")) or \
-            (p.startswith("/api/upkeep/") and p.rsplit("/", 1)[-1] in ("done", "undo", "snooze")) or \
+            p in ("/api/tasks/done", "/api/tasks/undo", "/api/tasks/snooze") or \
             (p.startswith("/api/dashboards/") and p.endswith("/run")) or \
             p in ("/api/today/dismiss", "/api/tablet/battery", "/api/music/report", "/api/music/play", "/api/cook") or \
             (p.startswith("/api/voice/") and not p.startswith("/api/voice/settings")) or \
@@ -309,7 +310,8 @@ def build_app(h: "Newman") -> web.Application:
             return not (p.startswith("/api/test/") or p.startswith("/api/users"))
         # Their own location sharing / profile, and refreshing someone on the map (checked inside).
         own = p.startswith("/api/me/") or follow
-        return command or own or p in ("/api/devices/register", "/api/widgets/push-token", "/api/live/tokens")
+        # A new GCloud task from a phone's Today "+ Add": anyone signed in (not a wall tablet).
+        return command or own or p in ("/api/devices/register", "/api/widgets/push-token", "/api/live/tokens", "/api/tasks")
 
     @web.middleware
     async def auth_middleware(req: web.Request, handler: Any) -> web.StreamResponse:
@@ -1277,7 +1279,7 @@ def build_app(h: "Newman") -> web.Application:
     @r.post("/api/entities/replace")
     async def replace_entities(req: web.Request) -> web.Response:
         """{"pairs": [{"from": old device id, "to": new device id}]}: everything that used the old devices
-        (automations, dashboards, names, upkeep items…) uses the new ones from now on."""
+        (automations, dashboards, names…) uses the new ones from now on."""
         require_admin(req)
         try:
             counts = await R.replace_entities(h, (await body(req)).get("pairs"))
@@ -1491,8 +1493,7 @@ def build_app(h: "Newman") -> web.Application:
     # -- the phone's Home screen (home.py) -----------------------------------------------------------------
 
     def today_for(u: dict[str, Any]) -> dict[str, Any]:
-        st = h.store.settings()
-        return T.build(h.hub, st, person_id=u.get("person_id"), dismissed=st.get("todayDismissed") or {})
+        return T.build_for(h, person_id=u.get("person_id"))
 
     def people_brief(viewer: dict[str, Any], session: dict[str, Any]) -> list[dict[str, Any]]:
         out = []
@@ -2145,87 +2146,94 @@ def build_app(h: "Newman") -> web.Application:
         return web.json_response({"listening": h.discovery.running,
                                   "found": h.discovery.found(h.store.integrations())})
 
-    # -- upkeep & today ----------------------------------------------------------------------
+    # -- today & tasks -----------------------------------------------------------------------
 
     def person_name_of(u: dict[str, Any]) -> str:
         p = h.store.person(u["person_id"]) if u.get("person_id") else None
         return p["name"] if p else u["name"]
 
-    async def upkeep(create: bool = False) -> Any:
-        """The Upkeep connection (made the first time someone adds an item)."""
-        inst = next((i for i in h.integrations.instances.values() if i.type == "upkeep"), None)
-        if not inst and create:
-            rec = await h.integrations.create("upkeep", "Upkeep", {})
-            inst = h.integrations.instances[rec["id"]]
-        if inst:
-            inst._people = h.store.people
-        return inst
+    def task_servers() -> list[Any]:
+        return [i for i in h.integrations.instances.values() if hasattr(i, "task_calendars")]
 
-    def runtime_devices() -> list[dict[str, Any]]:
-        """Devices whose running hours an item can count: ones that report an activity (a thermostat
-        heating or cooling) or have an on/active state."""
-        return [{"id": e.id, "name": e.name} for e in h.hub.all()
-                if e.kind != "upkeep" and ("action" in (e.attrs or {}) or KINDS[e.kind].active_state)]
+    def task_server(key: str) -> Any:
+        return next((i for i in task_servers() if any(c["id"] == key for c in i.task_calendars())), None)
 
-    @r.get("/api/upkeep")
-    async def upkeep_list(_: web.Request) -> web.Response:
-        inst = await upkeep()
-        items = [inst.item_json(i) for i in inst.items] if inst else []
-        order = {"overdue": 0, "due": 1, "soon": 2, "ok": 3}
-        items.sort(key=lambda i: (order[i["state"]], i["daysLeft"] if i["daysLeft"] is not None else 9999, i["name"]))
-        return web.json_response({"items": items, "people": [{"id": p["id"], "name": p["name"]} for p in h.store.people()],
-                                  "runtimeDevices": runtime_devices()})
+    def find_task(item_id: str) -> tuple[Any, str, str, dict[str, Any] | None]:
+        """(connection, calendar key, uid, the task) for a To do item id ("<calendar>:task:<uid>")."""
+        key, uid = TK.split_id(item_id)
+        inst = task_server(key)
+        if not inst:
+            raise CommandError("That task's calendar isn't on Newman any more")
+        t = next((t for t in inst.tasks() if t["calendarKey"] == key and t["uid"] == uid), None)
+        return inst, key, uid, t
 
-    @r.post("/api/upkeep")
-    async def upkeep_add(req: web.Request) -> web.Response:
-        require_admin(req)
+    @r.get("/api/tasks/calendars")
+    async def task_calendars(_: web.Request) -> web.Response:
+        """Calendars that hold tasks (writable: a phone's "+ Add" can put one there) and the household
+        (the wall's "Who did it?", a new task's "Belongs to")."""
+        cals = sorted((c for i in task_servers() for c in i.task_calendars()), key=lambda c: c["name"].lower())
+        return web.json_response({"calendars": cals,
+                                  "people": [{"id": p["id"], "name": p["name"]} for p in h.store.people()]})
+
+    @r.post("/api/tasks")
+    async def task_add(req: web.Request) -> web.Response:
+        """A phone's "+ Add": {"calendar", "title", "due": "YYYY-MM-DD", "every": n (0 = once),
+        "unit": "days"|"weeks"|"months", "owner": a person's id or ""} → a GCloud task in that calendar."""
+        data = await body(req)
+        key = str(data.get("calendar") or "")
+        inst = task_server(key)
+        if not inst:
+            return _err(400, "Pick a calendar for it")
+        people = TK.household(h.store)
+        owner = str(data.get("owner") or "")
+        if owner and not any(p["id"] == owner for p in people):
+            return _err(400, "That person isn't in the household")
         try:
-            return web.json_response(await (await upkeep(create=True)).add(await body(req)))
-        except ValueError as e:
+            f = TK.task_fields({**data, "owner": TK.owner_username(owner, people) if owner else ""})
+            out = await inst.add_task(key, f)
+        except (CommandError, ValueError) as e:
             return _err(400, str(e))
+        h.store.log_event("command", f"Added the task “{f['title']}” to {out['calendar']}", f"By {req['user']['name']}")
+        return web.json_response({"ok": True, **out})
 
-    @r.put("/api/upkeep/{iid}")
-    async def upkeep_change(req: web.Request) -> web.Response:
-        require_admin(req)
-        inst = await upkeep()
-        try:
-            return web.json_response(await inst.change(req.match_info["iid"], await body(req)))
-        except (ValueError, CommandError, AttributeError) as e:
-            return _err(400, str(e) or "No upkeep items yet")
-
-    @r.delete("/api/upkeep/{iid}")
-    async def upkeep_remove(req: web.Request) -> web.Response:
-        require_admin(req)
-        inst = await upkeep()
-        try:
-            await inst.remove(req.match_info["iid"])
-        except (CommandError, AttributeError):
-            return _err(404, "That upkeep item is gone")
-        return web.json_response({"ok": True})
-
-    @r.post("/api/upkeep/{iid}/{op:done|undo|snooze}")
-    async def upkeep_act(req: web.Request) -> web.Response:
-        """Done / Undo / Remind tomorrow - from the wall, a phone or the dashboard. Who did it: on a
-        wall tablet the household name tapped ("who"), else the item's owner, else the tablet; anywhere
-        else, the signed-in person."""
-        inst = await upkeep()
+    @r.post("/api/tasks/{op:done|undo|snooze}")
+    async def task_act(req: web.Request) -> web.Response:
+        """{"id": a To do item's id, "who"?} - Done / Undo / Tomorrow, from the wall, a phone or the
+        dashboard. Who did it: on a wall tablet the household name tapped ("who"), else the task's owner,
+        else the tablet; anywhere else, the signed-in person. Tomorrow only hides it on Newman."""
         data, op = await body(req), req.match_info["op"]
+        item_id = str(data.get("id") or "")
         try:
-            it = inst._item(req.match_info["iid"])
+            inst, key, uid, t = find_task(item_id)
+            if t is None:
+                raise CommandError("That task isn't on the calendar any more")
             if op == "snooze":
-                return web.json_response(await inst.snooze(it["id"], int(data.get("days") or 1)))
+                kept = {k: v for k, v in (h.store.settings().get("todaySnoozed") or {}).items() if v > time.time()}
+                kept[item_id] = TK.tomorrow_start() + (max(1, int(data.get("days") or 1)) - 1) * 86400
+                h.store.set_setting("todaySnoozed", kept)
+                return web.json_response({"ok": True})
             if op == "undo":
-                return web.json_response(await inst.undo(it["id"]))
+                out = await inst.task_undo(key, uid)
+                h.store.log_event("command", f"“{t['title']}”: not done after all", f"By {req['user']['name']}")
+                return web.json_response({"ok": True, **out})
             u, s = req["user"], req["session"]
             if s.get("kind") == "tablet":
                 names = {p["name"] for p in h.store.people()}
-                owner = inst._person_name(it["owner"]) if it["owner"] else ""
-                who = data.get("who") if data.get("who") in names else owner or u["name"]
+                person = TK.owner_person(t.get("owner") or "", TK.household(h.store))
+                who = data.get("who") if data.get("who") in names else (person["name"] if person else u["name"])
             else:
                 who = person_name_of(u)
-            return web.json_response(await inst.done(it["id"], who))
-        except (CommandError, AttributeError) as e:
-            return _err(404, str(e) or "That upkeep item is gone")
+            out = await inst.task_done(key, uid, who)
+            snoozed = h.store.settings().get("todaySnoozed") or {}
+            if item_id in snoozed:
+                h.store.set_setting("todaySnoozed", {k: v for k, v in snoozed.items() if k != item_id})
+            h.store.log_event("command", f"“{t['title']}”: done", f"By {who}")
+            # When it's due next (a repeating task GCloud rolled forward), for the wall's "Next due".
+            now_t = next((x for x in inst.tasks() if x["calendarKey"] == key and x["uid"] == uid), None)
+            nxt = now_t["due"] if now_t and now_t["status"] != "COMPLETED" else None
+            return web.json_response({"ok": True, "who": who, "nextDue": nxt, **out})
+        except (CommandError, ValueError) as e:
+            return _err(404, str(e) or "That task isn't on the calendar any more")
 
     @r.get("/api/today")
     async def today(req: web.Request) -> web.Response:
@@ -2233,9 +2241,7 @@ def build_app(h: "Newman") -> web.Application:
         dashboard see the whole household (?mine=1 narrows it)."""
         u, s = req["user"], req["session"]
         mine = s.get("kind") == "app" or req.query.get("mine") == "1"
-        st = h.store.settings()
-        return web.json_response(T.build(h.hub, st, person_id=u.get("person_id") if mine else None,
-                                         dismissed=st.get("todayDismissed") or {}))
+        return web.json_response(T.build_for(h, person_id=u.get("person_id") if mine else None))
 
     @r.post("/api/tablet/battery")
     async def tablet_battery(req: web.Request) -> web.Response:
@@ -2270,10 +2276,16 @@ def build_app(h: "Newman") -> web.Application:
         h.store.set_setting("todayDismissed", kept)
         return web.json_response({"ok": True})
 
+    def today_settings_json() -> dict[str, Any]:
+        st = h.store.settings()
+        return {**{k: st.get(k, v) for k, v in T.DEFAULTS.items()},
+                "taskCalendars": [c["name"] for i in task_servers() for c in i.task_calendars()]}
+
     @r.get("/api/today/settings")
     async def today_settings(_: web.Request) -> web.Response:
-        st = h.store.settings()
-        return web.json_response({k: st.get(k, v) for k, v in T.DEFAULTS.items()})
+        """The Settings › Today tab: the rain threshold, when evening heads-ups start, and (to read) the
+        calendars tasks come from."""
+        return web.json_response(today_settings_json())
 
     @r.patch("/api/today/settings")
     async def today_settings_set(req: web.Request) -> web.Response:
@@ -2291,8 +2303,7 @@ def build_app(h: "Newman") -> web.Application:
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(data["todayEveningFrom"])):
                 return _err(400, "Use a time like 17:00")
             h.store.set_setting("todayEveningFrom", data["todayEveningFrom"])
-        st = h.store.settings()
-        return web.json_response({k: st.get(k, v) for k, v in T.DEFAULTS.items()})
+        return web.json_response(today_settings_json())
 
     # -- backups (admins only) ------------------------------------------------------------------
 

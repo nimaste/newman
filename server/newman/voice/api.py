@@ -441,10 +441,8 @@ def add_voice_routes(r: web.RouteTableDef, h: "Newman", *, loc: Any, body: Calla
         return say
 
     def today(v: VoiceViewer) -> dict[str, Any]:
-        st = h.store.settings()
         mine = v.session.get("kind") == "app"
-        return T.build(h.hub, st, person_id=v.user.get("person_id") if mine else None,
-                       dismissed=st.get("todayDismissed") or {})
+        return T.build_for(h, person_id=v.user.get("person_id") if mine else None)
 
     async def cook(v: VoiceViewer, request: dict[str, Any]) -> dict[str, Any]:
         """Voice: cook mode on this tablet (recipes.py)."""

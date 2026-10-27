@@ -11,7 +11,6 @@ const NAV = [
   // Only shown once there are cameras.
   { id: 'cameras', label: 'Cameras', count: (h) => h.entities && h.kindsById && cameraTiles(h.entities, h.kindsById).length, hideWhenEmpty: true },
   { id: 'automations', label: 'Automations', count: (h) => h.status && h.status.automations },
-  { id: 'upkeep', label: 'Upkeep' },
   { id: 'activity', label: 'Activity' },
   { id: 'dashboards', label: 'Dashboards' },
   { id: 'integrations', label: 'Connections', count: (h) => h.status && h.status.integrations && h.status.integrations.length },

@@ -212,9 +212,9 @@ image and the Android APKs (README → Development → Releases has every secret
   - **Security**: the house mode, locks & garage (kinds with a secure state and commands), sensors,
     and today's events (`GET /api/alerts?category=security&since=<start of today>`, newest first).
   - **Today**: CALENDAR (today's events, else "Nothing on the <calendar> calendar today"), TO DO (tap =
-    done, Undo while just done; a device's item opens its sheet; admins **+ Add** a to-do due today that
-    comes back every N days / weeks / months - `POST /api/upkeep`), COMING UP (the next 7 days of each
-    calendar's upcoming events, then upkeep coming due - `GET /api/upkeep`).
+    done, Undo while just done; a device's item opens its sheet; **+ Add** a task with its due day that
+    comes back every N days / weeks / months, in a GCloud calendar picked, belonging to someone or everyone -
+    `POST /api/tasks`), COMING UP (the next 7 days of each calendar's upcoming events, then tasks coming due).
   - **People**: a map of everyone with a location, then the list (tap = fresh location, shown on the map).
   - **Cameras** (`Views/Cameras/CamerasTab.swift`): the big picture labelled exactly as Settings says
     ("Latest activity" or "Featured camera" - `home.cameras.mode`; admins **Change** it:

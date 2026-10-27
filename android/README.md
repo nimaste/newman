@@ -319,8 +319,8 @@ live `{"type":"home"}` or `{"type":"settings-house"}` and after reconnecting.
   (Doors, Water…), and today's events (`GET /api/alerts?category=security&since=`; older hubs: these devices'
   activity) with "All alerts".
 - **Today** (`GET /api/today`): CALENDAR (today's events, or "Nothing on the Family calendar today"); TO DO (tap to
-  tick done, Undo while just done; **+ Add** for admins - `POST /api/upkeep`, first due today); COMING UP (the
-  calendars' next days, `attrs.upcoming`, and upkeep coming due with its status). **People**: everyone on one map (osmdroid) and the list (tap for their map).
+  tick done, Undo while just done; **+ Add** - `POST /api/tasks`, a GCloud task in the calendar picked); COMING UP (the
+  calendars' next days, `attrs.upcoming`, and tasks coming due with their status). **People**: everyone on one map (osmdroid) and the list (tap for their map).
 - **Cameras**: the big picture - "Latest activity" or "Featured camera" (the hub's `cameras.mode`, set on the web)
   - then every other camera with its latest detection today; admins get **Change** (Latest activity / Featured
   camera + which one: `PATCH /api/settings/house {"cameras"}`). One camera: live (full screen a tap away), its

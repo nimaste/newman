@@ -1,9 +1,11 @@
 // Settings: how the whole house behaves (GET/PATCH api/settings/house), one tab per section. Every row is
 // a name and a line of help on the left, its control on the right; a change saves as it's made (sliders
-// once they settle). Only an admin can change them; everyone else sees them.
+// once they settle). Only an admin can change them; everyone else sees them. The Today tab is one card
+// (GET/PATCH api/today/settings): the wall's rain heads-up, when evening heads-ups start, and which
+// calendars Today's tasks come from.
 
 import { useEffect, useRef, useState } from 'react';
-import { api, enc } from '../api.js';
+import { api, enc, toast } from '../api.js';
 import { useApi, useHub } from '../hooks.js';
 import { useLive } from '../live.js';
 import { useAuth } from '../auth.jsx';
@@ -17,6 +19,7 @@ const TABS = [
   { id: 'climate', label: 'Climate' },
   { id: 'cameras', label: 'Cameras' },
   { id: 'history', label: 'Data & history' },
+  { id: 'today', label: 'Today' },
 ];
 
 const COOLDOWNS = [
@@ -141,6 +144,7 @@ export default function HouseSettings() {
               {tab === 'climate' ? <ClimateTab s={s} save={save} disabled={!isAdmin} /> : null}
               {tab === 'cameras' ? <CamerasTab s={s} save={save} disabled={!isAdmin} hub={hub} /> : null}
               {tab === 'history' ? <HistoryTab s={s} save={save} disabled={!isAdmin} /> : null}
+              {tab === 'today' ? <TodayTab disabled={!isAdmin} /> : null}
             </div>
           )}
         </div>
@@ -317,5 +321,71 @@ function HistoryTab({ s, save, disabled }) {
         <Slider id="set-runs" value={s.history.runDays} min={1} max={90} step={1} format={days} disabled={disabled} onSave={(v) => save('history', { runDays: v })} />
       </Row>
     </>
+  );
+}
+
+/** Settings › Today: "Today on the wall" - when rain is worth a heads-up, when evening heads-ups start, and
+ * where tasks come from (the calendar server connection's calendars that hold tasks). */
+function TodayTab({ disabled }) {
+  const res = useApi('api/today/settings');
+  const [thr, setThr] = useState(null);
+  const [from, setFrom] = useState('');
+  useEffect(() => {
+    if (res.data) {
+      setThr(Number(res.data.todayRainThreshold ?? 50));
+      setFrom(res.data.todayEveningFrom || '17:00');
+    }
+  }, [res.data]);
+  const save = async (patch) => {
+    try {
+      res.setData(await api.patch('api/today/settings', patch));
+      toast('Today settings saved', 'success');
+    } catch {
+      res.reload(); // the toast said why; show what's saved
+    }
+  };
+  if (thr === null) return res.error ? <ErrorBox error={res.error} onRetry={res.reload} /> : <Loading />;
+  const cals = (res.data && res.data.taskCalendars) || [];
+  return (
+    <section className="card set-today" aria-labelledby="set-today-title">
+      <h2 id="set-today-title" className="set-today-title">
+        Today on the wall
+      </h2>
+      <label className="set-today-label" htmlFor="set-today-rain">
+        Rain heads-up when the chance is at least {thr ? thr + '%' : 'Off'}
+      </label>
+      <input
+        id="set-today-rain"
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={thr}
+        disabled={disabled}
+        aria-valuetext={thr ? thr + '%' : 'Off'}
+        onChange={(e) => setThr(Number(e.target.value))}
+        onPointerUp={() => save({ todayRainThreshold: thr })}
+        onKeyUp={() => save({ todayRainThreshold: thr })}
+      />
+      <span className="set-today-help">0 turns it off.</span>
+      <label className="set-today-label" htmlFor="set-today-evening">
+        Evening heads-ups from
+      </label>
+      <input
+        id="set-today-evening"
+        className="input set-today-time"
+        type="time"
+        value={from}
+        disabled={disabled}
+        onChange={(e) => (setFrom(e.target.value), e.target.value && save({ todayEveningFrom: e.target.value }))}
+      />
+      <span className="set-today-help">From then on, Today mentions tomorrow’s garbage day and tasks due tomorrow.</span>
+      <span className="set-today-label set-today-split">Tasks come from</span>
+      <span className="set-today-help set-today-para">
+        {cals.length
+          ? `The GCloud calendars Newman sees (Connections › Calendar server): ${cals.join(', ')}. A task that belongs to someone shows on their phone; everyone’s show on the wall.`
+          : 'No calendar with tasks yet. Add GCloud under Connections › Calendar server, and its calendars’ tasks show here.'}
+      </span>
+    </section>
   );
 }

@@ -18,6 +18,9 @@ log = logging.getLogger(__name__)
 # The record keeps its id, so its data folder (a sign-in token, say) carries over and nobody has to
 # set it up again; a name still at the old default takes the new type's.
 FOLDED_TYPES = {"ring_activity": ("ring", "Ring activity")}
+# Connection types that are gone: their records and data folders are dropped on start (Upkeep, replaced by
+# GCloud Calendar tasks read through the Calendar server connection - its items aren't moved).
+DROPPED_TYPES = {"upkeep"}
 
 
 class IntegrationManager:
@@ -36,6 +39,11 @@ class IntegrationManager:
 
     def migrate_types(self) -> None:
         for rec in self._store.integrations():
+            if rec["type"] in DROPPED_TYPES:
+                shutil.rmtree(self._ctx.data_dir / "integrations" / rec["id"], ignore_errors=True)
+                self._store.remove_integration(rec["id"])
+                log.info("Connection %s (%s) is no longer part of Newman - dropped", rec["id"], rec["type"])
+                continue
             if rec["type"] in FOLDED_TYPES:
                 new_type, old_default = FOLDED_TYPES[rec["type"]]
                 cls = REGISTRY[new_type]
