@@ -316,3 +316,70 @@ class Saved:
         for old in self.list()[max(1, keep):]:
             (self.dir / old["name"]).unlink(missing_ok=True)
         return next(b for b in self.list() if b["name"] == name)
+
+
+# -- GitHub sync --------------------------------------------------------------
+#
+# A fixed remote filename, overwritten every sync, so git's own commit
+# history is the version history instead of an ever-growing pile of
+# once-off timestamped files (the mistake another fleet app made and had to
+# be fixed after the fact -- every other app here already does it this way).
+# Always locked with the configured passphrase via the same lock() above
+# used for passphrase-protected downloads: a Newman backup has account
+# credentials, connection keys, session tokens and the token secret, so it
+# must never reach a repo unencrypted.
+#
+# httpx, not requests -- this whole server is async (aiohttp), and requests
+# has no async client; a sync HTTP call here would block the event loop for
+# every other request while it ran.
+
+GITHUB_REMOTE_NAME = f"newman-backup{SUFFIX}"
+
+
+def _github_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+
+async def _github_file_sha(client: Any, repo: str, token: str, branch: str, path: str) -> str | None:
+    res = await client.get(
+        f"https://api.github.com/repos/{repo}/contents/{path}",
+        params={"ref": branch}, headers=_github_headers(token), timeout=15,
+    )
+    if res.status_code == 404:
+        return None
+    if res.status_code >= 400:
+        raise BackupError(f"GitHub returned {res.status_code}: {res.text}")
+    return res.json().get("sha")
+
+
+async def github_test(token: str, repo: str) -> None:
+    import httpx
+    async with httpx.AsyncClient() as client:
+        res = await client.get(f"https://api.github.com/repos/{repo}", headers=_github_headers(token), timeout=15)
+        if res.status_code >= 400:
+            raise BackupError(f"GitHub connection failed: {res.status_code} {res.text}")
+
+
+async def github_sync(blob: bytes, passphrase: str, token: str, repo: str, branch: str, subdir: str = "") -> None:
+    """Locks blob with passphrase and pushes it to repo at a fixed path,
+    overwriting whatever was there before."""
+    import base64
+    import httpx
+    subdir = subdir.strip().strip("/")
+    remote_path = f"{subdir + '/' if subdir else ''}backups/{GITHUB_REMOTE_NAME}"
+    locked = lock(blob, passphrase)
+    async with httpx.AsyncClient() as client:
+        sha = await _github_file_sha(client, repo, token, branch, remote_path)
+        payload = {
+            "message": f"backup @ {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}",
+            "content": base64.b64encode(locked).decode("ascii"),
+            "branch": branch,
+        }
+        if sha:
+            payload["sha"] = sha
+        res = await client.put(
+            f"https://api.github.com/repos/{repo}/contents/{remote_path}",
+            json=payload, headers=_github_headers(token), timeout=30,
+        )
+        if res.status_code >= 400:
+            raise BackupError(f"GitHub returned {res.status_code}: {res.text}")

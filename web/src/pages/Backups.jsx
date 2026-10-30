@@ -140,11 +140,20 @@ export default function Backups() {
   const [filePass, setFilePass] = useState('');
   const [fileError, setFileError] = useState('');
   const [restarting, setRestarting] = useState(false);
+  const [ghTokenInput, setGhTokenInput] = useState('');
+  const [encKeyInput, setEncKeyInput] = useState('');
   const fileInput = useRef(null);
   const filePassInput = useRef(null);
 
   useEffect(() => {
-    if (res.data) setSettings({ auto: res.data.auto !== false, keep: res.data.keep ?? 7, time: res.data.time || '03:30' });
+    if (res.data) {
+      setSettings({
+        auto: res.data.auto !== false, keep: res.data.keep ?? 7, time: res.data.time || '03:30',
+        githubRepo: res.data.githubRepo || '', githubTokenSet: !!res.data.githubTokenSet,
+        githubBranch: res.data.githubBranch || 'main', githubSubdir: res.data.githubSubdir || '',
+        encryptionKeySet: !!res.data.encryptionKeySet,
+      });
+    }
   }, [res.data]);
 
   const saveSettings = async (patch) => {
@@ -152,9 +161,16 @@ export default function Backups() {
     setSettings(next);
     try {
       const saved = await api.patch('api/backups/settings', patch);
-      setSettings({ auto: saved.auto !== false, keep: saved.keep ?? next.keep, time: saved.time || next.time });
+      setSettings((s) => ({
+        ...s,
+        auto: saved.auto !== false, keep: saved.keep ?? next.keep, time: saved.time || next.time,
+        githubRepo: saved.githubRepo ?? next.githubRepo, githubTokenSet: !!saved.githubTokenSet,
+        githubBranch: saved.githubBranch || next.githubBranch, githubSubdir: saved.githubSubdir ?? next.githubSubdir,
+        encryptionKeySet: !!saved.encryptionKeySet,
+      }));
       res.setData((d) => ({ ...d, ...saved }));
-    } catch {
+    } catch (e) {
+      toast(e.message, 'error');
       res.reload();
     }
   };
@@ -181,6 +197,28 @@ export default function Backups() {
       res.reload();
     } catch {
       /* toast shown */
+    } finally {
+      setBusy('');
+    }
+  };
+  const githubTest = async () => {
+    setBusy('gh:test');
+    try {
+      await api.post('api/backups/github/test', {});
+      toast('Connected', 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+  const githubSyncNow = async () => {
+    setBusy('gh:sync');
+    try {
+      await api.post('api/backups/github/sync', {});
+      toast('Synced to GitHub', 'success');
+    } catch (e) {
+      toast(e.message, 'error');
     } finally {
       setBusy('');
     }
@@ -294,6 +332,70 @@ export default function Backups() {
                     />
                     {Number(settings.keep) === 1 ? 'backup' : 'backups'}
                   </label>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="card prof-card" aria-labelledby="bk-gh">
+              <h2 id="bk-gh" className="prof-title">
+                GitHub sync
+              </h2>
+              {settings ? (
+                <div className="bk-auto" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                  <label className="field">
+                    <span className="field-label">Backup Encryption Key</span>
+                    <input
+                      className="input" type="password" autoComplete="new-password" value={encKeyInput}
+                      onChange={(e) => setEncKeyInput(e.target.value)}
+                      onBlur={() => { if (encKeyInput) { saveSettings({ encryptionKey: encKeyInput }); setEncKeyInput(''); } }}
+                      placeholder={settings.encryptionKeySet ? '••••••••  (set)' : 'Required before GitHub sync can be turned on'}
+                    />
+                    <span className="help">Locks the backup before it ever leaves the hub - a backup has account credentials and session tokens in it.</span>
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Repo (owner/name)</span>
+                    <input
+                      className="input" value={settings.githubRepo}
+                      onChange={(e) => setSettings((s) => ({ ...s, githubRepo: e.target.value }))}
+                      onBlur={(e) => saveSettings({ githubRepo: e.target.value })}
+                      placeholder="you/newman-backups"
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Personal access token</span>
+                    <input
+                      className="input" type="password" autoComplete="new-password" value={ghTokenInput}
+                      onChange={(e) => setGhTokenInput(e.target.value)}
+                      onBlur={() => { if (ghTokenInput) { saveSettings({ githubToken: ghTokenInput }); setGhTokenInput(''); } }}
+                      placeholder={settings.githubTokenSet ? '••••••••  (set)' : 'ghp_...'}
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <label className="field" style={{ flex: 1 }}>
+                      <span className="field-label">Branch</span>
+                      <input
+                        className="input" value={settings.githubBranch}
+                        onChange={(e) => setSettings((s) => ({ ...s, githubBranch: e.target.value }))}
+                        onBlur={(e) => saveSettings({ githubBranch: e.target.value || 'main' })}
+                      />
+                    </label>
+                    <label className="field" style={{ flex: 1 }}>
+                      <span className="field-label">Subdirectory (optional)</span>
+                      <input
+                        className="input" value={settings.githubSubdir}
+                        onChange={(e) => setSettings((s) => ({ ...s, githubSubdir: e.target.value }))}
+                        onBlur={(e) => saveSettings({ githubSubdir: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button type="button" className="btn" disabled={!!busy || !settings.githubRepo || !settings.githubTokenSet} onClick={githubTest}>
+                      {busy === 'gh:test' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : null} Test connection
+                    </button>
+                    <button type="button" className="btn" disabled={!!busy || !settings.githubRepo || !settings.githubTokenSet || !settings.encryptionKeySet} onClick={githubSyncNow}>
+                      {busy === 'gh:sync' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : null} Sync now
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </section>

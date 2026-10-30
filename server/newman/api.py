@@ -2383,10 +2383,28 @@ def build_app(h: "Newman") -> web.Application:
     def backup_settings() -> dict[str, Any]:
         s = h.store.settings()
         return {"auto": bool(s.get("backupAuto", True)), "keep": int(s.get("backupKeep") or 7),
-                "time": str(s.get("backupTime") or "03:30")}
+                "time": str(s.get("backupTime") or "03:30"),
+                "githubRepo": str(s.get("backupGithubRepo") or ""),
+                "githubTokenSet": bool(s.get("backupGithubToken")),
+                "githubBranch": str(s.get("backupGithubBranch") or "main"),
+                "githubSubdir": str(s.get("backupGithubSubdir") or ""),
+                "encryptionKeySet": bool(s.get("backupEncryptionKey"))}
 
     def make_backup() -> bytes:
         return B.create(h.store._db, config.data_dir, config.app_version)
+
+    async def _sync_to_github_if_configured(path: Path | None) -> None:
+        if not path:
+            return
+        s = h.store.settings()
+        repo, token, key = s.get("backupGithubRepo"), s.get("backupGithubToken"), s.get("backupEncryptionKey")
+        if not (repo and token and key):
+            return
+        try:
+            await B.github_sync(path.read_bytes(), key, token, repo,
+                               s.get("backupGithubBranch") or "main", s.get("backupGithubSubdir") or "")
+        except Exception as e:
+            log.warning("GitHub backup sync failed: %s", e)
 
     @r.get("/api/backups")
     async def backups_list(req: web.Request) -> web.Response:
@@ -2411,12 +2429,67 @@ def build_app(h: "Newman") -> web.Application:
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(data["time"])):
                 return _err(400, "Use a time like 03:30")
             h.store.set_setting("backupTime", data["time"])
+        if "encryptionKey" in data:
+            # Blank preserves whatever's already set -- only a non-empty
+            # value changes it, same convention as githubToken below.
+            if str(data["encryptionKey"] or ""):
+                h.store.set_setting("backupEncryptionKey", str(data["encryptionKey"]))
+        if "githubRepo" in data:
+            h.store.set_setting("backupGithubRepo", str(data["githubRepo"] or ""))
+        if "githubToken" in data and str(data["githubToken"] or ""):
+            h.store.set_setting("backupGithubToken", str(data["githubToken"]))
+        if "githubBranch" in data:
+            h.store.set_setting("backupGithubBranch", str(data["githubBranch"] or "main"))
+        if "githubSubdir" in data:
+            h.store.set_setting("backupGithubSubdir", str(data["githubSubdir"] or ""))
+        s = h.store.settings()
+        if s.get("backupGithubRepo") and s.get("backupGithubToken") and not s.get("backupEncryptionKey"):
+            return _err(400, "Set a Backup Encryption Key before enabling GitHub sync -- a Newman "
+                             "backup has account credentials and session tokens in it, so it should "
+                             "never reach a repo unencrypted.")
         return web.json_response(backup_settings())
+
+    @r.post("/api/backups/github/test")
+    async def backups_github_test(req: web.Request) -> web.Response:
+        require_admin(req)
+        s = h.store.settings()
+        repo, token = s.get("backupGithubRepo"), s.get("backupGithubToken")
+        if not repo or not token:
+            return _err(400, "GitHub sync is not configured")
+        try:
+            await B.github_test(token, repo)
+        except B.BackupError as e:
+            return _err(400, str(e))
+        return web.json_response({"ok": True})
+
+    @r.post("/api/backups/github/sync")
+    async def backups_github_sync(req: web.Request) -> web.Response:
+        """Syncs the most recent saved backup -- doesn't create a new one."""
+        require_admin(req)
+        s = h.store.settings()
+        repo, token = s.get("backupGithubRepo"), s.get("backupGithubToken")
+        key = s.get("backupEncryptionKey")
+        if not repo or not token:
+            return _err(400, "GitHub sync is not configured")
+        if not key:
+            return _err(400, "No Backup Encryption Key is configured")
+        latest = saved_backups.list()
+        if not latest:
+            return _err(400, "No backup exists yet to sync")
+        path = saved_backups.path(latest[0]["name"])
+        try:
+            await B.github_sync(path.read_bytes(), key, token, repo,
+                               s.get("backupGithubBranch") or "main", s.get("backupGithubSubdir") or "")
+        except B.BackupError as e:
+            return _err(400, str(e))
+        return web.json_response({"synced": latest[0]["name"]})
 
     @r.post("/api/backups")
     async def backups_create(req: web.Request) -> web.Response:
         require_admin(req)
-        return web.json_response(saved_backups.save(make_backup(), backup_settings()["keep"]))
+        saved = saved_backups.save(make_backup(), backup_settings()["keep"])
+        await _sync_to_github_if_configured(saved_backups.path(saved["name"]))
+        return web.json_response(saved)
 
     @r.post("/api/backups/download")
     async def backups_download(req: web.Request) -> web.Response:

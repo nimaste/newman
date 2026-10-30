@@ -110,6 +110,16 @@ class Newman:
                 try:
                     saved = self.backups.save(self.backup_now(), int(s.get("backupKeep") or 7))
                     log.info("Nightly backup %s (%d KB)", saved["name"], saved["size"] // 1024)
+                    repo, token, key = s.get("backupGithubRepo"), s.get("backupGithubToken"), s.get("backupEncryptionKey")
+                    if repo and token and key:
+                        try:
+                            path = self.backups.path(saved["name"])
+                            await backup.github_sync(path.read_bytes(), key, token, repo,
+                                                      s.get("backupGithubBranch") or "main",
+                                                      s.get("backupGithubSubdir") or "")
+                            log.info("Nightly backup synced to GitHub")
+                        except Exception:
+                            log.exception("GitHub backup sync failed")
                 except Exception:
                     log.exception("Nightly backup failed")
                     self.store.log_event("system", "Nightly backup failed", "See the hub's log for why.")
